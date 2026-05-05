@@ -1,0 +1,942 @@
+#include "PlayerController.h"
+#include "CameraFX.h"
+
+#include "Engine/Engine.h"
+#include "Engine/World/WorldManager.h"
+
+#include <fstream>
+
+#include "Game/Item/ItemDatabase.h"
+
+#include "PlayerData.h"
+
+//#define DISPLAY_PLAYER_STATS
+
+std::unique_ptr<PlayerController> g_PlayerController;
+PlayerData g_PlayerData;
+CameraFX g_CameraFX;
+
+#define vec3_t PxVec3
+
+#define MAX_SPEED 1.0f
+
+using namespace irr::core;
+using namespace physx;
+
+const float
+	g_sensitivity = 0.09f,
+	g_topAngle = -89.5f,
+	g_bottomAngle = 89.5f,
+	g_moveSpeed = 7.0f,
+	g_airSpeed = 0.15f,  // Reduced for realistic jump arcs (was 0.3)
+	g_gravity = -0.3f,
+	g_jumpVelocity = 0.1f,
+	g_jumpBoostForce = 0.1f,
+	g_jumpBoostDuration = 25.0f,
+	g_headBobFrequency = 10.0f,
+	g_headBobAmplitude = 0.03f;
+
+bool g_hasFallen = false;
+bool g_isOnSurface = false;
+bool g_used = false;
+bool g_isJumpBoosting = false;
+
+int g_lastJumpTime = 0;
+int g_jumpBoostStartTime = 0;
+int g_lastStepTime = 0;
+
+float g_headBobTimer = 0.0f;
+float g_lastHeadBobValue = 0.0f;
+
+void DisplayPlayerStats()
+{
+	{
+		auto windowWidth = 320, windowHeight = 320;
+		ImGui::SetNextWindowSize(ImVec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight)));
+		ImGui::SetNextWindowPos(ImVec2(0, 250));
+
+		auto& ent_player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		auto& transform = ent_player.getComponent<TransformComponent>();
+		auto& camera = ent_player.getComponent<CameraComponent>();
+		auto& physics = ent_player.getComponent<CCTComponent>();
+
+		if (ImGui::Begin("PlayerInfo", reinterpret_cast<bool*>(1),
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoResize))
+		{
+			ImGui::Text("NDE PX %f", transform.position.X);
+			ImGui::Text("NDE PY %f", transform.position.Y);
+			ImGui::Text("NDE PZ %f", transform.position.Z);
+
+			ImGui::Spacing();
+
+			ImGui::Text("CAM PX %f", camera.camera->getPosition().X);
+			ImGui::Text("CAM PY %f", camera.camera->getPosition().Y);
+			ImGui::Text("CAM PZ %f", camera.camera->getPosition().Z);
+
+			ImGui::Spacing();
+
+			ImGui::Text("CCT PX %f", physics.controller->getPosition().x);
+			ImGui::Text("CCT PY %f", physics.controller->getPosition().y);
+			ImGui::Text("CCT PZ %f", physics.controller->getPosition().z);
+
+			ImGui::Spacing();
+
+			auto mat = 
+				RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition() + irr::core::vector3df(0.0f, 0.0f, 0.0f), transform.getPosition() + irr::core::vector3df(0.0f, -3.0f, 0.0f));
+			std::string material =
+				Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(mat));
+
+			ImGui::Text("TEX %s", mat.c_str());
+			ImGui::Text("MAT %s", material.c_str());
+
+
+
+			ImGui::End();
+		}
+	}
+}
+
+void DisplayStaminaBar(float currentStamina, float maxStamina)
+{
+	// // Get screen dimensions for positioning
+	// ImGuiIO& io = ImGui::GetIO();
+	// float windowWidth = 250.0f;
+	// float windowHeight = 60.0f;
+	
+	// // Position in bottom-left corner with some padding
+	// ImGui::SetNextWindowPos(ImVec2(10, io.DisplaySize.y - windowHeight - 300));
+	// ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight));
+	
+	// // Create window with minimal decoration
+	// if (ImGui::Begin("Stamina", nullptr, 
+	// 	ImGuiWindowFlags_NoTitleBar | 
+	// 	ImGuiWindowFlags_NoResize | 
+	// 	ImGuiWindowFlags_NoMove | 
+	// 	ImGuiWindowFlags_NoSavedSettings))
+	// {
+	// 	// Stamina label
+	// 	ImGui::Text("Stamina");
+		
+	// 	// Calculate stamina percentage for progress bar
+	// 	float staminaPercent = currentStamina / maxStamina;
+		
+	// 	// Color based on stamina level (green -> yellow -> red)
+	// 	ImVec4 barColor;
+	// 	if (staminaPercent > 0.6f) {
+	// 		barColor = ImVec4(0.0f, 1.0f, 0.0f, 1.0f); // Green
+	// 	} else if (staminaPercent > 0.3f) {
+	// 		barColor = ImVec4(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+	// 	} else {
+	// 		barColor = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
+	// 	}
+		
+	// 	// Display numeric value
+	// 	ImGui::PushStyleColor(ImGuiCol_Text, barColor);
+	// 	ImGui::SameLine();
+	// 	ImGui::Text("%.0f / %.0f", currentStamina, maxStamina);
+	// 	ImGui::PopStyleColor();
+		
+	// 	ImGui::End();
+	// }
+}
+
+
+void PlayerController::init()
+{
+	g_PlayerData.inventoryData.size = irr::core::vector2di(9, 3);
+
+#ifndef DISABLE_HUD_AND_INV
+	m_hudController.init();
+#endif
+
+	m_interactionController.init();
+
+#ifndef DISABLE_HUD_AND_INV
+	m_inventoryController.init();
+#endif
+
+	m_weaponController.init();
+}
+
+vector3df PlayerController::Accelerate(vector3df& accelDir, vector3df& prevVelocity, float accelerate, float max_velocity, float dt)
+{
+	// Based on Quake 3's PM_Accelerate function
+	// Key difference: only limit speed in the wish direction, not total speed
+	// This allows perpendicular velocity to accumulate (strafe jumping)
+	
+	// Get current speed in the direction we want to move
+	float currentspeed = prevVelocity.dotProduct(accelDir);
+	
+	// How much speed we want to add
+	float addspeed = max_velocity - currentspeed;
+	
+	// If we're already going fast enough in this direction, don't add more
+	if (addspeed <= 0) {
+		return prevVelocity;
+	}
+	
+	// Calculate acceleration to add this frame
+	float accelspeed = accelerate * dt * max_velocity;
+	
+	// Cap the acceleration if it would overshoot
+	if (accelspeed > addspeed) {
+		accelspeed = addspeed;
+	}
+	
+	// Add the acceleration in the wish direction
+	return prevVelocity + accelDir * accelspeed;
+}
+
+vector3df PlayerController::MoveGround(vector3df& accelDir, vector3df& prevVelocity, float friction, float ground_accelerate, float max_velocity_ground, float dt)
+{
+	// Based on Quake 3's ground movement
+	// Apply friction first, then accelerate
+	
+	float speed = prevVelocity.getLength();
+	
+	if (speed != 0)
+	{
+		// Quake 3 applies friction based on control value
+		// Higher friction when not moving or moving slowly
+		float control = speed < 1.0f ? 1.0f : speed;
+		float drop = control * friction * dt;
+		
+		// Scale the velocity to apply friction
+		float newspeed = std::max(speed - drop, 0.0f);
+		prevVelocity *= newspeed / speed;
+	}
+
+	// Now accelerate in the wish direction
+	return Accelerate(accelDir, prevVelocity, ground_accelerate, max_velocity_ground, dt);
+}
+
+vector3df PlayerController::MoveAir(vector3df& accelDir, vector3df& prevVelocity, float air_accelerate, float max_velocity_air, float dt)
+{
+	// Quake 3 air movement: identical to Accelerate, no friction
+	// This allows momentum preservation and strafe jumping
+	return Accelerate(accelDir, prevVelocity, air_accelerate, max_velocity_air, dt);
+}
+
+void PlayerController::update(float dt)
+{
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+
+	if (!player.isValid()) {
+		return;
+	}
+
+	static bool is_crouched = false;
+
+	g_PlayerData.currentHealth = player.getComponent<DamageReceiverComponent>().health;
+
+	auto currentTime = static_cast<int>(Engine::Get()->getCurrentTime());
+
+	if (g_PlayerData.currentHealth <= 0 && !m_isDead)
+	{
+		m_isDead = true;
+		m_deathTime = currentTime;
+		lockPlayer(true);
+		m_targetCrouchHeight = 0.2f;
+		player.getComponent<SoundComponent>().play("die");
+	}
+
+	auto& transform = player.getComponent<TransformComponent>();
+	auto& camera = player.getComponent<CameraComponent>();
+	auto& cct = player.getComponent<CCTComponent>();
+	auto& sound = player.getComponent<SoundComponent>();
+	auto& damage = player.getComponent<DamageReceiverComponent>();
+
+	transform.node->setRotation(vector3df(transform.node->getRotation().X, transform.node->getRotation().Y, 0.0f));
+
+	static vector3df lastPlayerPosition = transform.position;
+	static vector3df player_velocity = vector3df(0.0f, 0.0f, 0.0f);
+
+	float
+		x_move = 0.0,
+		z_move = 0.0,
+		speed_mod = 0.0;
+
+	vector2df mouseDelta;
+
+	// Seed clean pitch/yaw from the actual camera on very first frame only.
+	// After that we own these values exclusively — camera node rotation is
+	// never read back, so FX offsets cannot accumulate into the base aim.
+	if (m_firstUpdate)
+	{
+		m_cameraPitch = camera.camera->getRotation().X;
+		m_cameraYaw   = camera.camera->getRotation().Y;
+		InputManager::Get()->centerMouse();
+		m_firstUpdate = false;
+	}
+
+	if (!isPlayerLocked() && !g_PlayerInventoryIsDisplaying)
+	{
+		mouseDelta = InputManager::Get()->getMouseDelta();
+
+		// Accumulate mouse delta into the clean base rotation only.
+		m_cameraYaw   -= mouseDelta.X * g_sensitivity;
+		m_cameraPitch -= mouseDelta.Y * g_sensitivity;
+
+		if (m_cameraPitch > g_bottomAngle) m_cameraPitch = g_bottomAngle;
+		if (m_cameraPitch < g_topAngle)    m_cameraPitch = g_topAngle;
+	}
+
+	// Build final rotation starting from the clean base (no FX contamination).
+	vector3df cameraRotation(m_cameraPitch, m_cameraYaw, 0.0f);
+
+	if (m_isDead)
+	{
+		float deathDuration = 1000.0f;
+		float t = (Engine::Get()->getCurrentTime() - m_deathTime) / deathDuration;
+		if (t > 1.0f) t = 1.0f;
+		t = t * t * (3.0f - 2.0f * t);
+		cameraRotation.Z = -60.0f * t;
+	}
+
+	// --- Camera FX: recoil kick + screen shake ---
+	// Applied as a pure additive overlay — never written back into
+	// m_cameraPitch/m_cameraYaw, so recovery truly returns to aim point.
+	if (!m_isDead)
+	{
+		float fxPitch = 0.0f, fxYaw = 0.0f, fxRoll = 0.0f;
+		g_CameraFX.tick(dt, fxPitch, fxYaw, fxRoll);
+		cameraRotation.X += fxPitch;
+		cameraRotation.Y += fxYaw;
+		cameraRotation.Z += fxRoll;
+
+		// Clamp after FX to prevent extremes.
+		if (cameraRotation.X > g_bottomAngle) cameraRotation.X = g_bottomAngle;
+		if (cameraRotation.X < g_topAngle)    cameraRotation.X = g_topAngle;
+	}
+
+	transform.setRotation(vector3df(cameraRotation.X, cameraRotation.Y, cameraRotation.Z));
+
+	// Ground detection set from collision flags after CCT move (with buffering to prevent jitter)
+
+	if (is_crouched)
+	{
+		speed_mod = -2.0f;
+	}
+	else if (InputManager::Get()->isActionPressed("sprint") && m_currentStamina >= m_minSprintStamina)
+	{
+		// Sprint only if we have enough stamina
+		speed_mod = 2.5f;
+		// Drain stamina while sprinting
+		m_currentStamina -= m_sprintStaminaDrain * (dt / 1000.0f);
+		if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
+		// Record when stamina was consumed
+		m_lastStaminaConsumedTime = currentTime;
+	}
+	else
+	{
+		speed_mod = 0.0;
+		// Recharge stamina only after delay has passed
+		if (currentTime - m_lastStaminaConsumedTime >= m_staminaRechargeDelay)
+		{
+			m_currentStamina += m_staminaRechargeRate * (dt / 1000.0f);
+			if (m_currentStamina > m_maxStamina) m_currentStamina = m_maxStamina;
+		}
+	}
+
+	if (!isPlayerLocked())
+	{
+		if (InputManager::Get()->isActionPressed("forward") && !InputManager::Get()->isActionPressed("backward"))
+		{
+			z_move += 1.0f;
+		}
+		if (InputManager::Get()->isActionPressed("backward") && !InputManager::Get()->isActionPressed("forward"))
+		{
+			z_move -= 1.0f;
+		}
+		if (InputManager::Get()->isActionPressed("strafel") && !InputManager::Get()->isActionPressed("strafer"))
+		{
+			x_move -= 1.0f;
+		}
+		if (InputManager::Get()->isActionPressed("strafer") && !InputManager::Get()->isActionPressed("strafel"))
+		{
+			x_move += 1.0f;
+		}
+	}
+
+	// Track when player is grounded for coyote time
+	if (g_isOnSurface)
+	{
+		m_lastGroundedTime = currentTime;
+	}
+
+	// Check for buffered jump when landing
+	if (g_isOnSurface && g_hasFallen && !isSwimming())
+	{
+		g_hasFallen = false;
+		//playJumpSound(player);
+		
+		// Execute buffered jump if jump was pressed recently
+		if (!is_crouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime && m_currentStamina >= m_minJumpStamina)
+		{
+			// Start buffered jump
+			player_velocity.Y = g_jumpVelocity;
+			
+			// Consume stamina for jumping
+			m_currentStamina -= m_jumpStaminaCost;
+			if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
+			// Record when stamina was consumed
+			m_lastStaminaConsumedTime = currentTime;
+			
+			m_isJumping = true;
+			m_jumpConsumed = true;  // Mark input as consumed to prevent repeat jumps
+			g_isJumpBoosting = true;
+			g_jumpBoostStartTime = currentTime;
+			g_lastJumpTime = currentTime;
+			m_lastJumpInputTime = -1000; // Clear buffer
+		}
+	}
+	if (!g_isOnSurface)
+	{
+		g_hasFallen = true;
+	}
+
+	if (!isPlayerLocked())
+	{
+		// Track jump input for buffering and reset consumed flag when button released
+		if (InputManager::Get()->isActionPressed("jump") && g_isOnSurface)
+		{
+			m_lastJumpInputTime = currentTime;
+			
+			if (!isSwimming())
+			{
+				// Allow jump if grounded OR within coyote time window, and input hasn't been consumed
+				bool canJump = (currentTime - m_lastGroundedTime < m_coyoteTime) && 
+				               currentTime - g_lastJumpTime > 500 && 
+				               !is_crouched &&
+				               !m_jumpConsumed &&  // Only jump once per button press
+				               m_currentStamina >= m_minJumpStamina;  // Need stamina to jump
+				
+				if (canJump)
+				{
+					// Start jump with initial upward velocity
+					player_velocity.Y = g_jumpVelocity;
+					
+					// Consume stamina for jumping
+					m_currentStamina -= m_jumpStaminaCost;
+					if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
+					// Record when stamina was consumed
+					m_lastStaminaConsumedTime = currentTime;
+					
+					m_isJumping = true;
+					m_jumpConsumed = true;  // Mark this button press as consumed
+					g_isJumpBoosting = true;
+					g_jumpBoostStartTime = currentTime;
+					g_lastJumpTime = currentTime;
+				}
+			}
+			else
+			{
+				// Swim up - apply to vertical velocity
+				player_velocity.Y = g_moveSpeed;
+			}
+		}
+		// Jump cut: reduce velocity when jump button released mid-jump
+		else if (InputManager::Get()->isActionReleased("jump"))
+		{
+			// Reset consumed flag so next press can trigger jump
+			m_jumpConsumed = false;
+			
+			// Apply jump cut if releasing during upward movement
+			if (m_isJumping && player_velocity.Y > 0)
+			{
+				player_velocity.Y *= m_jumpCutMultiplier;
+				m_isJumping = false;
+			}
+		}
+		if (InputManager::Get()->isActionPressed("crouch"))
+		{
+			if (!isSwimming())
+			{
+				// Set target height for smooth lerp transition to crouched state
+				m_targetCrouchHeight = 0.5f;
+				is_crouched = true;
+			}
+			else
+			{
+				// Swim down - apply to vertical velocity
+				player_velocity.Y = -g_moveSpeed;
+			}
+		}
+		else if (is_crouched)
+		{
+			// Raycast in the center and at each edge of the controller to prevent standing up inside of geometry
+			if (!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(0.0f, 0.57f, 0.0f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit &&
+				!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(0.25f, 0.57f, 0.0f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit &&
+				!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(-0.25f, 0.57f, 0.0f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit &&
+				!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(0.0f, 0.57f, 0.25f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit &&
+				!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(0.0f, 0.57f, -0.25f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit)
+			{
+				// Set target height for smooth lerp transition to standing state
+				m_targetCrouchHeight = 2.0f;
+				is_crouched = false;
+			}
+		}
+
+		if (InputManager::Get()->isActionPressed("use") && !g_used)
+		{
+			auto raycast_data = RenderManager::Get()->raycastWorldPosition(
+				RenderManager::Get()->sceneManager()->getActiveCamera()->getPosition(),
+				RenderManager::Get()->sceneManager()->getActiveCamera()->getTarget(), true);
+
+			if (raycast_data.hit)
+			{
+				if (RenderManager::Get()->getRaycastLength(RenderManager::Get()->sceneManager()->getActiveCamera()->getPosition(), raycast_data) < _player_interact_distance)
+				{
+					WorldManager::Get()->gameplaySystem()->interact(raycast_data.node->getID());
+					g_used = true;
+				}
+			}
+		}
+		if (InputManager::Get()->isActionReleased("use"))
+		{
+			g_used = false;
+		}
+	}
+
+	// Apply jump boost for smooth acceleration
+	if (g_isJumpBoosting)
+	{
+		float boostElapsed = static_cast<float>(currentTime - g_jumpBoostStartTime);
+		if (boostElapsed < g_jumpBoostDuration)
+		{
+			// Apply extra upward force during boost phase
+			// Force diminishes over time for smooth acceleration
+			float boostProgress = boostElapsed / g_jumpBoostDuration;
+			float boostMultiplier = 1.0f - boostProgress; // 1.0 at start, 0.0 at end
+			player_velocity.Y += g_jumpBoostForce * boostMultiplier * (dt / 1000.0f);
+		}
+		else
+		{
+			g_isJumpBoosting = false;
+		}
+	}
+
+	// Apply gravity continuously (unless swimming)
+	if (!isSwimming())
+	{
+		player_velocity.Y += g_gravity * (dt / 1000.0f);
+	}
+
+	// Reset vertical velocity and jump state when landing
+	if (g_isOnSurface && player_velocity.Y < 0)
+	{
+		player_velocity.Y = 0;
+		m_isJumping = false; // Clear jump state on landing
+	}
+
+	// Prepare horizontal movement input
+	vector3df horizontal_move = vector3df(x_move, 0, z_move);
+
+	// Apply ground or air movement to horizontal velocity only
+	vector3df horizontal_velocity = vector3df(player_velocity.X, 0, player_velocity.Z);
+
+	if (g_isOnSurface)
+	{
+		horizontal_velocity = MoveGround(horizontal_move.normalize(), horizontal_velocity, 15.0f, g_moveSpeed + speed_mod, 1.0f, dt / 1000.0f);
+	}
+	else
+	{
+		// Air movement uses ONLY g_airSpeed (no speed_mod)
+		// Sprint/crouch only affects ground speed, not air speed
+		horizontal_velocity = MoveAir(horizontal_move.normalize(), horizontal_velocity, g_airSpeed, 1.0f, dt / 1000.0f);
+	}
+
+	// Update player velocity with new horizontal velocity
+	player_velocity.X = horizontal_velocity.X;
+	player_velocity.Z = horizontal_velocity.Z;
+	
+	// Clamp horizontal velocity while airborne to prevent excessive jump momentum
+	if (!g_isOnSurface)
+	{
+		float currentSpeed = sqrtf(player_velocity.X * player_velocity.X + player_velocity.Z * player_velocity.Z);
+		if (currentSpeed > g_airSpeed)
+		{
+			float scale = g_airSpeed / currentSpeed;
+			player_velocity.X *= scale;
+			player_velocity.Z *= scale;
+		}
+	}
+
+	// Combine horizontal and vertical movement for final displacement
+	// Use the clean yaw (no FX offset) so recoil wobble doesn't deflect movement.
+	float moveDirection = deg2rad(m_cameraYaw);
+
+	// Configure collision filters to detect static geometry
+	PxFilterData filterData;
+	filterData.word0 = RHG_STATIC | RHG_DYNAMIC;  // Collide with static and kinematic/dynamic actors
+	
+	physx::PxControllerFilters filters(&filterData);
+
+	cct.displacement = physx::PxVec3(
+		(player_velocity.Z * sin(moveDirection) + player_velocity.X * sin(moveDirection + __pi / 2.0f)),
+		player_velocity.Y,
+		(player_velocity.Z * cos(moveDirection) + player_velocity.X * cos(moveDirection + __pi / 2.0f)));
+
+	// CRITICAL: PhysX expects elapsedTime in SECONDS, but dt is in MILLISECONDS
+	// Passing milliseconds causes massive extrapolation and tunneling
+	
+	float elapsedSeconds = dt / 1000.0f;
+	
+	PxControllerCollisionFlags collisionFlags = cct.controller->move(cct.displacement, 0.001f, elapsedSeconds, filters);
+	
+	// Frame-based buffering to prevent collision flag flicker from causing head bob jitter
+	// Requires multiple consecutive airborne frames before switching state
+	const int requiredAirborneFrames = 3;  // Must be airborne for 3 frames to switch state
+	
+	bool hasGroundCollision = static_cast<bool>(collisionFlags & PxControllerCollisionFlag::eCOLLISION_DOWN);
+	
+	if (hasGroundCollision)
+	{
+		// Immediately set grounded when collision detected
+		g_isOnSurface = true;
+		m_airborneFrameCount = 0;
+	}
+	else
+	{
+		// Count consecutive airborne frames
+		m_airborneFrameCount++;
+		
+		// Only switch to airborne after enough consecutive airborne frames
+		if (m_airborneFrameCount >= requiredAirborneFrames)
+		{
+			g_isOnSurface = false;
+		}
+		// Otherwise stay grounded (ignores single-frame flickers)
+	}
+
+	// Smooth position updates to hide CCT micro-adjustments
+	// Direct copy causes visible jitter from PhysX overlap recovery
+	static vector3df smoothedPosition = transform.getPosition();
+	vector3df targetPosition = vector3df(
+		static_cast<float>(cct.controller->getPosition().x),
+		static_cast<float>(cct.controller->getPosition().y),
+		static_cast<float>(cct.controller->getPosition().z));
+	
+	// Lerp towards target - adjust factor for smoothness vs responsiveness
+	float smoothFactor = 0.3f;  // 0.1 = very smooth but laggy, 1.0 = direct copy (jittery)
+	smoothedPosition += (targetPosition - smoothedPosition) * smoothFactor;
+	
+	transform.setPosition(smoothedPosition);
+
+	// Smooth crouch transition using lerp
+	if (abs(m_currentCrouchHeight - m_targetCrouchHeight) > 0.01f)
+	{
+		// Lerp current height towards target height
+		float lerpAmount = m_crouchLerpSpeed * (dt / 1000.0f);
+		m_currentCrouchHeight += (m_targetCrouchHeight - m_currentCrouchHeight) * lerpAmount;
+		
+		// Clamp to target if very close to avoid jittering
+		if (abs(m_currentCrouchHeight - m_targetCrouchHeight) < 0.01f)
+		{
+			m_currentCrouchHeight = m_targetCrouchHeight;
+		}
+		
+		// Apply the lerped height to the capsule controller
+		cct.controller->resize(m_currentCrouchHeight * IRR_PHYSX_DIM_SCALAR);
+	}
+
+	// Movement detection for head bob - use actual CCT position, not interpolated transform
+	static vector3df lastCCTPosition = vector3df(
+		static_cast<float>(cct.controller->getPosition().x),
+		static_cast<float>(cct.controller->getPosition().y),
+		static_cast<float>(cct.controller->getPosition().z));
+	
+	vector3df currentCCTPosition = vector3df(
+		static_cast<float>(cct.controller->getPosition().x),
+		static_cast<float>(cct.controller->getPosition().y),
+		static_cast<float>(cct.controller->getPosition().z));
+
+	if (currentCCTPosition.X > lastCCTPosition.X || currentCCTPosition.Z > lastCCTPosition.Z ||
+		currentCCTPosition.X < lastCCTPosition.X || currentCCTPosition.Z < lastCCTPosition.Z)
+	{
+		m_isMoving = true;
+		
+		// Head bob runs whenever moving (not tied to ground state to avoid jitter)
+		// Scale head bob frequency based on movement modifier
+		// Base speed (1.0) + sprint (1.0) or crouch (-0.7)
+		float speedMultiplier = 1.0f + (speed_mod / g_moveSpeed);
+		float speedBasedFrequency = g_headBobFrequency * speedMultiplier;
+		
+		// Update head bob timer when moving (frequency scales with speed)
+		g_headBobTimer += speedBasedFrequency * (dt / 1000.0f);
+		
+		// Calculate head bob value
+		float bobValue = sin(g_headBobTimer);
+		float bobOffset = bobValue * g_headBobAmplitude;
+		
+		// Calculate base camera offset based on current crouch height (lerped smoothly)
+		// Map height from [0.5, 2.0] to camera offset [0.25, 0.8]
+		float baseOffset = 0.25f + (m_currentCrouchHeight - 0.5f) * ((0.8f - 0.25f) / (2.0f - 0.5f));
+		
+		// Combine base offset + head bob
+		camera.offset.Y = baseOffset + bobOffset;
+		
+		// Play footstep when bob crosses zero going down (foot hits ground)
+		// Use airborne frame count instead of g_isOnSurface for more reliable ground detection
+		// m_airborneFrameCount < 3 means player is effectively on ground (even if PhysX collision flags flicker)
+		if (!isSwimming() && m_airborneFrameCount < 3)
+		{
+			// Only play if enough time has elapsed since last footstep
+			if (/*g_lastHeadBobValue > 0.0f && bobValue <= 0.0f &&*/ currentTime - m_lastFootstepTime >= m_minFootstepInterval && !isSwimming())
+			{
+				playFootStepSound(player, currentTime, 0);
+
+				m_lastFootstepTime = currentTime;
+			}
+		}
+		
+		g_lastHeadBobValue = bobValue;
+	}
+	else
+	{
+		m_isMoving = false;
+		
+		// Immediately snap camera to rest position when stopped
+		float targetY = 0.25f + (m_currentCrouchHeight - 0.5f) * ((0.8f - 0.25f) / (2.0f - 0.5f));
+		camera.offset.Y = targetY;
+		
+		// Reset head bob state
+		g_headBobTimer = 0.0f;
+		g_lastHeadBobValue = 0.0f;
+	}
+
+	lastCCTPosition = currentCCTPosition;
+	lastPlayerPosition = transform.getPosition();
+
+	// CRITICAL: Update weapon AFTER all camera/CCT updates complete
+	// This ensures effects spawn with current frame's camera/player position
+	m_weaponController.update();
+
+	if (damage.didReceiveDamage())
+	{
+		sound.play("damage" + std::to_string(rand() % 2 + 1));
+	}
+#ifdef DISPLAY_PLAYER_STATS
+	DisplayPlayerStats();
+#endif
+	
+	// Display stamina bar
+	DisplayStaminaBar(m_currentStamina, m_maxStamina);
+
+	m_hudController.update(g_PlayerData, m_inventoryController.isInventoryDisplaying());
+	m_interactionController.update(g_PlayerData);
+}
+
+void PlayerController::updateUI(float dt)
+{
+
+}
+
+void PlayerController::destroy()
+{
+#ifndef DISABLE_HUD_AND_INV
+	m_hudController.destroy();
+#endif
+
+	m_interactionController.destroy();
+
+#ifndef DISABLE_HUD_AND_INV
+	m_inventoryController.destroy();
+#endif
+
+	m_weaponController.destroy();
+
+	m_firstUpdate = true;
+
+	g_PlayerData.inventoryData.contents.clear();
+}
+
+void PlayerController::pause()
+{
+
+}
+
+void PlayerController::resume()
+{
+
+}
+
+void PlayerController::playFootStepSound(anax::Entity& player, int _time, int _delay)
+{
+    auto& transform = player.getComponent<TransformComponent>();
+
+    int n = rand() % 4 + 1;
+
+    std::string material =
+        Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
+            RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition() + irr::core::vector3df(0.0f, 0.0f, 0.0f), transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f))));
+
+    if (material == "invalid")
+    {
+        return;
+    }
+
+    player.getComponent<SoundComponent>().play(material + std::to_string(n));
+}
+
+void PlayerController::playJumpSound(anax::Entity& player)
+{
+    auto& transform = player.getComponent<TransformComponent>();
+
+    std::string material =
+		Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
+			RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition(), transform.getPosition() + irr::core::vector3df(0, -2.0, 0))));
+
+    if (material == "invalid")
+        return;
+
+    player.getComponent<SoundComponent>().play(material + "jump");
+}
+
+void PlayerController::loadPlayerData(std::string file)
+{
+	tinyxml2::XMLDocument xml;
+	if (xml.LoadFile(file.c_str()) != tinyxml2::XML_NO_ERROR) {
+		spdlog::error("Failed to load player save data \'" + file + "\' in PlayerController::loadPlayerData()");
+		return;
+	}
+
+	try {
+		auto root = xml.FirstChild()->NextSibling()->FirstChild();
+
+		for (auto dataNode = root->FirstChild()->FirstChildElement();
+			dataNode != nullptr;
+			dataNode = dataNode->NextSiblingElement()) {
+			if (std::string(dataNode->Name()) == "value0") {
+				WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<DamageReceiverComponent>().damageReceived = 100 - atoi(dataNode->GetText());
+			}
+		}
+
+		auto equipped_item = ItemDatabase::GetItemByName(std::string(root->NextSibling()->FirstChild()->Value()));
+		for (auto dataNode = root->NextSibling()->FirstChild()->FirstChild()->FirstChildElement();
+			dataNode != nullptr;
+			dataNode = dataNode->NextSiblingElement()) {
+			if (std::string(dataNode->Name()) == "data1") {
+				if (dataNode->GetText()) {
+					//equipped_item.data1 = dataNode->GetText();
+					continue;
+				}
+			}
+			if (std::string(dataNode->Name()) == "data2") {
+				if (dataNode->GetText()) {
+					//equipped_item.data2 = dataNode->GetText();
+					continue;
+				}
+			}
+			if (std::string(dataNode->Name()) == "data3") {
+				if (dataNode->GetText()) {
+					//equipped_item.data3 = dataNode->GetText();
+					continue;
+				}
+			}
+			if (std::string(dataNode->Name()) == "data4") {
+				if (dataNode->GetText()) {
+					//equipped_item.data4 = dataNode->GetText();
+					continue;
+				}
+			}
+		}
+
+		m_inventoryController.equipTwoHand(equipped_item);
+
+		auto counter = 0U;
+		for (
+			tinyxml2::XMLNode* itemNode = root->NextSibling()->NextSibling()->FirstChild();
+			itemNode != nullptr;
+			itemNode = itemNode->NextSibling()) {
+
+			if (std::string(itemNode->Value()) == "null_item") {
+				counter++;
+
+				continue;
+			}
+
+			auto item = ItemDatabase::GetItemByName(std::string(itemNode->Value()));
+			for (auto dataNode = itemNode->FirstChild()->FirstChildElement();
+				dataNode != nullptr;
+				dataNode = dataNode->NextSiblingElement()) {
+				if (std::string(dataNode->Name()) == "data1") {
+					if (dataNode->GetText()) {
+						//item.data1 = dataNode->GetText();
+						continue;
+					}
+				}
+				if (std::string(dataNode->Name()) == "data2") {
+					if (dataNode->GetText()) {
+						//item.data2 = dataNode->GetText();
+						continue;
+					}
+				}
+				if (std::string(dataNode->Name()) == "data3") {
+					if (dataNode->GetText()) {
+						//item.data3 = dataNode->GetText();
+						continue;
+					}
+				}
+				if (std::string(dataNode->Name()) == "data4") {
+					if (dataNode->GetText()) {
+						//item.data4 = dataNode->GetText();
+						continue;
+					}
+				}
+			}
+
+			g_PlayerData.inventoryData.contents.at(counter) = item;
+
+			counter++;
+		}
+	}
+	catch (...) {
+		spdlog::error("Failed to deserialize player data \'" + file + "\' in PlayerController::loadPlayerData()");
+		return;
+	}
+}
+
+void PlayerController::savePlayerData(std::string file)
+{
+	std::ofstream ofs_scene(file);
+	cereal::XMLOutputArchive archive(ofs_scene);
+
+	try {
+		archive.setNextName("data");
+		archive.startNode();
+		{
+			archive.setNextName("health");
+			archive.startNode();
+			archive(g_PlayerData.currentHealth);
+			archive.finishNode();
+		}
+		archive.finishNode();
+
+		archive.setNextName("equipped");
+		archive.startNode();
+		{
+			archive.setNextName(m_inventoryController.getItemTwoHand().name.c_str());
+			archive.startNode();
+			archive(m_inventoryController.getItemTwoHandCopy());
+			archive.finishNode();
+		}
+		archive.finishNode();
+
+		archive.setNextName("inventory");
+		archive.startNode();
+
+		for (auto& item : g_PlayerData.inventoryData.contents) {
+			archive.setNextName(item.name.c_str());
+			archive.startNode();
+			archive(item);
+			archive.finishNode();
+		}
+
+		archive.finishNode();
+	}
+	catch (...) {
+		spdlog::error("Failed to serialize player data in PlayerController::savePlayerData()");
+	}
+}
