@@ -43,6 +43,20 @@
 build/
 Build/
 build-*/
+.vs/
+.claude/
+.vscode/
+3D\ Assets/
+Asset\ Attribution\ LEGAL/
+Backups/
+Binaries/
+Include/
+Intermediate/
+Licenses/
+log/
+To\ Do\ Lists/
+Tools/
+x64/
 
 # CMake generated files
 CMakeFiles/

@@ -1,0 +1,633 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Include\anax\src\anax\detail\BaseSystem.cpp" />
+    <ClCompile Include="Include\anax\src\anax\detail\EntityComponentStorage.cpp" />
+    <ClCompile Include="Include\anax\src\anax\detail\EntityIdPool.cpp" />
+    <ClCompile Include="Include\anax\src\anax\detail\Filter.cpp" />
+    <ClCompile Include="Include\anax\src\anax\Entity.cpp" />
+    <ClCompile Include="Include\anax\src\anax\World.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\contextmgr\contextmgr.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptarray\scriptarray.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptbuilder\scriptbuilder.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptfile\scriptfile.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptfile\scriptfilesystem.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptmath\scriptmath.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptmath\scriptmathcomplex.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptstdstring\scriptstdstring.cpp" />
+    <ClCompile Include="Include\angelscript\sdk\add_on\scriptstdstring\scriptstdstring_utils.cpp" />
+    <ClCompile Include="Include\imgui\backends\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="Include\imgui\imgui.cpp" />
+    <ClCompile Include="Include\imgui\imgui_demo.cpp" />
+    <ClCompile Include="Include\imgui\imgui_draw.cpp" />
+    <ClCompile Include="Include\imgui\imgui_tables.cpp" />
+    <ClCompile Include="Include\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="Include\tinyxml2\tinyxml2.cpp" />
+    <ClCompile Include="Source\Application.cpp" />
+    <ClCompile Include="Source\Editor\EditorCamera.cpp" />
+    <ClCompile Include="Source\Editor\EditorGameState.cpp" />
+    <ClCompile Include="Source\Editor\EditorState.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Assets.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Components.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_EntityBuilder.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Hierarchy.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_MenuBar.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Painting.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Properties.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_ScriptEditor.cpp">
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Toolbar.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Utilities.cpp" />
+    <ClCompile Include="Source\Editor\Interface\TextEditor\TextDiff.cpp">
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\TextEditor\TextEditor.cpp">
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\SceneInteractionManager.cpp" />
+    <ClCompile Include="Source\Editor\TexturePainter.cpp" />
+    <ClCompile Include="Source\Editor\VegetationPainter.cpp" />
+    <ClCompile Include="Source\Engine\Debug\DebugState.cpp" />
+    <ClCompile Include="Source\Engine\Debug\Interface\DebugInterface.cpp" />
+    <ClCompile Include="Source\Engine\Engine.cpp" />
+    <ClCompile Include="Source\Engine\Input\InputManager.cpp" />
+    <ClCompile Include="Source\Engine\Interface\DebugConsole.cpp" />
+    <ClCompile Include="Source\Engine\Interface\ImGuiExtensions.cpp" />
+    <ClCompile Include="Source\Engine\Interface\ImTransformControl.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourCrowd.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourLocalBoundary.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourObstacleAvoidance.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourPathCorridor.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourPathQueue.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourCrowd\Source\DetourProximityGrid.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourTileCache\Source\DetourTileCache.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\DetourTileCache\Source\DetourTileCacheBuilder.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourAlloc.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourAssert.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourCommon.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNavMesh.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNavMeshBuilder.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNavMeshQuery.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNode.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\NavigationManager.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\Recast.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastAlloc.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastArea.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastAssert.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastContour.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastFilter.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastLayers.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastMesh.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastMeshDetail.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastRasterization.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastRegion.cpp" />
+    <ClCompile Include="Source\Engine\Physics\PhysicsManager.cpp" />
+    <ClCompile Include="Source\Engine\Prop\PropManager.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\BoltSceneNode.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CBeamSceneNode.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CBeamSceneNode2.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CBloodEffect.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CBloodShader.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CShieldManager.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\CUnrealMeshFileLoader.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\DecalSceneNode.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Extensions\IQuadSceneNode.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Lightmapper\LightmapBaker.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Lightmapper\xatlas.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpUtils.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\RenderManager.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_BufferHandler.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_DEF.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Emitter.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Factory.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Group.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Interpolator.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Model.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Modifier.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Particle.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Registerable.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Renderer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_System.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Transformable.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Vector3D.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_Zone.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Emitters\SPK_NormalEmitter.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Emitters\SPK_RandomEmitter.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Emitters\SPK_SphericEmitter.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Emitters\SPK_StraightEmitter.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_Collision.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_Destroyer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_LinearForce.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_ModifierGroup.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_Obstacle.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_PointMass.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Modifiers\SPK_Vortex.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Renderers\SPK_Oriented3DRendererInterface.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Renderers\SPK_QuadRendererInterface.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_AABox.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Cylinder.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Line.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Plane.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Point.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Ring.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_Sphere.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_ZoneIntersection.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\Extensions\Zones\SPK_ZoneUnion.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRBuffer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRLineRenderer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRPointRenderer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRQuadRenderer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRRenderer.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Spark\src\RenderingAPIs\Irrlicht\SPK_IRRSystem.cpp" />
+    <ClCompile Include="Source\Engine\Resource\AnimatedSpriteLoader.cpp" />
+    <ClCompile Include="Source\Engine\Resource\MaterialBuilder.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Core.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Entity.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Game.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Input.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Nav.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_PhysX.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Render.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Sound.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Tween.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Vector2.cpp" />
+    <ClCompile Include="Source\Engine\Script\Bindings_Vector3.cpp" />
+    <ClCompile Include="Source\Engine\Script\ScriptExceptions.cpp" />
+    <ClCompile Include="Source\Engine\Script\ScriptManager.cpp" />
+    <ClCompile Include="Source\Engine\Sound\SoundEngine.cpp" />
+    <ClCompile Include="Source\Engine\Sound\SoundManager.cpp" />
+    <ClCompile Include="Source\Engine\World\DeserializeEntity.cpp" />
+    <ClCompile Include="Source\Engine\World\SerializeEntity.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\CameraSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\ManagerSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\NavigationSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\PhysicsSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\RenderSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\ScriptSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\SoundSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\TransformSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\TweenSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\WorldManager.cpp" />
+    <ClCompile Include="Source\Game\DialogManager.cpp" />
+    <ClCompile Include="Source\Game\EndGameState.cpp" />
+    <ClCompile Include="Source\Game\GameManager.cpp" />
+    <ClCompile Include="Source\Game\GameplaySystem.cpp" />
+    <ClCompile Include="Source\Game\GameState.cpp" />
+    <ClCompile Include="Source\Game\Interface\MainMenuGUI.cpp" />
+    <ClCompile Include="Source\Game\IntroState.cpp" />
+    <ClCompile Include="Source\Game\Item\ItemDatabase.cpp" />
+    <ClCompile Include="Source\Game\MenuState.cpp" />
+    <ClCompile Include="Source\Game\Player\FreeCameraController.cpp" />
+    <ClCompile Include="Source\Game\Player\HUDController.cpp" />
+    <ClCompile Include="Source\Game\Player\InteractionController.cpp" />
+    <ClCompile Include="Source\Game\Player\InventoryController.cpp" />
+    <ClCompile Include="Source\Game\Player\PlayerController.cpp" />
+    <ClCompile Include="Source\Game\Player\WeaponController.cpp" />
+    <ClCompile Include="Source\Game\Player\WeaponData.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Melee.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Minigun.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_None.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pistol.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_PulseRifle.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Rifle.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Shotgun.cpp" />
+    <ClCompile Include="Source\Game\ProcessGameComponents.cpp" />
+    <ClCompile Include="Source\Utility\INIFile.cpp" />
+    <ClCompile Include="Source\Utility\Utility.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Include\anax\include\anax\anax.hpp" />
+    <ClInclude Include="Include\anax\include\anax\Component.hpp" />
+    <ClInclude Include="Include\anax\include\anax\Config.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\AnaxAssert.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\BaseSystem.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\ClassTypeId.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\ComponentTypeList.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\EntityComponentStorage.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\EntityIdPool.hpp" />
+    <ClInclude Include="Include\anax\include\anax\detail\Filter.hpp" />
+    <ClInclude Include="Include\anax\include\anax\Entity.hpp" />
+    <ClInclude Include="Include\anax\include\anax\FilterOptions.hpp" />
+    <ClInclude Include="Include\anax\include\anax\System.hpp" />
+    <ClInclude Include="Include\anax\include\anax\util\ContainerUtils.hpp" />
+    <ClInclude Include="Include\anax\include\anax\World.hpp" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\contextmgr\contextmgr.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptarray\scriptarray.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptbuilder\scriptbuilder.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptfile\scriptfile.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptfile\scriptfilesystem.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptmath\scriptmath.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptmath\scriptmathcomplex.h" />
+    <ClInclude Include="Include\angelscript\sdk\add_on\scriptstdstring\scriptstdstring.h" />
+    <ClInclude Include="Include\imgui\backends\imgui_impl_opengl3.h" />
+    <ClInclude Include="Include\imgui\backends\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="Include\imgui\imconfig.h" />
+    <ClInclude Include="Include\imgui\imgui.h" />
+    <ClInclude Include="Include\imgui\imgui_internal.h" />
+    <ClInclude Include="Include\imgui\imstb_rectpack.h" />
+    <ClInclude Include="Include\imgui\imstb_textedit.h" />
+    <ClInclude Include="Include\imgui\imstb_truetype.h" />
+    <ClInclude Include="Source\Editor\ImGuiLogSink.h" />
+    <ClInclude Include="Source\Editor\Interface\EditorInterface_Internal.h" />
+    <ClInclude Include="Source\Editor\Interface\TextEditor\dtl.h" />
+    <ClInclude Include="Source\Editor\Interface\TextEditor\TextDiff.h" />
+    <ClInclude Include="Source\Editor\Interface\TextEditor\TextEditor.h" />
+    <ClInclude Include="Source\Editor\TexturePainter.h" />
+    <ClInclude Include="Source\Editor\VegetationPainter.h" />
+    <ClInclude Include="Source\Engine\Debug\Interface\DebugInterface.h" />
+    <ClInclude Include="Source\Engine\Input\IrrImGuiEventReceiver.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourCrowd.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourLocalBoundary.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourObstacleAvoidance.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourPathCorridor.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourPathQueue.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourCrowd\Include\DetourProximityGrid.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourTileCache\Include\DetourTileCache.h" />
+    <ClInclude Include="Source\Engine\Navigation\DetourTileCache\Include\DetourTileCacheBuilder.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourAlloc.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourAssert.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourCommon.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourMath.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNavMesh.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNavMeshBuilder.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNavMeshQuery.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNode.h" />
+    <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourStatus.h" />
+    <ClInclude Include="Source\Engine\Navigation\NavigationManager.h" />
+    <ClInclude Include="Source\Engine\Navigation\Recast\Include\Recast.h" />
+    <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAlloc.h" />
+    <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAssert.h" />
+    <ClInclude Include="Source\Engine\Prop\PropManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\BoltSceneNode.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CBeamSceneNode.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CBeamSceneNode2.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CBloodEffect.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CBloodShader.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CDeleteParticleAffector.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CShieldManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\CUnrealMeshFileLoader.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\DecalSceneNode.h" />
+    <ClInclude Include="Source\Engine\Renderer\Extensions\IQuadSceneNode.h" />
+    <ClInclude Include="Source\Engine\Renderer\Lightmapper\LightmapBaker.h" />
+    <ClInclude Include="Source\Engine\Renderer\Lightmapper\xatlas.h" />
+    <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.h" />
+    <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.h" />
+    <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.h" />
+    <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpUtils.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_ArrayBuffer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Buffer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_BufferHandler.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_DEF.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Emitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Factory.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Group.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Interpolator.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Model.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Modifier.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Particle.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Pool.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Registerable.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_RegWrapper.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Renderer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_System.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Transformable.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Vector3D.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Zone.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Emitters\SPK_NormalEmitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Emitters\SPK_RandomEmitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Emitters\SPK_SphericEmitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Emitters\SPK_StaticEmitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Emitters\SPK_StraightEmitter.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_Collision.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_Destroyer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_LinearForce.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_ModifierGroup.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_Obstacle.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_PointMass.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_Rotator.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Modifiers\SPK_Vortex.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Renderers\SPK_LineRendererInterface.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Renderers\SPK_Oriented2DRendererInterface.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Renderers\SPK_Oriented3DRendererInterface.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Renderers\SPK_PointRendererInterface.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Renderers\SPK_QuadRendererInterface.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_AABox.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Cylinder.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Line.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Plane.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Point.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Ring.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_Sphere.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_ZoneIntersection.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\Extensions\Zones\SPK_ZoneUnion.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRBuffer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRLineRenderer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRMaterialProxy.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRPointRenderer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRQuadRenderer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRRenderer.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRRSystem.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\RenderingAPIs\Irrlicht\SPK_IRR_DEF.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\SPK.h" />
+    <ClInclude Include="Source\Engine\Renderer\Spark\include\SPK_IRR.h" />
+    <ClInclude Include="Source\Engine\Renderer\SplatMap.h" />
+    <ClInclude Include="Source\Engine\Resource\AnimatedSpriteLoader.h" />
+    <ClInclude Include="Source\Engine\Sound\SoundEngine.h" />
+    <ClInclude Include="Source\Engine\World\Components\NavAgentComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\TweenComponent.h" />
+    <ClInclude Include="Source\Engine\World\Systems\NavigationSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\TweenSystem.h" />
+    <ClInclude Include="Source\Game\Components\DialogComponent.h" />
+    <ClInclude Include="Source\Game\Components\WaterComponent.h" />
+    <ClInclude Include="Source\Game\DialogManager.h" />
+    <ClInclude Include="Source\Game\Player\CameraFX.h" />
+    <ClInclude Include="Source\Game\Player\FreeCameraController.h" />
+    <ClInclude Include="Source\Game\Player\WeaponController.h" />
+    <ClInclude Include="Source\Game\Player\WeaponData.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Melee.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Minigun.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_None.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pistol.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_PulseRifle.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Rifle.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Shotgun.h" />
+    <ClInclude Include="Source\resource.h" />
+    <ClInclude Include="Source\Application.h" />
+    <ClInclude Include="Source\Editor\EditorCamera.h" />
+    <ClInclude Include="Source\Editor\EditorGameState.h" />
+    <ClInclude Include="Source\Editor\EditorState.h" />
+    <ClInclude Include="Source\Editor\Interface\EditorInterface.h" />
+    <ClInclude Include="Source\Editor\SceneInteractionManager.h" />
+    <ClInclude Include="Source\Engine\Debug\DebugState.h" />
+    <ClInclude Include="Source\Engine\Engine.h" />
+    <ClInclude Include="Source\Engine\EngineState.h" />
+    <ClInclude Include="Source\Engine\Input\InputManager.h" />
+    <ClInclude Include="Source\Engine\Input\InputMap.h" />
+    <ClInclude Include="Source\Engine\Interface\DebugConsole.h" />
+    <ClInclude Include="Source\Engine\Interface\ImGuiExtensions.h" />
+    <ClInclude Include="Source\Engine\Interface\ImTransformControl.h" />
+    <ClInclude Include="Source\Engine\Physics\PhysicsManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\RenderManager.h" />
+    <ClInclude Include="Source\Engine\Resource\FilePaths.h" />
+    <ClInclude Include="Source\Engine\Resource\MaterialBuilder.h" />
+    <ClInclude Include="Source\Engine\Script\Bindings.h" />
+    <ClInclude Include="Source\Engine\Script\ScriptExceptions.h" />
+    <ClInclude Include="Source\Engine\Script\ScriptManager.h" />
+    <ClInclude Include="Source\Engine\Sound\SoundManager.h" />
+    <ClInclude Include="Source\Engine\World\Components.h" />
+    <ClInclude Include="Source\Engine\World\Components\BillboardSpriteComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\CameraComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\CCTComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\DebugMeshComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\DebugSpriteComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\DescriptorComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\LightComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\MeshComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\PhysicsComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\PrefabComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\RenderComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\ScriptComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\SoundComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\SoundListenerComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\TransformComponent.h" />
+    <ClInclude Include="Source\Engine\World\Systems.h" />
+    <ClInclude Include="Source\Engine\World\Systems\CameraSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\ManagerSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\PhysicsSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\RenderSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\ScriptSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\SoundSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\TransformSystem.h" />
+    <ClInclude Include="Source\Engine\World\WorldManager.h" />
+    <ClInclude Include="Source\Engine\Types.h" />
+    <ClInclude Include="Source\Game\Components.h" />
+    <ClInclude Include="Source\Game\Components\AutoKillComponent.h" />
+    <ClInclude Include="Source\Game\Components\DamageReceiverComponent.h" />
+    <ClInclude Include="Source\Game\Components\DataComponent.h" />
+    <ClInclude Include="Source\Game\Components\InteractionComponent.h" />
+    <ClInclude Include="Source\Game\Components\ItemComponent.h" />
+    <ClInclude Include="Source\Game\Components\LogicComponent.h" />
+    <ClInclude Include="Source\Game\Components\MarkerComponent.h" />
+    <ClInclude Include="Source\Game\Components\NPCComponent.h" />
+    <ClInclude Include="Source\Game\Components\TriggerZoneComponent.h" />
+    <ClInclude Include="Source\Game\EndGameState.h" />
+    <ClInclude Include="Source\Game\GameManager.h" />
+    <ClInclude Include="Source\Game\GameplaySystem.h" />
+    <ClInclude Include="Source\Game\GameState.h" />
+    <ClInclude Include="Source\Game\Interface\MainMenuGUI.h" />
+    <ClInclude Include="Source\Game\IntroState.h" />
+    <ClInclude Include="Source\Game\Item\ItemData.h" />
+    <ClInclude Include="Source\Game\Item\ItemDatabase.h" />
+    <ClInclude Include="Source\Game\MenuState.h" />
+    <ClInclude Include="Source\Game\Player\HUDController.h" />
+    <ClInclude Include="Source\Game\Player\InteractionController.h" />
+    <ClInclude Include="Source\Game\Player\InventoryController.h" />
+    <ClInclude Include="Source\Game\Player\InventoryData.h" />
+    <ClInclude Include="Source\Game\Player\PlayerController.h" />
+    <ClInclude Include="Source\Game\Player\PlayerData.h" />
+    <ClInclude Include="Source\Utility\INIFile.h" />
+    <ClInclude Include="Source\Utility\Utility.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Include\anax\include\anax\Config.hpp.inl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Binaries\gear_icon.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{71492ACB-4295-41CB-8F40-075C0A616F30}</ProjectGuid>
+    <RootNamespace>GameEngine</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <ProjectName>GameEngine</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\irrimgui\dependency\;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\irrimgui\includes\IrrIMGUI\;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib;$(ProjectDir)Include\physx\physx\bin\win.x86_32.vc141.mt\debug\;$(ProjectDir)Include\physx\PhysXSDK\Lib\Debug\;$(ProjectDir)Include\assimp\lib\Debug\;$(ProjectDir)Include\irrimgui\Debug\;$(ProjectDir)Include\boost\stage\lib\;$(ProjectDir)Include\irrlicht\lib\Win32-visualstudio-DEBUG\;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;$(ProjectDir)Include\spdlog\Debug\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;angelscriptd.lib;IrrIMGUI.lib;assimp-vc141-mtd.lib;PhysXExtensions_static_32.lib;PhysX_32.lib;PhysXPvdSDK_static_32.lib;PhysXVehicle_static_32.lib;PhysXCharacterKinematic_static_32.lib;PhysXCooking_32.lib;PhysXCommon_32.lib;SnippetUtils_static_32.lib;SnippetRender_static_32.lib;PhysXFoundation_32.lib;shlwapi.lib;soloud_static_x86_d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\imgui;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;PX_PHYSX_STATIC_LIB;_IRR_STATIC_LIB_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib\x64;$(ProjectDir)Include\physx\physx\bin\win.x86_64.vc141.mt\debug\;$(ProjectDir)Include\assimp\bin\Debug\;$(ProjectDir)Include\boost\stage\lib\;$(ProjectDir)Include\irrlicht\source\Irrlicht\x64\Debug\;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;angelscript64d.lib;assimp-vc141-mtd.lib;PhysXExtensions_static_64.lib;PhysX_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXVehicle_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXFoundation_static_64.lib;shlwapi.lib;soloud_static_x86_d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\irrimgui\dependency\;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\irrimgui\includes\IrrIMGUI\;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib;$(ProjectDir)Include\physx\physx\bin\win.x86_32.vc141.mt\release\;$(ProjectDir)Include\physx\PhysXSDK\Lib\Release\;$(ProjectDir)Include\assimp\lib\Release;$(ProjectDir)Include\irrimgui\Release\;$(ProjectDir)Include\boost\stage\lib;$(ProjectDir)Include\irrlicht\lib\Win32-visualstudio;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;$(ProjectDir)Include\spdlog\Release\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;spdlog.lib;angelscript.lib;IrrIMGUI.lib;assimp-vc141-mt.lib;PhysXExtensions_static_32.lib;PhysX_32.lib;PhysXPvdSDK_static_32.lib;PhysXVehicle_static_32.lib;PhysXCharacterKinematic_static_32.lib;PhysXCooking_32.lib;PhysXCommon_32.lib;SnippetUtils_static_32.lib;SnippetRender_static_32.lib;PhysXFoundation_32.lib;shlwapi.lib;soloud_static_x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\imgui;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;PX_PHYSX_STATIC_LIB;_IRR_STATIC_LIB_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib\x64;$(ProjectDir)Include\physx\physx\bin\win.x86_64.vc141.mt\release\;$(ProjectDir)Include\assimp\bin\Release\;$(ProjectDir)Include\boost\stage\lib;$(ProjectDir)Include\irrlicht\source\Irrlicht\x64\Release\;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;angelscript64.lib;assimp-vc141-mt.lib;PhysXExtensions_static_64.lib;PhysX_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXVehicle_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXFoundation_static_64.lib;shlwapi.lib;soloud_static_x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
