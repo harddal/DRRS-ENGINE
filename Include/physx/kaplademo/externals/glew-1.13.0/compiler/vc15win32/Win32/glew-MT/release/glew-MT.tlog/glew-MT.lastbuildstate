@@ -1,0 +1,2 @@
+#TargetFrameworkVersion=v4.0:PlatformToolSet=v141:EnableManagedIncrementalBuild=false:VCToolArchitecture=Native32Bit:WindowsTargetPlatformVersion=8.1
+release|Win32|D:\Projects\Game Engine\Include\physx\kaplademo\source\compiler\vc15win32-PhysX_4.1\|

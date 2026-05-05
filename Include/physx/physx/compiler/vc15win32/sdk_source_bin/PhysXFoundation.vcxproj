@@ -1,0 +1,462 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="debug|Win32">
+      <Configuration>debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="checked|Win32">
+      <Configuration>checked</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="profile|Win32">
+      <Configuration>profile</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="release|Win32">
+      <Configuration>release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{593BA43E-20E2-3397-A2C1-24F877988150}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <Keyword>Win32Proj</Keyword>
+    <Platform>Win32</Platform>
+    <ProjectName>PhysXFoundation</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">PhysXFoundation.dir\debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">PhysXFoundation_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">.dll</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">PhysXFoundation.dir\checked\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">PhysXFoundation_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">.dll</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">PhysXFoundation.dir\profile\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">PhysXFoundation_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">.dll</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">PhysXFoundation.dir\release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='release|Win32'">PhysXFoundation_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='release|Win32'">.dll</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='release|Win32'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>debug/</AssemblerListingLocation>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_DEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="debug";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXFoundation_32.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"debug\";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/debug/PhysXFoundation_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/debug/PhysXFoundation_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>checked/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="checked";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXFoundation_32.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"checked\";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/checked/PhysXFoundation_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/checked/PhysXFoundation_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>profile/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="profile";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXFoundation_32.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"profile\";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/profile/PhysXFoundation_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/profile/PhysXFoundation_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>release/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_SUPPORT_PVD=0;CMAKE_INTDIR="release";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXFoundation_32.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_FOUNDATION_EXPORTS;PX_SUPPORT_PVD=0;CMAKE_INTDIR=\"release\";PhysXFoundation_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/release/PhysXFoundation_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/release/PhysXFoundation_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='release|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='release|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsAllocator.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsAssert.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsFoundation.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsMathUtils.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsString.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsTempAllocator.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\PsUtilities.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\Ps.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsAlignedMalloc.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsAlloca.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsAllocator.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsAoS.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsArray.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsAtomic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsBasicTemplates.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsBitUtils.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsBroadcast.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsCpu.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsFoundation.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsFPU.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsHash.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsHashInternals.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsHashMap.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsHashSet.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsInlineAllocator.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsInlineAoS.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsInlineArray.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsIntrinsics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsMathUtils.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsMutex.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsPool.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsSList.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsSocket.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsSort.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsSortInternals.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsString.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsSync.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsTempAllocator.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsThread.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsTime.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsUserAllocated.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsUtilities.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecMath.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecMathAoSScalar.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecMathAoSScalarInline.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecMathSSE.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecMathUtilities.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecQuat.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\PsVecTransform.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxFoundation.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\foundation\PxAssert.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\foundation\PxFoundationConfig.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\foundation\PxMathUtils.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsAtomic.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsCpu.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsFPU.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsMutex.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsPrintString.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsSList.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsSocket.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsSync.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsThread.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\src\windows\PsWindowsTime.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsAoS.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsFPU.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsInclude.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsInlineAoS.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsIntrinsics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\foundation\include\windows\PsWindowsTrigConstants.h" />
+    <ResourceCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\resource_x86\PhysXFoundation.rc" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\Px.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxAllocatorCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxProfiler.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxSharedAssert.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxBitAndData.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxBounds3.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxErrorCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxErrors.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxFlags.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxIntrinsics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxIO.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxMat33.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxMat44.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxMath.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxMemory.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxPlane.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxPreprocessor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxQuat.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxSimpleTypes.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxStrideIterator.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxTransform.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxUnionCast.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxVec2.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxVec3.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\PxVec4.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\pxshared\include\foundation\windows\PxWindowsIntrinsics.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\ZERO_CHECK.vcxproj">
+      <Project>{BE715C77-D6A2-30D4-97BD-F891DD0C4171}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

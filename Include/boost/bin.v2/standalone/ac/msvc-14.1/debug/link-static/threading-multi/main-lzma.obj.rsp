@@ -1,0 +1,1 @@
+"bin.v2\standalone\ac\main-lzma.cpp" -Fo"bin.v2\standalone\ac\msvc-14.1\debug\link-static\threading-multi\main-lzma.obj"    -TP /Z7 /Od /Ob0 /W3 /GR /MDd /Zc:forScope /Zc:wchar_t /Zc:inline /Zc:throwingNew /wd4675 /EHs -c

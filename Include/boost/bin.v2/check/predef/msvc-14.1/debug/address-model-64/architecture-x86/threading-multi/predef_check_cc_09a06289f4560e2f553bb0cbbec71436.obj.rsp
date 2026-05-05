@@ -1,0 +1,4 @@
+"C:\Projects\Game Engine\Include\boost\libs\predef\tools\check\predef_check_cc_as_cpp.cpp" -Fo"bin.v2\check\predef\msvc-14.1\debug\address-model-64\architecture-x86\threading-multi\predef_check_cc_09a06289f4560e2f553bb0cbbec71436.obj"    -TP /Z7 /Od /Ob0 /W3 /GR /MDd /Zc:forScope /Zc:wchar_t /Zc:inline /Zc:throwingNew /favor:blend /wd4675 /EHs -c 
+-DCHECK="BOOST_COMP_GNUC >= BOOST_VERSION_NUMBER(4,3,0)" 
+"-IC:\Projects\Game Engine\Include\boost" 
+"-IC:\Projects\Game Engine\Include\boost\libs\predef\include"

@@ -1,0 +1,243 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventImpl.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvd.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdDataStream.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdDefaultFileTransport.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdDefaultSocketTransport.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdImpl.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdMemClient.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectModelMetaData.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectRegistrar.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdProfileZoneClient.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdUserRenderer.cpp">
+      <Filter>src\src</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\pvd\PxPvd.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\pvd\PxPvdTransport.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsAsciiConversion.h">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsAsciiConversion.inl">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsFileBuffer.h">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsIOStream.h">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsIOStream.inl">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\filebuf\include\PsMemoryBuffer.h">
+      <Filter>filebuf\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PsPvd.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxProfileAllocatorWrapper.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdClient.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdDataStream.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdDataStreamHelpers.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdErrorCodes.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdObjectModelBaseTypes.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdRenderBuffer.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\include\PxPvdUserRenderer.h">
+      <Filter>src\include</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileContextProvider.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileContextProviderImpl.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileDataBuffer.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileDataParsing.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventBuffer.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventBufferAtomic.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventBufferClient.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventBufferClientManager.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventId.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventMutex.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventNames.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEvents.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventSender.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileEventSerialization.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileMemory.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileMemoryBuffer.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileMemoryEventBuffer.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileMemoryEvents.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileScopedEvent.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileScopedMutexLock.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdProfileZone.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileZoneImpl.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileZoneManager.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxProfileZoneManagerImpl.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdBits.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdByteStreams.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdCommStreamEvents.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdCommStreamEventSink.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdCommStreamTypes.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdDefaultFileTransport.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdDefaultSocketTransport.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdFoundation.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdImpl.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdInternalByteStreams.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdMarshalling.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdMemClient.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectModelInternalTypeDefs.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectModelInternalTypes.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectModelMetaData.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdObjectRegistrar.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdProfileZoneClient.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdUserRenderImpl.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\pvd\src\PxPvdUserRenderTypes.h">
+      <Filter>src\src</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="filebuf">
+      <UniqueIdentifier>{B10543B3-471D-3C77-84D4-F416D3045776}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="filebuf\include">
+      <UniqueIdentifier>{ACA60C48-F0EA-3AC6-B54A-EB9B58144060}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include">
+      <UniqueIdentifier>{01C91BF7-935C-3D05-ACBE-C75F3BDDD08C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{4B1AA0E3-2DDB-30F4-997C-B9BFD554FEFE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\include">
+      <UniqueIdentifier>{9DC2C16C-CB57-37D3-9106-170047BC4451}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\src">
+      <UniqueIdentifier>{8A25419E-76A3-3E32-B730-BB88F3EB1C31}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

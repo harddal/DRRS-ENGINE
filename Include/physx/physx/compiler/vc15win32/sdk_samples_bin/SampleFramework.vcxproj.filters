@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\windows\WindowsSampleAssetManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\nv_dds.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\ODBlock.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleApplication.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleAsset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleAssetManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleCommandLine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleDirManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleInputAsset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleLineDebugRender.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleMaterialAsset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SamplePointDebugRender.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleTextureAsset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleTree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\SampleTriangleDebugRender.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\externals\targa\src\targa.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\src\nv_dds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\FrameworkFoundation.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\ODBlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleActor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleApplication.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleArray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleAsset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleAssetManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleCommandLine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleDirManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleFilesystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleFrameworkInputEventIds.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleInputAsset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleLineDebugRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleMaterialAsset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SamplePointDebugRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleTextureAsset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleTree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleTriangleDebugRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\sampleframework\framework\include\SampleXml.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{66263DA8-89D6-3626-A9DC-7E026FBE8645}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{AD2D4F60-67FB-3DC2-9D56-3BD912F306F4}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

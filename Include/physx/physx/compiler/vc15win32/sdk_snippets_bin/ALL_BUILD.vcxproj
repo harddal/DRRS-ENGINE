@@ -1,0 +1,389 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="debug|Win32">
+      <Configuration>debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="checked|Win32">
+      <Configuration>checked</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="profile|Win32">
+      <Configuration>profile</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="release|Win32">
+      <Configuration>release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{09E7810A-FEA8-3D58-8B81-9C2E3B809092}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <Keyword>Win32Proj</Keyword>
+    <Platform>Win32</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='release|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='release|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\ZERO_CHECK.vcxproj">
+      <Project>{BE715C77-D6A2-30D4-97BD-F891DD0C4171}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetArticulation.vcxproj">
+      <Project>{7747E9FB-4FD5-36E1-BBE7-9FEFF3EF5DAC}</Project>
+      <Name>SnippetArticulation</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetBVHStructure.vcxproj">
+      <Project>{BFAE7590-1E1B-32A5-A91E-B1E35A91996D}</Project>
+      <Name>SnippetBVHStructure</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetContactModification.vcxproj">
+      <Project>{A065C6FF-FC0C-35DD-ABA9-6C66FF8FA772}</Project>
+      <Name>SnippetContactModification</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetContactReport.vcxproj">
+      <Project>{2B6A270A-776B-36FA-A30F-69863557D528}</Project>
+      <Name>SnippetContactReport</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetContactReportCCD.vcxproj">
+      <Project>{8C291B0D-A7CC-3937-8F3E-0203C4DA6831}</Project>
+      <Name>SnippetContactReportCCD</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetConvert.vcxproj">
+      <Project>{475B6F21-2513-3828-8F39-CDE9BDC03E86}</Project>
+      <Name>SnippetConvert</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetConvexMeshCreate.vcxproj">
+      <Project>{84815E11-A57A-361E-965C-AF6235AF15C6}</Project>
+      <Name>SnippetConvexMeshCreate</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetCustomJoint.vcxproj">
+      <Project>{509C8646-24BC-3F72-A591-0A0995C86CB6}</Project>
+      <Name>SnippetCustomJoint</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetCustomProfiler.vcxproj">
+      <Project>{0D92F19E-F3BE-342B-8FAF-ABBE80F2191F}</Project>
+      <Name>SnippetCustomProfiler</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetDeformableMesh.vcxproj">
+      <Project>{D2409983-F6EA-34AE-929C-F5B3E38081D6}</Project>
+      <Name>SnippetDeformableMesh</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetDelayLoadHook.vcxproj">
+      <Project>{4DD48D11-7EE3-3513-A7BF-2992883135BF}</Project>
+      <Name>SnippetDelayLoadHook</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetHelloGRB.vcxproj">
+      <Project>{0BED321C-83CC-3779-821A-3864D7347B60}</Project>
+      <Name>SnippetHelloGRB</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetHelloWorld.vcxproj">
+      <Project>{07998487-3383-3717-B9D0-969BE4B9B12B}</Project>
+      <Name>SnippetHelloWorld</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetImmediateArticulation.vcxproj">
+      <Project>{0D1AA9C4-39D9-3568-AFFF-96558D2F6E05}</Project>
+      <Name>SnippetImmediateArticulation</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetImmediateMode.vcxproj">
+      <Project>{034DD200-6D5D-3423-9BEF-890976C4A5F6}</Project>
+      <Name>SnippetImmediateMode</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetJoint.vcxproj">
+      <Project>{2E42A4CF-7602-39DF-8D1C-688B2F2703A9}</Project>
+      <Name>SnippetJoint</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetLoadCollection.vcxproj">
+      <Project>{7249576D-A3B6-3A94-91A4-E79327ACAB98}</Project>
+      <Name>SnippetLoadCollection</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetMBP.vcxproj">
+      <Project>{79EA6AEB-8722-3B47-89D2-CF840F9EA4E6}</Project>
+      <Name>SnippetMBP</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetMultiThreading.vcxproj">
+      <Project>{0D713DCD-5FF1-3F15-8223-E29517DC5ACB}</Project>
+      <Name>SnippetMultiThreading</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetNestedScene.vcxproj">
+      <Project>{D0B0F621-1098-3BB4-A7D9-60B7A25143B7}</Project>
+      <Name>SnippetNestedScene</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetPrunerSerialization.vcxproj">
+      <Project>{0B28C3DC-8C90-3789-AB80-61A0C0449607}</Project>
+      <Name>SnippetPrunerSerialization</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetRaycastCCD.vcxproj">
+      <Project>{ED40BF4E-2D72-38BF-B5F1-B2E5324439E1}</Project>
+      <Name>SnippetRaycastCCD</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetRender.vcxproj">
+      <Project>{BC833ABA-B711-3D7D-BB39-8ACC2568A173}</Project>
+      <Name>SnippetRender</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetSerialization.vcxproj">
+      <Project>{033B05B5-F342-3A82-A737-C1D1ACA5BF0C}</Project>
+      <Name>SnippetSerialization</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetSplitFetchResults.vcxproj">
+      <Project>{182A0518-839E-3AB6-AE3D-3731FA5E19C3}</Project>
+      <Name>SnippetSplitFetchResults</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetSplitSim.vcxproj">
+      <Project>{105BD65D-0980-358A-9568-FAA4E991D029}</Project>
+      <Name>SnippetSplitSim</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetStepper.vcxproj">
+      <Project>{CAC5F4CE-F15C-3681-A383-3D40A9F46D73}</Project>
+      <Name>SnippetStepper</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetToleranceScale.vcxproj">
+      <Project>{40E93B27-61A3-3D46-8510-D480DB10F906}</Project>
+      <Name>SnippetToleranceScale</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetTriangleMeshCreate.vcxproj">
+      <Project>{1621DCB3-A1AC-3FF9-ABF3-3304BC1E8416}</Project>
+      <Name>SnippetTriangleMeshCreate</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetUtils.vcxproj">
+      <Project>{1418EE4B-064B-39AE-A75C-9DBCD6A3919B}</Project>
+      <Name>SnippetUtils</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicle4W.vcxproj">
+      <Project>{0E99B163-82BA-3055-BD8A-6E12E5C33FA9}</Project>
+      <Name>SnippetVehicle4W</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicleContactMod.vcxproj">
+      <Project>{1C12CE3D-47A8-38DE-98B5-CF34B5C57877}</Project>
+      <Name>SnippetVehicleContactMod</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicleMultiThreading.vcxproj">
+      <Project>{1320E0E1-781A-305B-BD5E-FB8466EC170C}</Project>
+      <Name>SnippetVehicleMultiThreading</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicleNoDrive.vcxproj">
+      <Project>{98D5F55F-2951-3106-95B5-A6B44246CC16}</Project>
+      <Name>SnippetVehicleNoDrive</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicleScale.vcxproj">
+      <Project>{DAE1D5E5-1F95-35A6-A84A-C941CD592024}</Project>
+      <Name>SnippetVehicleScale</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetVehicleTank.vcxproj">
+      <Project>{04A67D25-36BB-3140-B1AF-C55022069339}</Project>
+      <Name>SnippetVehicleTank</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

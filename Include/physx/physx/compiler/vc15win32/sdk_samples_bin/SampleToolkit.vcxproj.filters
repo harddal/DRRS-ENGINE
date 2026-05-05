@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\src\PxTkBmpLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\src\PxTkFPS.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\src\PxTkMatrixUtils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\src\PxTkRandom.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\src\PxTkStream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkBmpLoader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkFile.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkFPS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkMatrixUtils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkNamespaceMangle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkRandom.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxTkStream.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\samples\pxtoolkit\include\PxToolkit.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{66263DA8-89D6-3626-A9DC-7E026FBE8645}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{AD2D4F60-67FB-3DC2-9D56-3BD912F306F4}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

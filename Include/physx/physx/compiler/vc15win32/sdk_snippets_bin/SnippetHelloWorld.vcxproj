@@ -1,0 +1,427 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="debug|Win32">
+      <Configuration>debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="checked|Win32">
+      <Configuration>checked</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="profile|Win32">
+      <Configuration>profile</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="release|Win32">
+      <Configuration>release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{07998487-3383-3717-B9D0-969BE4B9B12B}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <Keyword>Win32Proj</Keyword>
+    <Platform>Win32</Platform>
+    <ProjectName>SnippetHelloWorld</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">SnippetHelloWorld.dir\debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">SnippetHelloWorld_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">SnippetHelloWorld.dir\checked\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">SnippetHelloWorld_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">SnippetHelloWorld.dir\profile\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">SnippetHelloWorld_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">true</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">true</GenerateManifest>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">SnippetHelloWorld.dir\release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='release|Win32'">SnippetHelloWorld_32</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='release|Win32'">.exe</TargetExt>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkIncremental>
+    <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='release|Win32'">true</GenerateManifest>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>debug/</AssemblerListingLocation>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_DEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="debug";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"debug\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXExtensions_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysX_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXVehicle_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXCharacterKinematic_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXCooking_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXCommon_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\SnippetUtils_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\SnippetRender_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\debug\PhysXFoundation_32.lib;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\lib\win32\glut\glut32.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:X86</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/debug/SnippetHelloWorld_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/debug/SnippetHelloWorld_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>checked/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="checked";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"checked\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXExtensions_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysX_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXVehicle_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXCharacterKinematic_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXCooking_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXCommon_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\SnippetUtils_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\SnippetRender_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\checked\PhysXFoundation_32.lib;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\lib\win32\glut\glut32.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:X86</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/checked/SnippetHelloWorld_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/checked/SnippetHelloWorld_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>profile/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="profile";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"profile\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXExtensions_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysX_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXVehicle_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXCharacterKinematic_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXCooking_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXCommon_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\SnippetUtils_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\SnippetRender_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\profile\PhysXFoundation_32.lib;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\lib\win32\glut\glut32.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:X86</AdditionalOptions>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/profile/SnippetHelloWorld_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/profile/SnippetHelloWorld_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>release/</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_SUPPORT_PVD=0;CMAKE_INTDIR="release";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;RENDER_SNIPPET;PX_SUPPORT_PVD=0;CMAKE_INTDIR=\"release\";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\physxextensions\src;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\include\win32\GL;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Link>
+      <AdditionalDependencies>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXExtensions_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysX_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXVehicle_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXCharacterKinematic_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXCooking_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXCommon_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\SnippetUtils_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\SnippetRender_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXPvdSDK_static_32.lib;D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_32.vc141.mt\release\PhysXFoundation_32.lib;D:\Projects\Game Engine\Include\physx\physx\snippets\Graphics\lib\win32\glut\glut32.lib;opengl32.lib;glu32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;comdlg32.lib;advapi32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /machine:X86</AdditionalOptions>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <ImportLibrary>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/release/SnippetHelloWorld_32.lib</ImportLibrary>
+      <ProgramDataBaseFile>D:/Projects/Game Engine/Include/physx/physx/bin/win.x86_32.vc141.mt/release/SnippetHelloWorld_32.pdb</ProgramDataBaseFile>
+      <SubSystem>Console</SubSystem>
+    </Link>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='release|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='release|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_snippets_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:/Projects/Game Engine/Include/physx/physx/snippets/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetRender.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetUtils.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\windows\SnippetVehicleTemplate.cmake;D:\Projects\Game Engine\Include\physx\physx\snippets\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\snippets\snippetcommon\ClassicMain.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\snippets\snippetcommon\SnippetPrint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\snippets\snippetcommon\SnippetPVD.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\snippets\snippethelloworld\SnippetHelloWorld.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\snippets\snippethelloworld\SnippetHelloWorldRender.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\ZERO_CHECK.vcxproj">
+      <Project>{BE715C77-D6A2-30D4-97BD-F891DD0C4171}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysX.vcxproj">
+      <Project>{864597CA-C9D1-37B8-84C7-B6BF698E47A9}</Project>
+      <Name>PhysX</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXCharacterKinematic.vcxproj">
+      <Project>{D4814EF6-EA60-3633-8187-B280FB9D5E7E}</Project>
+      <Name>PhysXCharacterKinematic</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXCommon.vcxproj">
+      <Project>{FA31E97A-C0F4-33BF-89C1-F5DE97BBDAA3}</Project>
+      <Name>PhysXCommon</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXCooking.vcxproj">
+      <Project>{AA5E3079-FEC6-31B9-96B6-82C2F65E7DD2}</Project>
+      <Name>PhysXCooking</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXExtensions.vcxproj">
+      <Project>{F61DBDEB-222D-3284-8970-E133F3593915}</Project>
+      <Name>PhysXExtensions</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXFoundation.vcxproj">
+      <Project>{593BA43E-20E2-3397-A2C1-24F877988150}</Project>
+      <Name>PhysXFoundation</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXPvdSDK.vcxproj">
+      <Project>{554EC38A-4A20-3B8C-9783-9CE948090E1C}</Project>
+      <Name>PhysXPvdSDK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_source_bin\PhysXVehicle.vcxproj">
+      <Project>{F97BC8F1-BD42-30F5-B38E-027B0364E677}</Project>
+      <Name>PhysXVehicle</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetRender.vcxproj">
+      <Project>{BC833ABA-B711-3D7D-BB39-8ACC2568A173}</Project>
+      <Name>SnippetRender</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_snippets_bin\SnippetUtils.vcxproj">
+      <Project>{1418EE4B-064B-39AE-A75C-9DBCD6A3919B}</Project>
+      <Name>SnippetUtils</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

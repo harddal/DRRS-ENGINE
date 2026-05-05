@@ -1,0 +1,209 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="debug|Win32">
+      <Configuration>debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="checked|Win32">
+      <Configuration>checked</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="profile|Win32">
+      <Configuration>profile</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="release|Win32">
+      <Configuration>release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{09E7810A-FEA8-3D58-8B81-9C2E3B809092}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <Keyword>Win32Proj</Keyword>
+    <Platform>Win32</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='release|Win32'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='release|Win32'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_samples_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config-version.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='debug|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_samples_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config-version.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='checked|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_samples_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config-version.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='profile|Win32'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='release|Win32'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='release|Win32'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win32/sdk_samples_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:/Projects/Game Engine/Include/physx/physx/samples/compiler/cmake/CMakeLists.txt;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\ConfigureFileMT.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config-version.cmake;D:\Projects\Game Engine\Include\physx\externals\targa\targa-config.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleBase.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleFramework.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplePlatform.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SampleRenderer.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\Samples.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\windows\SamplesToolkit.cmake;D:\Projects\Game Engine\Include\physx\physx\samples\compiler\cmake\CMakeLists.txt;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='release|Win32'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='release|Win32'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\ZERO_CHECK.vcxproj">
+      <Project>{BE715C77-D6A2-30D4-97BD-F891DD0C4171}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\SampleBase.vcxproj">
+      <Project>{57FFBB31-05EA-3653-A399-3241ACBFAAFB}</Project>
+      <Name>SampleBase</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\SampleFramework.vcxproj">
+      <Project>{C2506736-EF3D-35C6-B62D-A563BC7B14B1}</Project>
+      <Name>SampleFramework</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\SamplePlatform.vcxproj">
+      <Project>{6DA490CB-7B14-3DBF-9748-CE038DB49351}</Project>
+      <Name>SamplePlatform</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\SampleRenderer.vcxproj">
+      <Project>{C1CB48E1-9A8C-38DF-955C-146CFDE4C294}</Project>
+      <Name>SampleRenderer</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\SampleToolkit.vcxproj">
+      <Project>{B83E0B1E-253B-3EC3-B2CD-07CD156113A8}</Project>
+      <Name>SampleToolkit</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\sdk_samples_bin\Samples.vcxproj">
+      <Project>{24BFACE3-CBB3-3510-A28C-787E9FDB55F1}</Project>
+      <Name>Samples</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

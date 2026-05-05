@@ -1,0 +1,637 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="debug|x64">
+      <Configuration>debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="checked|x64">
+      <Configuration>checked</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="profile|x64">
+      <Configuration>profile</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="release|x64">
+      <Configuration>release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{BAC6107F-4DC7-3343-88A2-DCC68E1C043C}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>PhysX</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='checked|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='profile|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v141</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='debug|x64'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\debug\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='debug|x64'">PhysX.dir\debug\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='debug|x64'">PhysX_static_64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='debug|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='checked|x64'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\checked\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='checked|x64'">PhysX.dir\checked\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='checked|x64'">PhysX_static_64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='checked|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='profile|x64'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\profile\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='profile|x64'">PhysX.dir\profile\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='profile|x64'">PhysX_static_64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='profile|x64'">.lib</TargetExt>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='release|x64'">D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\release\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='release|x64'">PhysX.dir\release\</IntDir>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='release|x64'">PhysX_static_64</TargetName>
+    <TargetExt Condition="'$(Configuration)|$(Platform)'=='release|x64'">.lib</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Disabled</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_DEBUG;WIN32;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="debug"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\debug\PhysX_static_64.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_DEBUG;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_DEBUG=1;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"debug\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='checked|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="checked"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\checked\PhysX_static_64.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_CHECKED=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"checked\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='profile|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR="profile"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\profile\PhysX_static_64.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_PROFILE=1;PX_NVTX=0;PX_SUPPORT_PVD=1;CMAKE_INTDIR=\"profile\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>%(AdditionalOptions) /d2Zi+</AdditionalOptions>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <CallingConvention>Cdecl</CallingConvention>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4514;4820;4127;4710;4711;4577;4996</DisableSpecificWarnings>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <OmitFramePointers>true</OmitFramePointers>
+      <Optimization>Full</Optimization>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <StringPooling>true</StringPooling>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <UseFullPaths>false</UseFullPaths>
+      <WarningLevel>Level4</WarningLevel>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN32;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_SUPPORT_PVD=0;CMAKE_INTDIR="release"</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>D:\Projects\Game Engine\Include\physx\physx\bin\win.x86_64.vc141.mt\release\PhysX_static_64.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);WIN32;_HAS_ITERATOR_DEBUGGING=0;_ITERATOR_DEBUG_LEVEL=0;NDEBUG;WIN64;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;_WINSOCK_DEPRECATED_NO_WARNINGS;PX_PHYSX_GPU_SHARED_LIB_NAME=PhysXGpu_64.dll;PX_PHYSX_STATIC_LIB;PX_SUPPORT_PVD=0;CMAKE_INTDIR=\"release\"</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Midl>
+      <AdditionalIncludeDirectories>D:\Projects\Game Engine\Include\physx\physx\include;D:\Projects\Game Engine\Include\physx\physx\source\common\include;D:\Projects\Game Engine\Include\physx\physx\source\common\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device;D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering;D:\Projects\Game Engine\Include\physx\physx\source\physxgpu\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\include;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\contact;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\common;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\distance;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\sweep;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\gjk;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\intersection;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\hf;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\pcm;D:\Projects\Game Engine\Include\physx\physx\source\geomutils\src\ccd;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\api\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\software\include;D:\Projects\Game Engine\Include\physx\physx\source\lowlevel\common\include\pipeline;D:\Projects\Game Engine\Include\physx\physx\source\lowlevelaabb\include;D:\Projects\Game Engine\Include\physx\physx\source\lowleveldynamics\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\include;D:\Projects\Game Engine\Include\physx\physx\source\simulationcontroller\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\mesh;D:\Projects\Game Engine\Include\physx\physx\source\physxcooking\src\convex;D:\Projects\Game Engine\Include\physx\physx\source\scenequery\include;D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include;D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\include;D:\Projects\Game Engine\Include\physx\physx\source\pvd\include;D:\Projects\Game Engine\Include\physx\physx\..\pxshared\include;D:\Projects\Game Engine\Include\physx\physx\source\foundation\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+    <Lib>
+      <AdditionalOptions>%(AdditionalOptions) /machine:x64</AdditionalOptions>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\CMakeLists.txt">
+      <Message Condition="'$(Configuration)|$(Platform)'=='debug|x64'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='debug|x64'">D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='debug|x64'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='checked|x64'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='checked|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='checked|x64'">D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='checked|x64'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='checked|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='profile|x64'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='profile|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='profile|x64'">D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='profile|x64'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='profile|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='release|x64'">Building Custom Rule D:/Projects/Game Engine/Include/physx/physx/source/compiler/cmake/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SD:/Projects/Game Engine/Include/physx/physx/compiler/public" "-BD:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64" --check-stamp-file "D:/Projects/Game Engine/Include/physx/physx/compiler/vc15win64/sdk_source_bin/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='release|x64'">D:\Projects\Game Engine\Include\physx\externals\cmakemodules\GetCompilerAndPlatform.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\NvidiaBuildOptions.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\SetOutputPaths.cmake;D:\Projects\Game Engine\Include\physx\externals\cmakemodules\template\PxIncludeTemplate.h;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\SimulationController.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\CMakeLists.txt;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\FastXml.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevel.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelAABB.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\LowLevelDynamics.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysX.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCharacterKinematic.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCommon.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXCooking.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXExtensions.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXFoundation.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXPvdSDK.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXTask.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\PhysXVehicle.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SceneQuery.cmake;D:\Projects\Game Engine\Include\physx\physx\source\compiler\cmake\windows\SimulationController.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='release|x64'">D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='release|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxActor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxAggregate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulationReducedCoordinate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulationBase.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulation.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulationJoint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulationJointReducedCoordinate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxArticulationLink.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxBatchQuery.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxBatchQueryDesc.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxBroadPhase.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxClient.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxConstraint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxConstraintDesc.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxContact.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxContactModifyCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxDeletionListener.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxFiltering.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxForceMode.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxImmediateMode.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxLockedData.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxMaterial.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPhysics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPhysicsAPI.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPhysicsSerialization.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPhysicsVersion.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPhysXConfig.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxPruningStructure.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxQueryFiltering.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxQueryReport.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxRigidActor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxRigidBody.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxRigidDynamic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxRigidStatic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxScene.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxSceneDesc.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxSceneLock.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxShape.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxSimulationEventCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxSimulationStatistics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\PxVisualizationParameter.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxBase.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxCollection.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxCoreUtilityTypes.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxMetaData.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxMetaDataFlags.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxPhysicsInsertionCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxPhysXCommonConfig.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxRenderBuffer.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxSerialFramework.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxSerializer.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxStringTable.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxTolerancesScale.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxTypeInfo.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\PxProfileZone.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\pvd\PxPvdSceneClient.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\pvd\PxPvd.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\pvd\PxPvdTransport.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\solver\PxSolverDefs.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PvdMetaDataDefineProperties.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PvdMetaDataExtensions.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PvdMetaDataPropertyVisitor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PxAutoGeneratedMetaDataObjectNames.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PxAutoGeneratedMetaDataObjects.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PxMetaDataCompare.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PxMetaDataCppPrefix.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\PxMetaDataObjects.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\include\RepXMetaDataPropertyVisitor.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\src\PxAutoGeneratedMetaDataObjects.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physxmetadata\core\src\PxMetaDataObjects.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpActor.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpAggregate.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationReducedCoordinate.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulation.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationJoint.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationJointReducedCoordinate.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationLink.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpBatchQuery.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpConstraint.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpFactory.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpMaterial.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpMetaData.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPhysics.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPvdSceneQueryCollector.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpReadCheck.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidDynamic.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidStatic.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpScene.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpSceneQueries.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpSerializerAdapter.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpShape.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpShapeManager.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpWriteCheck.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdMetaDataPvdBinding.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdPhysicsClient.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpActor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpActorTemplate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpAggregate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationReducedCoordinate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulation.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationJoint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationJointReducedCoordinate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationLink.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpArticulationTemplate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpBatchQuery.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpCast.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpConnector.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpConstraint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpFactory.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpMaterial.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpMaterialManager.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPhysics.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPhysicsInsertionCallback.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPtrTableStorageManager.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpPvdSceneQueryCollector.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpQueryShared.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpReadCheck.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidActorTemplate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidActorTemplateInternal.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidBodyTemplate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidDynamic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpRigidStatic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpScene.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpSceneQueries.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpSceneAccessor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpShape.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpShapeManager.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\NpWriteCheck.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdMetaDataBindingData.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdMetaDataPvdBinding.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdPhysicsClient.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\PvdTypeNames.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbActor.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbAggregate.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbBase.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbMetaData.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbScene.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbScenePvdClient.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbShape.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbActor.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbAggregate.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbArticulation.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbArticulationJoint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbBase.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbBody.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbConstraint.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbDefs.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbNpDeps.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbRigidObject.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbRigidStatic.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbScene.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbSceneBuffer.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbScenePvdClient.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbShape.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\buffering\ScbType.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\immediatemode\src\NpImmediateMode.cpp" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\gpu\PxGpu.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\cudamanager\PxCudaContextManager.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\cudamanager\PxCudaMemoryManager.h" />
+    <ResourceCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\resource_x64\PhysX.rc" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\compiler\resource_x64\resource.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\include\common\windows\PxWindowsDelayLoadHook.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device\nvPhysXtoDrv.h" />
+    <ClInclude Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device\PhysXIndicator.h" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\device\windows\PhysXIndicatorWindows.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\gpu\PxGpu.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\gpu\PxPhysXGpuModuleLoader.cpp" />
+    <ClCompile Include="D:\Projects\Game Engine\Include\physx\physx\source\physx\src\windows\NpWindowsDelayLoadHook.cpp" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\px_globals.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcContactCache.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcContactMethodImpl.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcMaterialHeightField.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcMaterialMesh.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcMaterialMethodImpl.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcMaterialShape.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcNpBatch.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcNpCacheStreamPair.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcNpContactPrepShared.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcNpMemBlockPool.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxcNpThreadContext.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsCCD.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsContactManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsContext.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsDefaultMemoryManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsIslandSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsMaterialCombiner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsNphaseImplementationContext.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.dir\$(Configuration)\PxsSimpleIslandManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpAABBManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhase.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhaseABP.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhaseMBP.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhaseSap.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhaseSapAux.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpBroadPhaseShared.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpMBPTasks.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.dir\$(Configuration)\BpSAPTasks.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulation.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulationContactPrep.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulationContactPrepPF.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulationHelper.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulationScalar.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyArticulationSIMD.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyFeatherstoneArticulation.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyFeatherstoneForwardDynamic.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyFeatherstoneInverseDynamic.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyConstraintPartition.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyConstraintSetup.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyConstraintSetupBlock.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyContactPrep.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyContactPrep4.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyContactPrep4PF.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyContactPrepPF.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyDynamics.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyFrictionCorrelation.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyRigidBodyToSolverBody.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverConstraints.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverConstraintsBlock.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverControl.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverControlPF.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverPFConstraints.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DySolverPFConstraintsBlock.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyThreadContext.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyThresholdTable.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyTGSDynamics.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyTGSContactPrep.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.dir\$(Configuration)\DyTGSContactPrepBlock.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\PhysXTask.dir\$(Configuration)\TaskManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqAABBPruner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqAABBTree.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqIncrementalAABBPruner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqIncrementalAABBPrunerCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqIncrementalAABBTree.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqAABBTreeUpdateMap.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqBounds.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqCompoundPruner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqCompoundPruningPool.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqBucketPruner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqExtendedBucketPruner.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqMetaData.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqPruningPool.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqPruningStructure.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.dir\$(Configuration)\SqSceneQueryManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScActorCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScActorSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScArticulationCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScArticulationJointCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScArticulationJointSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScArticulationSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScBodyCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScBodySim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintGroupNode.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintInteraction.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintProjectionManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintProjectionTree.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScConstraintSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScElementInteractionMarker.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScElementSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScInteraction.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScIterators.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScMetaData.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScNPhaseCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScPhysics.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScRigidCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScRigidSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScScene.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScShapeCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScShapeInteraction.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScShapeSim.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScSimStats.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScSimulationController.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScSqBoundsManager.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScStaticCore.obj" />
+    <Object Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.dir\$(Configuration)\ScTriggerInteraction.obj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\ZERO_CHECK.vcxproj">
+      <Project>{3444D6A1-9930-3498-853C-83FC61CB658C}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevel.vcxproj">
+      <Project>{6B582D92-C61D-39A5-AB00-96F73335C898}</Project>
+      <Name>LowLevel</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelAABB.vcxproj">
+      <Project>{1D234D66-C20F-3C57-AF98-5F2ACCA83216}</Project>
+      <Name>LowLevelAABB</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\LowLevelDynamics.vcxproj">
+      <Project>{5B6729E7-EB7A-31A3-859D-99120CAC04FE}</Project>
+      <Name>LowLevelDynamics</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\PhysXCommon.vcxproj">
+      <Project>{39B67970-8C4A-307E-B612-408185218BEF}</Project>
+      <Name>PhysXCommon</Name>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\PhysXFoundation.vcxproj">
+      <Project>{83CF1895-52CA-3C5B-A233-FF26977ED4DA}</Project>
+      <Name>PhysXFoundation</Name>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\PhysXPvdSDK.vcxproj">
+      <Project>{7C13227C-F20D-3EB0-B758-A6C129524A07}</Project>
+      <Name>PhysXPvdSDK</Name>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\PhysXTask.vcxproj">
+      <Project>{752C9306-85F2-37D3-9247-FBBADCD8FD08}</Project>
+      <Name>PhysXTask</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SceneQuery.vcxproj">
+      <Project>{C86B56A0-B751-36C6-AD6C-C1E973B9F431}</Project>
+      <Name>SceneQuery</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win64\sdk_source_bin\SimulationController.vcxproj">
+      <Project>{06A97887-4EE4-3EB1-B307-DE7177C94359}</Project>
+      <Name>SimulationController</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

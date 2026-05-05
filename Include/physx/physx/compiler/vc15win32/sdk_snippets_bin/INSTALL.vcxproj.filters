@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\Projects\Game Engine\Include\physx\physx\compiler\vc15win32\CMakeFiles\91da253a5f4efd9eca3ee51a95dcc155\INSTALL_force.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{24EDA917-2060-3E9D-A014-F5C45FED74FB}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
