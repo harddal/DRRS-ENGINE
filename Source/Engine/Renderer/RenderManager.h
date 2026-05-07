@@ -207,7 +207,13 @@ struct LightUploadData
     irr::core::vector3df pos;
     irr::video::SColorf  color;
     float                radius;
-    float                distSq;  // squared dist to object (used for sorting, not uploaded)
+    float                distSq;    // squared dist to object (used for sorting, not uploaded)
+
+    // Spotlight-only fields — ignored for point lights
+    irr::core::vector3df direction; // view-space direction the spot is pointing
+    float                cosOuter;  // cos(outerCone half-angle); used to clip outside cone
+    float                cosInner;  // cos(innerCone half-angle); used for soft edge falloff
+    bool                 isSpot = false;
 };
 
 // A transparent mesh buffer queued for the sorted transparent pass
@@ -415,6 +421,15 @@ public:
     float pixelSize = 4.0f;
     void OnSetMaterial(const irr::video::SMaterial&) override {}
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// No-op callback for the shadow depth pass — the depth shader only uses GL built-in
+// matrices so no custom uniforms are needed.
+class ShadowDepthCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices*, irr::s32) override {}
 };
 
 // Samples an 8x8 grid of the scene and writes log-average luminance to a 1x1 RTT.
@@ -707,6 +722,13 @@ public:
     void setSharpenEnabled(bool enabled)  { setPostProcessPassEnabled("sharpen",  enabled); }
     void setPixelateEnabled(bool enabled) { setPostProcessPassEnabled("pixelate", enabled); }
 
+    // Shadow mapping — directional shadow map driven by the first ELT_DIRECTIONAL light.
+    void  setShadowBias(float b)     { m_shadowBias = b; }
+    float getShadowBias()    const   { return m_shadowBias; }
+    bool  hasShadowLight()   const   { return m_hasShadowLight; }
+    irr::video::ITexture* getShadowMapRTT()       const { return m_shadowMapRTT; }
+    const irr::core::matrix4& getLightProjView()  const { return m_lightProjView; }
+
     // Adaptive (auto) exposure — eye-adaptation effect.
     // When enabled, manual tonemapCallback()->exposure is overridden each frame.
     void setAutoExposure(bool enabled)                        { m_autoExposure = enabled; }
@@ -796,6 +818,8 @@ private:
     // Post-process pipeline
     // -------------------------------------------------------------------------
     void recreatePostProcessRTTs(irr::u32 width, irr::u32 height);
+    void createShadowResources();
+    void drawShadowPass();
     void runPostProcessChain();
     void drawFullscreenQuad();
     void measureAndAdaptExposure(irr::f32 dt);
@@ -828,6 +852,15 @@ private:
     SharpenCallback*             m_sharpenCallback         = nullptr;
     PixelateCallback*            m_pixelateCallback        = nullptr;
     LumMeasureCallback*          m_lumMeasureCallback      = nullptr;
+
+    // Shadow mapping
+    irr::video::ITexture*          m_shadowMapRTT   = nullptr;
+    irr::s32                       m_shadowDepthMat = -1;
+    ShadowDepthCallback*           m_shadowDepthCallback = nullptr;
+    irr::scene::ICameraSceneNode*  m_shadowCamera   = nullptr;
+    irr::core::matrix4             m_lightProjView;
+    bool                           m_hasShadowLight = false;
+    float                          m_shadowBias     = 0.002f;
 
     // Adaptive exposure state
     float m_adaptedExposure  = 1.0f;

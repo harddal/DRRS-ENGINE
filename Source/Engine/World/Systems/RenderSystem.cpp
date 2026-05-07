@@ -488,6 +488,7 @@ void RenderSystem::setBillboardComponentData(anax::Entity& entity)
     // DEPRECATED
     //spriteComponent.selectorNode->setPosition(transform.position);
     spriteComponent.selectorNode->setID(entity.getComponent<DescriptorComponent>().id);
+    RenderManager::Get()->registerDebugNode(spriteComponent.selectorNode);
 
     if (entity.getComponent<DescriptorComponent>().isDebug && Engine::Get()->isGameMode()) {
         spriteComponent.selectorNode->setIsDebugObject(true);
@@ -596,6 +597,7 @@ void RenderSystem::setDebugSpriteComponentData(anax::Entity& entity)
     // DEPRECATED
     //debugspriteComponent.selectorNode->setPosition(transform.position);
     debugspriteComponent.selectorNode->setID(entity.getComponent<DescriptorComponent>().id);
+    RenderManager::Get()->registerDebugNode(debugspriteComponent.selectorNode);
 
     if (entity.getComponent<DescriptorComponent>().isDebug && Engine::Get()->isGameMode()) {
         debugspriteComponent.selectorNode->setIsDebugObject(true);
@@ -688,6 +690,7 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 		}*/
 
 		entity.getComponent<BillboardSpriteComponent>().node->remove();
+		RenderManager::Get()->unregisterDebugNode(entity.getComponent<BillboardSpriteComponent>().selectorNode);
 		entity.getComponent<BillboardSpriteComponent>().selectorNode->remove();
         entity.getComponent<BillboardSpriteComponent>().selector->drop();
 	}
@@ -706,6 +709,7 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 		if (entity.getComponent<RenderComponent>().isDebug && entity.getComponent<DebugSpriteComponent>().node)
 			RenderManager::Get()->unregisterDebugNode(entity.getComponent<DebugSpriteComponent>().node);
         entity.getComponent<DebugSpriteComponent>().node->remove();
+        RenderManager::Get()->unregisterDebugNode(entity.getComponent<DebugSpriteComponent>().selectorNode);
         entity.getComponent<DebugSpriteComponent>().selectorNode->remove();
         entity.getComponent<DebugSpriteComponent>().selector->drop();
     }

@@ -236,6 +236,14 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
 
     services->setVertexShaderConstant("mTransWorld", world.pointer(), 16);
 
+    // Combined light MVP per object = lightProj * lightView * world.
+    // Mirrors exactly what gl_ModelViewProjectionMatrix is in the shadow depth pass,
+    // so depth values are numerically identical and self-shadowing acne is eliminated.
+    auto rm = RenderManager::Get();
+    auto lightMVP = rm->getLightProjView();
+    lightMVP *= driver->getTransform(ETS_WORLD);
+    services->setVertexShaderConstant("mLightMVP", lightMVP.pointer(), 16);
+
     auto pos = RenderManager::Get()->sceneManager()->getActiveCamera()->getAbsolutePosition();
 
     services->setVertexShaderConstant("fCameraPos", reinterpret_cast<f32*>(&pos), 3);
@@ -250,6 +258,28 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     services->setPixelShaderConstant("tLightmap",    &lightmapLayerID, 1);
     services->setPixelShaderConstant("uHasLightmap", &hasLightmap,     1);
 
+    // Shadow map — slot 3.  Bind the RTT and inform the shader whether it is active.
+    {
+        int shadowSlot = 3;
+        services->setPixelShaderConstant("tShadowMap", &shadowSlot, 1);
+
+        auto* rmShadow = RenderManager::Get();
+        float hasShadow = (rmShadow->hasShadowLight() && rmShadow->getShadowMapRTT()) ? 1.0f : 0.0f;
+        services->setPixelShaderConstant("uHasShadow", &hasShadow, 1);
+
+        float shadowBias = rmShadow->getShadowBias();
+        services->setPixelShaderConstant("uShadowBias", &shadowBias, 1);
+
+        // Bind the shadow map texture to slot 3 by mutating a copy of the current
+        // material — same pattern used for the env map on slot 2.
+        if (hasShadow > 0.5f)
+        {
+            irr::video::SMaterial mat = m_currentMaterial;
+            mat.TextureLayer[3].Texture = rmShadow->getShadowMapRTT();
+            driver->setMaterial(mat);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Per-pixel Blinn-Phong: upload up to MAX_LIGHTS closest dynamic lights
     // -------------------------------------------------------------------------
@@ -261,9 +291,13 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     auto lights = RenderManager::gatherClosestLights(driver, RenderManager::Get()->sceneManager(), objectPos, MAX_LIGHTS);
 
     // Build flat arrays for GLSL uniform upload
-    float lightPos   [MAX_LIGHTS * 3] = {};
-    float lightColor [MAX_LIGHTS * 4] = {};
-    float lightRadius[MAX_LIGHTS]     = {};
+    float lightPos     [MAX_LIGHTS * 3] = {};
+    float lightColor   [MAX_LIGHTS * 4] = {};
+    float lightRadius  [MAX_LIGHTS]     = {};
+    float lightDir     [MAX_LIGHTS * 3] = {};
+    float lightIsSpot  [MAX_LIGHTS]     = {};
+    float lightCosOuter[MAX_LIGHTS]     = {};
+    float lightCosInner[MAX_LIGHTS]     = {};
     int   lightCount = static_cast<int>(lights.size());
 
     for (int i = 0; i < lightCount; ++i)
@@ -278,16 +312,26 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
         lightColor[i * 4 + 3] = 1.0f;
 
         lightRadius[i] = lights[i].radius;
+
+        lightIsSpot[i]   = lights[i].isSpot ? 1.0f : 0.0f;
+        lightDir[i*3+0]  = lights[i].direction.X;
+        lightDir[i*3+1]  = lights[i].direction.Y;
+        lightDir[i*3+2]  = lights[i].direction.Z;
+        lightCosOuter[i] = lights[i].cosOuter;
+        lightCosInner[i] = lights[i].cosInner;
     }
 
     // Irrlicht's OpenGL/GLSL backend requires array uniforms to be addressed
     // with "[0]" in the name; plain "uLightPos" silently fails to bind.
     // Always upload the full MAX_LIGHTS elements so the bind succeeds even
     // when fewer lights are active (unused elements are zero-initialised above).
-    services->setPixelShaderConstant("uLightPos[0]",    lightPos,    MAX_LIGHTS * 3);
-    services->setPixelShaderConstant("uLightColor[0]",  lightColor,  MAX_LIGHTS * 4);
-    services->setPixelShaderConstant("uLightRadius[0]", lightRadius, MAX_LIGHTS);
-    // uLightCount is uniform float in the shader; send it as float
+    services->setPixelShaderConstant("uLightPos[0]",      lightPos,      MAX_LIGHTS * 3);
+    services->setPixelShaderConstant("uLightColor[0]",    lightColor,    MAX_LIGHTS * 4);
+    services->setPixelShaderConstant("uLightRadius[0]",   lightRadius,   MAX_LIGHTS);
+    services->setPixelShaderConstant("uLightDir[0]",      lightDir,      MAX_LIGHTS * 3);
+    services->setPixelShaderConstant("uLightIsSpot[0]",   lightIsSpot,   MAX_LIGHTS);
+    services->setPixelShaderConstant("uLightCosOuter[0]", lightCosOuter, MAX_LIGHTS);
+    services->setPixelShaderConstant("uLightCosInner[0]", lightCosInner, MAX_LIGHTS);
     float fLightCount = static_cast<float>(lightCount);
     services->setPixelShaderConstant("uLightCount", &fLightCount, 1);
 
@@ -453,7 +497,7 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     m_sceneRTT      = m_driver->addRenderTargetTexture(sz, "pp_scene",     QUAD_COLOR_MODE);
     m_ppRTT[0]      = m_driver->addRenderTargetTexture(sz, "pp_buf0",      QUAD_COLOR_MODE);
     m_ppRTT[1]      = m_driver->addRenderTargetTexture(sz, "pp_buf1",      QUAD_COLOR_MODE);
-    m_lumRTT        = m_driver->addRenderTargetTexture(irr::core::dimension2du(1, 1), "pp_lum", irr::video::ECF_A8R8G8B8);
+    m_lumRTT        = m_driver->addRenderTargetTexture(irr::core::dimension2du(1, 1), "pp_lum", QUAD_COLOR_MODE);
     m_refractionRTT = m_driver->addRenderTargetTexture(sz, "pp_refraction", QUAD_COLOR_MODE);
 
     if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT || !m_refractionRTT)
@@ -467,6 +511,130 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
         if (!m_fnBlitFramebuffer)
             spdlog::warn("RenderManager: glBlitFramebuffer unavailable — LDR effect depth testing disabled");
     }
+}
+
+void RenderManager::createShadowResources()
+{
+    constexpr irr::u32 SHADOW_RES = 2048;
+    if (m_shadowMapRTT)
+        m_driver->removeTexture(m_shadowMapRTT);
+
+    m_shadowMapRTT = m_driver->addRenderTargetTexture(
+        irr::core::dimension2du(SHADOW_RES, SHADOW_RES),
+        "shadow_map",
+        irr::video::ECF_R32F);  // 32-bit float single channel — far better precision than RGBA16F
+
+    if (!m_shadowMapRTT)
+        spdlog::error("RenderManager: failed to create shadow map RTT ({}x{})", SHADOW_RES, SHADOW_RES);
+
+    // Pre-create a shadow camera node so we don't allocate one every frame.
+    // It lives in the scene but is never the active camera during normal rendering.
+    if (!m_shadowCamera)
+        m_shadowCamera = m_sceneManager->addCameraSceneNode(nullptr,
+            irr::core::vector3df(0, 100, 0),
+            irr::core::vector3df(0, 0, 0));
+}
+
+void RenderManager::drawShadowPass()
+{
+    if (m_shadowDepthMat < 0 || !m_shadowMapRTT || !m_shadowCamera)
+        return;
+
+    // Find the first spotlight by traversing the scene graph directly rather than
+    // reading getDynamicLight(), which is populated during drawAll() and therefore
+    // holds last frame's position/direction. Traversing scene nodes and calling
+    // updateAbsolutePosition() gives the current-frame world transform, so the
+    // shadow camera and the lighting shader both use the same frame's light data.
+    bool foundLight = false;
+    irr::video::SLight lightData;
+    irr::core::array<irr::scene::ISceneNode*> lightNodes;
+    m_sceneManager->getSceneNodesFromType(irr::scene::ESNT_LIGHT, lightNodes);
+    for (irr::u32 i = 0; i < lightNodes.size(); ++i)
+    {
+        auto* ln = static_cast<irr::scene::ILightSceneNode*>(lightNodes[i]);
+        if (ln->getLightData().Type == irr::video::ELT_SPOT && ln->isVisible())
+        {
+            // Force the node's absolute transform to reflect the current-frame parent position.
+            // The parent (TransformComponent node) was already updated by TransformSystem.
+            ln->updateAbsolutePosition();
+
+            lightData          = ln->getLightData();
+            lightData.Position = ln->getAbsolutePosition();
+
+            // Recompute direction from current absolute transform — identical to how
+            // CLightSceneNode::render() derives it: rotate local (0,0,1) to world space.
+            irr::core::vector3df d(0.f, 0.f, 1.f);
+            ln->getAbsoluteTransformation().rotateVect(d);
+            lightData.Direction = d.normalize();
+
+            foundLight = true;
+            break;
+        }
+    }
+
+    m_hasShadowLight = foundLight;
+    if (!foundLight)
+        return;
+
+    irr::core::vector3df lightPos = lightData.Position;
+    irr::core::vector3df lightDir = lightData.Direction;
+    lightDir.normalize();
+
+    const irr::core::vector3df up = (fabsf(lightDir.Y) < 0.99f)
+        ? irr::core::vector3df(0.f, 1.f, 0.f)
+        : irr::core::vector3df(1.f, 0.f, 0.f);
+
+    // Perspective projection matching the spotlight's cone.
+    // OuterCone is the half-angle in degrees — full FOV is OuterCone * 2.
+    // Near plane is small; far plane matches the light's attenuation radius.
+    const float fovRad   = lightData.OuterCone * 2.0f * irr::core::DEGTORAD;
+    const float farPlane = lightData.Radius > 0.0f ? lightData.Radius : 200.0f;
+    irr::core::matrix4 lightProj;
+    lightProj.buildProjectionMatrixPerspectiveFovLH(fovRad, 1.0f, 0.1f, farPlane);
+
+    // Save active camera so we can restore it after the shadow pass.
+    irr::scene::ICameraSceneNode* prevCamera = m_sceneManager->getActiveCamera();
+
+    // Configure the shadow camera and make it active so drawAll() uses its transforms.
+    m_shadowCamera->setPosition(lightPos);
+    m_shadowCamera->setTarget(lightPos + lightDir);
+    m_shadowCamera->setUpVector(up);
+    m_shadowCamera->setProjectionMatrix(lightProj, false);  // false = perspective
+    m_sceneManager->setActiveCamera(m_shadowCamera);
+
+    // Override all solid geometry with the depth-only shader.
+    // Front-face culling renders only back faces — the floor can't shadow itself,
+    // and solid objects (barrel, walls) still cast shadows via their back faces.
+    irr::video::SOverrideMaterial& om = m_driver->getOverrideMaterial();
+    om.Material.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_shadowDepthMat);
+    om.Material.FrontfaceCulling = true;
+    om.Material.BackfaceCulling  = false;
+    om.EnableFlags = irr::video::EMF_FRONT_FACE_CULLING | irr::video::EMF_BACK_FACE_CULLING;
+    om.EnablePasses = irr::scene::ESNRP_SOLID;
+    om.Enabled      = true;
+
+    // Render scene depth from the light's POV into the shadow map RTT.
+    m_driver->setRenderTarget(m_shadowMapRTT, true, true, irr::video::SColor(0xFFFFFFFF));
+    m_sceneManager->drawAll();
+
+    // Read back the view and projection matrices Irrlicht actually used for this draw.
+    // Irrlicht's camera computes its own view matrix internally during drawAll(), so we
+    // MUST use these post-draw values for m_lightProjView — building the matrix manually
+    // before drawAll() can diverge due to the camera needing an animation tick to settle.
+    irr::core::matrix4 usedProj = m_driver->getTransform(irr::video::ETS_PROJECTION);
+    irr::core::matrix4 usedView = m_driver->getTransform(irr::video::ETS_VIEW);
+    m_lightProjView = usedProj;
+    m_lightProjView *= usedView;
+
+    // Restore state.
+    m_driver->getOverrideMaterial() = irr::video::SOverrideMaterial();
+    m_sceneManager->setActiveCamera(prevCamera);
+
+    // Return to the scene RTT so the main pass continues normally.
+    if (m_sceneRTT)
+        m_driver->setRenderTarget(m_sceneRTT, false, false);
+    else
+        m_driver->setRenderTarget(nullptr, false, false);
 }
 
 void RenderManager::drawFullscreenQuad()
@@ -931,6 +1099,7 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	psa_loader->drop();
 
     recreatePostProcessRTTs(m_irrlichtParams.WindowSize.Width, m_irrlichtParams.WindowSize.Height);
+    createShadowResources();
 
 	if (m_configuration.antialiasingFactor == 1)
 	{
@@ -1072,6 +1241,11 @@ void RenderManager::draw(f32 dt)
         refractionWasVisible[i] = m_refractionNodes[i]->isVisible();
         m_refractionNodes[i]->setVisible(false);
     }
+
+    // Shadow depth pre-pass — renders the scene from the light's POV into m_shadowMapRTT.
+    // Viewmodel, debug, LDR effect, and refraction nodes are already hidden above,
+    // so they are automatically excluded from shadow casting.
+    drawShadowPass();
 
     m_sceneManager->drawAll();
 
@@ -1423,6 +1597,19 @@ void RenderManager::createDefaultShaders()
             "content/shader/terrain_blend.frag",  "main", EPST_PS_2_0,
             m_terrainCallback, EMT_SOLID, 0, EGSL_DEFAULT);
         ShaderMaterialManager::add(terrainShader);
+    }
+
+    // Shadow depth shader — used for the light-POV depth pre-pass.
+    // SOverrideMaterial forces all solid geometry through it; only writes depth to R channel.
+    {
+        m_shadowDepthCallback = new ShadowDepthCallback();
+        ShaderMaterial shadowShader("shadow_depth");
+        shadowShader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/shadow_depth.vert", "main", EVST_VS_2_0,
+            "content/shader/shadow_depth.frag", "main", EPST_PS_2_0,
+            m_shadowDepthCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(shadowShader);
+        m_shadowDepthMat = shadowShader.material;
     }
 
     // Crystal shader — screen-space refraction + Fresnel for transparent crystal props.
@@ -2376,6 +2563,18 @@ std::vector<LightUploadData> RenderManager::gatherClosestLights(
 
         d.color  = light.DiffuseColor;
         d.radius = light.Radius > 0.0f ? light.Radius : 1000.0f;
+
+        d.isSpot = (light.Type == irr::video::ELT_SPOT);
+        if (d.isSpot)
+        {
+            // Transform the spot direction to view space (rotation only, no translation).
+            irr::core::vector3df dir = light.Direction;
+            viewMatrix.rotateVect(dir);
+            d.direction = dir.normalize();
+            // OuterCone and InnerCone are half-angles in degrees (matches GL_SPOT_CUTOFF).
+            d.cosOuter = cosf(light.OuterCone * irr::core::DEGTORAD);
+            d.cosInner = cosf(light.InnerCone * irr::core::DEGTORAD);
+        }
 
         result.push_back(d);
     }
