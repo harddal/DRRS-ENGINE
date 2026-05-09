@@ -1,0 +1,30 @@
+/* Single-file FreeType build for inclusion in the project.
+   FT2_BUILD_LIBRARY must be defined before any FreeType source is included. */
+#define FT2_BUILD_LIBRARY
+#include <ft2build.h>
+
+#include "src/autofit/autofit.c"
+#include "src/base/ftbase.c"
+#include "src/base/ftbbox.c"
+#include "src/base/ftbitmap.c"
+#include "src/base/ftdebug.c"
+#include "src/base/ftfstype.c"
+#include "src/base/ftgasp.c"
+#include "src/base/ftglyph.c"
+#include "src/base/ftinit.c"
+#include "src/base/ftmm.c"
+#include "src/base/ftpatent.c"
+#include "src/base/ftstroke.c"
+#include "src/base/ftsynth.c"
+#include "src/base/ftsystem.c"
+#include "src/base/fttype1.c"
+#include "src/cff/cff.c"
+#include "src/gzip/ftgzip.c"
+#include "src/lzw/ftlzw.c"
+#include "src/psaux/psaux.c"
+#include "src/pshinter/pshinter.c"
+#include "src/psnames/psnames.c"
+#include "src/raster/raster.c"
+#include "src/sfnt/sfnt.c"
+#include "src/smooth/smooth.c"
+#include "src/truetype/truetype.c"

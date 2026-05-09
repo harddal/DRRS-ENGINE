@@ -35,17 +35,124 @@ static int  s_tabPendingClose = -1;
 static bool s_openModal       = false;
 static bool s_initialized     = false;
 
-// ---- helpers ----------------------------------------------------------------
+// ---- AngelScript language, palette, and autocomplete -----------------------
 
-static const TextEditor::Language* detectLanguage(const std::string& path)
+static const TextEditor::Language* ascLanguage()
+{
+    static bool initialized = false;
+    static TextEditor::Language lang;
+
+    if (!initialized) {
+        lang = *TextEditor::Language::AngelScript();
+
+        lang.keywords.clear();
+        for (const char* k : { "if", "else", "void", "int8", "return", "int16", "int", "int64",
+                                "uint8", "uint16", "uint", "uint64", "float", "double", "bool",
+                                "ref", "weakref", "self", "true", "false", "const", "for", "while", 
+								"export" })
+            lang.keywords.insert(k);
+
+        lang.declarations.clear();
+        for (const char* k : { "string", "dictionary", "entityid", "itemid", "vector2d", "vector3d" })
+            lang.declarations.insert(k);
+
+        lang.identifiers.clear();
+        for (const char* k : { "debug", "log", "math", "time", "transform", "entity", "camera",
+                                "light", "physx", "render", "animation", "raycast", "postprocess",
+                                "sound", "game", "player", "cvar", "console", "autokill", "interaction",
+                                "logic", "trigger", "marker", "hp", "data", "item", "dialog", "water",
+                                "npc", "tween", "nav", "input" })
+            lang.identifiers.insert(k);
+
+        initialized = true;
+    }
+    return &lang;
+}
+
+static const TextEditor::Palette& ascPalette()
+{
+    static const TextEditor::Palette p = []() {
+        TextEditor::Palette p = TextEditor::GetDarkPalette();
+        p[static_cast<size_t>(TextEditor::Color::text)]						 = IM_COL32(0xC0, 0xC0, 0xC0, 255);
+        p[static_cast<size_t>(TextEditor::Color::keyword)]					 = IM_COL32(0x24, 0x92, 0xFF, 255);
+        p[static_cast<size_t>(TextEditor::Color::declaration)]				 = IM_COL32(0xFF, 0x2B, 0x95, 255);
+        p[static_cast<size_t>(TextEditor::Color::number)]					 = IM_COL32(0x80, 0xFF, 0x80, 255);
+        p[static_cast<size_t>(TextEditor::Color::string)]					 = IM_COL32(0xFF, 0x80, 0x40, 255);
+        p[static_cast<size_t>(TextEditor::Color::punctuation)]				 = IM_COL32(0xC0, 0xC0, 0xC0, 255);
+        p[static_cast<size_t>(TextEditor::Color::preprocessor)]				 = IM_COL32(0x40, 0xD0, 0xA0, 255);
+        p[static_cast<size_t>(TextEditor::Color::identifier)]				 = IM_COL32(0xC0, 0xC0, 0xC0, 255);
+        p[static_cast<size_t>(TextEditor::Color::knownIdentifier)]			 = IM_COL32(0x80, 0x80, 0xFF, 255);
+        p[static_cast<size_t>(TextEditor::Color::comment)]					 = IM_COL32(0x00, 0x80, 0x00, 255);
+        p[static_cast<size_t>(TextEditor::Color::background)]				 = IM_COL32(0x1E, 0x1E, 0x1E, 255);
+        p[static_cast<size_t>(TextEditor::Color::cursor)]					 = IM_COL32(0xE0, 0xE0, 0xE0, 255);
+        p[static_cast<size_t>(TextEditor::Color::selection)]				 = IM_COL32(0x20, 0x60, 0xA0, 255);
+        p[static_cast<size_t>(TextEditor::Color::whitespace)]				 = IM_COL32(0x50, 0x50, 0x50, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketBackground)] = IM_COL32(0x46, 0x46, 0x46, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketActive)]	 = IM_COL32(0x8C, 0x8C, 0x8C, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketLevel1)]	 = IM_COL32(0xF6, 0xDE, 0x24, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketLevel2)]	 = IM_COL32(0x24, 0x92, 0xFF, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketLevel3)]	 = IM_COL32(0x80, 0x80, 0xFF, 255);
+        p[static_cast<size_t>(TextEditor::Color::matchingBracketError)]		 = IM_COL32(0xC6, 0x08, 0x20, 255);
+        p[static_cast<size_t>(TextEditor::Color::lineNumber)]				 = IM_COL32(0x80, 0x80, 0x90, 255);
+        p[static_cast<size_t>(TextEditor::Color::currentLineNumber)]		 = IM_COL32(0xE0, 0xE0, 0xF0, 255);
+        return p;
+    }();
+    return p;
+}
+
+static TextEditor::Trie               s_ascTrie;
+static TextEditor::AutoCompleteConfig s_ascAutoComplete;
+
+static void initAscAutoComplete()
+{
+    static bool initialized = false;
+    if (initialized) return;
+
+    const auto* lang = ascLanguage();
+    for (auto& kw : lang->keywords)     s_ascTrie.insert(kw);
+    for (auto& kw : lang->declarations) s_ascTrie.insert(kw);
+    for (auto& kw : lang->identifiers)  s_ascTrie.insert(kw);
+
+    std::ifstream funcFile("script_functions.txt");
+    std::string line;
+    while (std::getline(funcFile, line)) {
+        size_t sp = line.find(' ');
+        if (sp == std::string::npos) continue;
+        std::string sig = line.substr(sp + 1);
+        if (!sig.empty() && sig.back() == ';') sig.pop_back();
+        if (!sig.empty()) s_ascTrie.insert(sig);
+    }
+
+    s_ascAutoComplete.triggerOnTyping   = true;
+    s_ascAutoComplete.triggerInComments = false;
+    s_ascAutoComplete.triggerInStrings  = false;
+    s_ascAutoComplete.callback = [](TextEditor::AutoCompleteState& state) {
+        if (state.searchTerm.empty()) return;
+        s_ascTrie.findSuggestions(state.suggestions, state.searchTerm);
+    };
+
+    initialized = true;
+}
+
+static void applyLangSettings(ScriptTab& tab, const std::string& path)
 {
     auto dot = path.rfind('.');
-    if (dot == std::string::npos) return nullptr;
-    std::string ext = path.substr(dot);
-    if (ext == ".frag" || ext == ".vert") return TextEditor::Language::Glsl();
-    if (ext == ".asc")                    return TextEditor::Language::AngelScript();
-    return nullptr;
+    std::string ext = dot != std::string::npos ? path.substr(dot) : "";
+
+    if (ext == ".asc") {
+        initAscAutoComplete();
+        tab.editor.SetLanguage(ascLanguage());
+        tab.editor.SetPalette(ascPalette());
+        tab.editor.SetAutoCompleteConfig(&s_ascAutoComplete);
+    } else if (ext == ".frag" || ext == ".vert") {
+        tab.editor.SetLanguage(TextEditor::Language::Glsl());
+        tab.editor.SetPalette(TextEditor::GetDarkPalette());
+    } else {
+        tab.editor.SetPalette(TextEditor::GetDarkPalette());
+    }
 }
+
+// ---- helpers ----------------------------------------------------------------
 
 static std::string extractName(const std::string& path)
 {
@@ -87,9 +194,8 @@ static void openFile(const std::string& path)
     auto tab = std::make_unique<ScriptTab>();
     tab->path = path;
     tab->name = extractName(path);
-    tab->editor.SetPalette(TextEditor::GetDarkPalette());
     tab->editor.SetText(ss.str());
-    if (auto* lang = detectLanguage(path)) tab->editor.SetLanguage(lang);
+    applyLangSettings(*tab, path);
     tab->savedUndoIndex = tab->editor.GetUndoIndex();
 
     s_tabs.push_back(std::move(tab));
@@ -231,6 +337,10 @@ void EditorInterface::draw_window_script_editor()
     // ---- active editor ------------------------------------------------------
     if (auto* tab = activeTab())
     {
+		tab->editor.SetShowWhitespacesEnabled(false);
+		tab->editor.SetShowSpacesEnabled(false);
+		tab->editor.SetShowTabsEnabled(false);
+
         ImFont* monoFont = ImGui::GetIO().Fonts->Fonts.Size > 1
             ? ImGui::GetIO().Fonts->Fonts[1] : nullptr;
         ImGui::PushFont(monoFont);

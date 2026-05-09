@@ -1020,9 +1020,14 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.IniFilename = "config/imgui.ini";
 
-    float uiFontSize = 15.0f * static_cast<float>(m_configuration.dpi_scale);
-    io.Fonts->AddFontFromFileTTF("content/font/roboto/static/Roboto-Regular.ttf", uiFontSize);
-    io.Fonts->AddFontFromFileTTF("content/font/B612Mono-Regular.ttf", uiFontSize);
+    float scale          = static_cast<float>(m_configuration.dpi_scale);
+    float uiFontSize     = std::round(15.0f * scale);
+    float editorFontSize = std::round(16.0f * scale);
+
+    ImFontConfig fontCfg;
+    fontCfg.PixelSnapH = true;
+    io.Fonts->AddFontFromFileTTF("content/font/roboto/static/Roboto-Regular.ttf", uiFontSize, &fontCfg);
+    io.Fonts->AddFontFromFileTTF("content/font/jetbrains_mono/JetBrainsMono-Regular.ttf", editorFontSize, &fontCfg);
 
     ImGui_ImplOpenGL3_Init("#version 130");
 
