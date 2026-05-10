@@ -852,7 +852,6 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	if (!m_configuration.fullscreen && 
 		Utility::GetCmdlOptionExists(args, "editor"))
 	{
-		// BUG: Resizing window after 1 or 2 resizes crashes program, unknown reason
 		m_device->maximizeWindow();
 		m_device->setResizable(true);
 	}

@@ -49,7 +49,14 @@ build-*/
 3D\ Assets/
 Asset\ Attribution\ LEGAL/
 Backups/
-Binaries/
+Binaries/content/texture/
+Binaries/content/mesh/
+Binaries/content/sound/
+Binaries/content/font/
+Binaries/AS_DEBUG/
+Binaries/log/
+Binaries/saves/
+Binaries/temp/
 Intermediate/
 Licenses/
 log/
