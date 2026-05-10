@@ -274,13 +274,42 @@ void EditorInterface::function_open_scene()
 	}
 }
 
+static void syncSceneDescriptorFromCallbacks()
+{
+	auto desc = WorldManager::Get()->getCurrentSceneDescriptor();
+	desc.ambient_light     = RenderManager::Get()->sceneManager()->getAmbientLight();
+	desc.skydome_texture   = RenderManager::Get()->getCurrentSkydomeTexture();
+	desc.bloomThreshold    = RenderManager::Get()->bloomBrightCallback()->threshold;
+	desc.bloomStrength     = RenderManager::Get()->bloomCompositeCallback()->strength;
+	desc.tonemapExposure   = RenderManager::Get()->tonemapCallback()->exposure;
+	desc.tonemapwhitePoint = RenderManager::Get()->tonemapCallback()->whitePoint;
+	desc.sharpenStrength   = RenderManager::Get()->sharpenCallback()->strength;
+	desc.pixelateSize      = RenderManager::Get()->pixelateCallback()->pixelSize;
+	desc.usePixelate       = RenderManager::Get()->isPixelateEnabled();
+	{
+		auto* cb = RenderManager::Get()->mainShaderCallback();
+		desc.fogDensity  = cb->fogDensity;
+		desc.fogStart    = cb->fogStart;
+		desc.fogColor    = irr::video::SColorf(cb->fogColor[0], cb->fogColor[1], cb->fogColor[2], 1.0f);
+	}
+	desc.useColorGrade     = RenderManager::Get()->isColorGradeEnabled();
+	desc.cgSaturation      = RenderManager::Get()->colorGradeCallback()->saturation;
+	desc.cgBrightness      = RenderManager::Get()->colorGradeCallback()->brightness;
+	desc.cgTintR           = RenderManager::Get()->colorGradeCallback()->colorTint[0];
+	desc.cgTintG           = RenderManager::Get()->colorGradeCallback()->colorTint[1];
+	desc.cgTintB           = RenderManager::Get()->colorGradeCallback()->colorTint[2];
+	desc.usePosterize      = RenderManager::Get()->isPosterizeEnabled();
+	desc.posterizeLevels   = RenderManager::Get()->posterizeCallback()->levels;
+	desc.posterizeStrength = RenderManager::Get()->posterizeCallback()->strength;
+	desc.useFilmGrain      = RenderManager::Get()->isFilmGrainEnabled();
+	desc.filmGrainStrength = RenderManager::Get()->filmGrainCallback()->strength;
+	WorldManager::Get()->setCurrentSceneDescriptor(desc);
+}
+
 static void exportSceneToPath(const std::string& path)
 {
 	if (path.empty()) return;
-	SceneDescriptor scenedesc;
-	scenedesc.ambient_light = RenderManager::Get()->sceneManager()->getAmbientLight();
-	scenedesc.skydome_texture = RenderManager::Get()->getCurrentSkydomeTexture();
-	scenedesc.name = "null";
+	syncSceneDescriptorFromCallbacks();
 	WorldManager::Get()->exportScene(path);
 }
 
@@ -308,6 +337,7 @@ void EditorInterface::function_save_scene_as()
 
 void EditorInterface::function_play_scene()
 {
+	syncSceneDescriptorFromCallbacks();
 	Engine::Get()->stateManager()->setStatePauseResume(ESID_EDITORGAME);
 }
 

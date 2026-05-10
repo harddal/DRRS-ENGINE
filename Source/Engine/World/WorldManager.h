@@ -81,6 +81,28 @@ struct SceneDescriptor
 	bool  usePixelate  = false;
 	float pixelateSize = 4.0f;
 
+	// Fog
+	float fogDensity  = 0.0f;
+	float fogStart    = 5.0f;
+	irr::video::SColorf fogColor = irr::video::SColorf(0.0f, 0.3f, 0.6f, 1.0f);
+
+	// Color grade
+	bool  useColorGrade  = false;
+	float cgSaturation   = 1.0f;
+	float cgBrightness   = 0.0f;
+	float cgTintR        = 1.0f;
+	float cgTintG        = 1.0f;
+	float cgTintB        = 1.0f;
+
+	// Posterize
+	bool  usePosterize   = false;
+	float posterizeLevels  = 24.0f;
+	float posterizeStrength = 0.7f;
+
+	// Film grain
+	bool  useFilmGrain      = false;
+	float filmGrainStrength = 0.025f;
+
 	template <class Archive>
 	void serialize(Archive& archive)
 	{
@@ -92,7 +114,23 @@ struct SceneDescriptor
 		);
 		// Optional fields added after initial release — old .scn files omit them; use inline defaults.
 		try { archive(CEREAL_NVP(usePixelate)); } catch (...) {}
-		try { archive(CEREAL_NVP(pixelateSize)); } catch (...) {};
+		try { archive(CEREAL_NVP(pixelateSize)); } catch (...) {}
+		try { archive(CEREAL_NVP(fogDensity)); } catch (...) {}
+		try { archive(CEREAL_NVP(fogStart)); } catch (...) {}
+		try { archive(CEREAL_NVP(fogColor.r)); } catch (...) {}
+		try { archive(CEREAL_NVP(fogColor.g)); } catch (...) {}
+		try { archive(CEREAL_NVP(fogColor.b)); } catch (...) {}
+		try { archive(CEREAL_NVP(useColorGrade)); } catch (...) {}
+		try { archive(CEREAL_NVP(cgSaturation)); } catch (...) {}
+		try { archive(CEREAL_NVP(cgBrightness)); } catch (...) {}
+		try { archive(CEREAL_NVP(cgTintR)); } catch (...) {}
+		try { archive(CEREAL_NVP(cgTintG)); } catch (...) {}
+		try { archive(CEREAL_NVP(cgTintB)); } catch (...) {}
+		try { archive(CEREAL_NVP(usePosterize)); } catch (...) {}
+		try { archive(CEREAL_NVP(posterizeLevels)); } catch (...) {}
+		try { archive(CEREAL_NVP(posterizeStrength)); } catch (...) {}
+		try { archive(CEREAL_NVP(useFilmGrain)); } catch (...) {}
+		try { archive(CEREAL_NVP(filmGrainStrength)); } catch (...) {}
 	}
 	
     SceneDescriptor& operator=(SceneDescriptor desc)
@@ -117,6 +155,24 @@ struct SceneDescriptor
 
 		std::swap(usePixelate, desc.usePixelate);
 		std::swap(pixelateSize, desc.pixelateSize);
+
+		std::swap(fogDensity, desc.fogDensity);
+		std::swap(fogStart,   desc.fogStart);
+		std::swap(fogColor,   desc.fogColor);
+
+		std::swap(useColorGrade,  desc.useColorGrade);
+		std::swap(cgSaturation,   desc.cgSaturation);
+		std::swap(cgBrightness,   desc.cgBrightness);
+		std::swap(cgTintR,        desc.cgTintR);
+		std::swap(cgTintG,        desc.cgTintG);
+		std::swap(cgTintB,        desc.cgTintB);
+
+		std::swap(usePosterize,       desc.usePosterize);
+		std::swap(posterizeLevels,    desc.posterizeLevels);
+		std::swap(posterizeStrength,  desc.posterizeStrength);
+
+		std::swap(useFilmGrain,      desc.useFilmGrain);
+		std::swap(filmGrainStrength, desc.filmGrainStrength);
 
         return *this;
     }

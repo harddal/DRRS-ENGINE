@@ -70,7 +70,10 @@ public:
 		light.data.OuterCone = light.outerCone;
 		light.data.InnerCone = light.innerCone;
 		light.data.Falloff = light.falloff;
-		light.data.DiffuseColor = light.color_diffuse;
+		light.data.DiffuseColor = irr::video::SColorf(
+			light.color_diffuse.r * light.intensity,
+			light.color_diffuse.g * light.intensity,
+			light.color_diffuse.b * light.intensity);
 		light.node->setLightData(light.data);
 		light.node->setRadius(light.radius);
 		light.node->setVisible(light.visible);

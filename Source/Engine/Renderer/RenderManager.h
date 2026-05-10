@@ -241,6 +241,7 @@ public:
     static void add(ShaderMaterial material);
     static irr::video::E_MATERIAL_TYPE get(std::string name);
     static bool isRefraction(irr::s32 materialType);
+    static const std::vector<ShaderMaterial>& getAll() { return s_ShaderMaterialList; }
 
 private:
     static std::vector<ShaderMaterial> s_ShaderMaterialList;
@@ -269,6 +270,11 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32 userData) override;
 
     void setEnvMap(irr::video::ITexture* t) { m_envMap = t; }
+
+    // Fog — edit directly from the editor, same pattern as bloom/sharpen callbacks
+    float fogColor[3] = { 0.0f, 0.3f, 0.6f };
+    float fogDensity  = 0.0f;   // 0 = fog off; ~0.02 = dense zone fog
+    float fogStart    = 5.0f;   // view-space distance before fog begins
 
 private:
     irr::video::SMaterial m_currentMaterial;
@@ -341,24 +347,6 @@ private:
     irr::video::SMaterial m_currentMaterial;
 };
 
-// Callback for the crystal refraction shader.
-// Standalone (does not extend ShaderConstantSetCallBack) to avoid slot conflicts
-// with lightmap (slot 1) and env map (slot 2) from the base callback.
-// Texture layout: slot 0 = tDiffuse, slot 1 = tNormalMap, slot 2 = tRefraction.
-class CrystalShaderCallback : public irr::video::IShaderConstantSetCallBack
-{
-public:
-    // Per-prop values are encoded in the node's SMaterial and read in OnSetConstants:
-    //   Shininess          → uRefractionStrength
-    //   SpecularColor.a/255 → uTransparency
-    float fresnelPower = 4.0f; // global — same for all crystal props
-
-    void OnSetMaterial(const irr::video::SMaterial& material) override { m_currentMaterial = material; }
-    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32 userData) override;
-
-private:
-    irr::video::SMaterial m_currentMaterial;
-};
 
 // Callback for the FXAA/blit post-process passes.
 class FXAAShaderCallback : public irr::video::IShaderConstantSetCallBack
@@ -419,6 +407,36 @@ class PixelateCallback : public irr::video::IShaderConstantSetCallBack
 {
 public:
     float pixelSize = 4.0f;
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// Saturation boost + multiplicative color tint + brightness lift (LDR, after tonemap).
+class ColorGradeCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float saturation   = 1.0f;             // >1 = boosted saturation (Unreal mode: ~1.6)
+    float brightness   = 0.0f;             // additive lift; 0 = no change
+    float colorTint[3] = { 1.0f, 1.0f, 1.0f }; // multiplicative RGB tint
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// Posterize — stepped color banding simulating a limited palette (Unreal 1 8-bit look).
+class PosterizeCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float levels   = 24.0f; // color steps per channel; lower = more banding
+    float strength = 0.7f;  // 0=off, 1=full banding
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// Film grain — per-frame hash noise simulating analog film/CRT texture.
+class FilmGrainCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float strength = 0.025f; // 0=off; 0.02-0.05 = subtle; >0.1 = heavy
     void OnSetMaterial(const irr::video::SMaterial&) override {}
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
 };
@@ -492,6 +510,7 @@ public:
     irr::scene::ISceneManager*           sceneManager()       const { return m_sceneManager; }
     irr::video::IGPUProgrammingServices* gpu()                const { return m_gpu; }
     irr::gui::IGUIEnvironment*           gui()                const { return m_gui; }
+    ShaderConstantSetCallBack*           mainShaderCallback()  const { return m_shaderConstantCallBack; }
     BarrelHeatShaderCallback*            barrelHeatCallback()  const { return m_barrelHeatCallback; }
     TerrainShaderCallback*               terrainCallback()     const { return m_terrainCallback; }
 	irr::scene::IMeshManipulator*        manipulator()  const { return m_manipulator; }
@@ -670,18 +689,6 @@ public:
         if (it != m_debugNodes.end()) m_debugNodes.erase(it);
     }
 
-    // Refraction nodes are hidden during drawAll() so the opaque-scene grab is clean,
-    // then rendered in the sorted transparent pass with the scene RTT bound to slot 2.
-    void registerRefractionNode(irr::scene::ISceneNode* node)
-    {
-        if (std::find(m_refractionNodes.begin(), m_refractionNodes.end(), node) == m_refractionNodes.end())
-            m_refractionNodes.push_back(node);
-    }
-    void unregisterRefractionNode(irr::scene::ISceneNode* node)
-    {
-        auto it = std::find(m_refractionNodes.begin(), m_refractionNodes.end(), node);
-        if (it != m_refractionNodes.end()) m_refractionNodes.erase(it);
-    }
 
     // Additive/transparent effect nodes (muzzle flashes, particle systems) that were
     // tuned for LDR. Like debug nodes they are excluded from the HDR scene capture and
@@ -717,10 +724,21 @@ public:
     TonemapCallback*        tonemapCallback()        const { return m_tonemapCallback; }
     SharpenCallback*        sharpenCallback()        const { return m_sharpenCallback; }
     PixelateCallback*       pixelateCallback()       const { return m_pixelateCallback; }
+    ColorGradeCallback*     colorGradeCallback()     const { return m_colorGradeCallback; }
+    PosterizeCallback*      posterizeCallback()      const { return m_posterizeCallback; }
+    FilmGrainCallback*      filmGrainCallback()      const { return m_filmGrainCallback; }
 
-    void setTonemapEnabled(bool enabled)  { setPostProcessPassEnabled("tonemap",  enabled); }
-    void setSharpenEnabled(bool enabled)  { setPostProcessPassEnabled("sharpen",  enabled); }
-    void setPixelateEnabled(bool enabled) { setPostProcessPassEnabled("pixelate", enabled); }
+    void setTonemapEnabled(bool enabled)     { setPostProcessPassEnabled("tonemap",     enabled); }
+    void setSharpenEnabled(bool enabled)     { setPostProcessPassEnabled("sharpen",     enabled); }
+    void setPixelateEnabled(bool enabled)    { setPostProcessPassEnabled("pixelate",    enabled); }
+    void setColorGradeEnabled(bool enabled)  { setPostProcessPassEnabled("colorgrade",  enabled); }
+    void setPosterizeEnabled(bool enabled)   { setPostProcessPassEnabled("posterize",   enabled); }
+    void setFilmGrainEnabled(bool enabled)   { setPostProcessPassEnabled("filmgrain",   enabled); }
+
+    bool isPixelateEnabled()   const { return getPostProcessPassEnabled("pixelate");   }
+    bool isColorGradeEnabled() const { return getPostProcessPassEnabled("colorgrade"); }
+    bool isPosterizeEnabled()  const { return getPostProcessPassEnabled("posterize");  }
+    bool isFilmGrainEnabled()  const { return getPostProcessPassEnabled("filmgrain");  }
 
     // Shadow mapping — directional shadow map driven by the first ELT_DIRECTIONAL light.
     void  setShadowBias(float b)     { m_shadowBias = b; }
@@ -764,7 +782,6 @@ private:
     WaterShaderCallback*       m_waterCallback;
     BarrelHeatShaderCallback*  m_barrelHeatCallback;
     TerrainShaderCallback*     m_terrainCallback;
-    CrystalShaderCallback*     m_crystalCallback    = nullptr;
 
     IrrImGuiEventReceiver m_imguiEventReceiver;
 
@@ -800,7 +817,6 @@ private:
     // Debug nodes are hidden during the main scene pass (excluded from bloom/
     // tonemap) and drawn directly to the backbuffer after post-processing.
     std::vector<irr::scene::ISceneNode*> m_debugNodes;
-    std::vector<irr::scene::ISceneNode*> m_refractionNodes;
 
     // LDR-composited effect nodes — same hide/restore/render-after-PP pattern as
     // debug nodes, but for gameplay effects (muzzle flashes, SPARK particles).
@@ -823,23 +839,11 @@ private:
     void runPostProcessChain();
     void drawFullscreenQuad();
     void measureAndAdaptExposure(irr::f32 dt);
-    void grabSceneForRefraction();
-    void drawCrystalPass();
-    void drawSortedCrystalBuffer(irr::scene::IMeshBuffer* buf,
-                                 const irr::video::SMaterial& mat,
-                                 const irr::core::vector3df& camWorldPos,
-                                 const irr::core::matrix4& worldTransform);
-
-    // RGBA16F scene RTT — receives the 3D scene before post-process.
     irr::video::ITexture* m_sceneRTT      = nullptr;
-    // Ping-pong RTTs for multi-pass chains.
     irr::video::ITexture* m_ppRTT[2]      = { nullptr, nullptr };
-    // 1x1 RTT for log-average luminance readback.
     irr::video::ITexture* m_lumRTT        = nullptr;
-    // Copy of the opaque scene grabbed before the refraction pass draws.
-    irr::video::ITexture* m_refractionRTT = nullptr;
     irr::s32              m_lumMaterial  = -1;
-    irr::s32              m_blitMat      = -1; // cached for grabSceneForRefraction()
+    irr::s32              m_blitMat      = -1;
 
     std::vector<PostProcessPass> m_postProcessPasses;
     FXAAShaderCallback*          m_blitCallback            = nullptr;
@@ -851,6 +855,9 @@ private:
     TonemapCallback*             m_tonemapCallback         = nullptr;
     SharpenCallback*             m_sharpenCallback         = nullptr;
     PixelateCallback*            m_pixelateCallback        = nullptr;
+    ColorGradeCallback*          m_colorGradeCallback      = nullptr;
+    PosterizeCallback*           m_posterizeCallback       = nullptr;
+    FilmGrainCallback*           m_filmGrainCallback       = nullptr;
     LumMeasureCallback*          m_lumMeasureCallback      = nullptr;
 
     // Shadow mapping

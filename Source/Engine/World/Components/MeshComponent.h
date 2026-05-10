@@ -75,10 +75,14 @@ struct MeshComponent : anax::Component
 	irr::scene::ITriangleSelector* selector;
 
     irr::video::E_MATERIAL_TYPE renderMaterial;
+    std::string shaderName; // shader key for ShaderMaterialManager; empty = "phong_perpixel"
 
     // Lightmap data — populated by LightmapBaker after a bake pass.
     // Null until the entity has been baked.
     MeshLightmap* lightmap = nullptr;
+
+    // Per-material shader params uploaded as MaterialTypeParams[0..7] on node creation.
+    float materialTypeParams[8] = {};
 
 	template <class Archive>
 	void serialize(Archive& archive)
@@ -88,6 +92,16 @@ struct MeshComponent : anax::Component
 			CEREAL_NVP(receiveShadows), CEREAL_NVP(castShadows), CEREAL_NVP(transparent), CEREAL_NVP(disableZDraw), CEREAL_NVP(recalculateNormals), CEREAL_NVP(texturePointFilter),
 			CEREAL_NVP(disableDeferredRendering), CEREAL_NVP(renderMaterial), CEREAL_NVP(isViewmodel),
 			CEREAL_NVP(navCookable));
+        try { archive(CEREAL_NVP(shaderName)); } catch (cereal::Exception&) {}
+        try { archive(cereal::make_nvp("mtp0", materialTypeParams[0]),
+                      cereal::make_nvp("mtp1", materialTypeParams[1]),
+                      cereal::make_nvp("mtp2", materialTypeParams[2]),
+                      cereal::make_nvp("mtp3", materialTypeParams[3]),
+                      cereal::make_nvp("mtp4", materialTypeParams[4]),
+                      cereal::make_nvp("mtp5", materialTypeParams[5]),
+                      cereal::make_nvp("mtp6", materialTypeParams[6]),
+                      cereal::make_nvp("mtp7", materialTypeParams[7])); }
+        catch (cereal::Exception&) {}
 	}
 
 	MeshComponent() :

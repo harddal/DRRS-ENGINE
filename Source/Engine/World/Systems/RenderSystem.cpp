@@ -159,22 +159,19 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 
     meshComponent.node->setMaterialFlag(EMF_ZBUFFER, !meshComponent.disableZDraw);
 
-	if (meshComponent.transparent)
 	{
-		//meshComponent.renderMaterial = EMT_TRANSPARENT_ALPHA_CHANNEL;
-		meshComponent.node->setMaterialType(meshComponent.renderMaterial);
-		meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, true);
+		// Resolve shader: named shader takes priority; fall back to renderMaterial for old saves.
+		const std::string& sn = meshComponent.shaderName;
+		auto resolvedMat = sn.empty()
+		    ? ShaderMaterialManager::get("phong_perpixel")
+		    : ShaderMaterialManager::get(sn);
+		if (resolvedMat != EMT_SOLID)
+			meshComponent.node->setMaterialType(resolvedMat);
 
-		meshComponent.node->setMaterialFlag(EMF_BLEND_OPERATION, true);
-	}
-	else
-	{
-		// Apply the per-pixel Blinn-Phong shader to all solid (non-transparent) meshes.
-		// Without this the node defaults to Irrlicht's built-in vertex lighting.
-		auto perpixelMat = ShaderMaterialManager::get("phong_perpixel");
-		if (perpixelMat != EMT_SOLID) // only assign if shader compiled successfully
+		if (meshComponent.transparent)
 		{
-			meshComponent.node->setMaterialType(perpixelMat);
+			meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, true);
+			meshComponent.node->setMaterialFlag(EMF_BLEND_OPERATION, true);
 		}
 	}
 
@@ -197,6 +194,8 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 	{
 		meshComponent.node->getMaterial(i).Shininess = 0.f;
 		meshComponent.node->getMaterial(i).SpecularColor.setAlpha(0);
+        for (u32 p = 0; p < 8; ++p)
+            meshComponent.node->getMaterial(i).MaterialTypeParams[p] = meshComponent.materialTypeParams[p];
 	}
 
 	// Apply water shader if entity has water component
@@ -430,7 +429,13 @@ void RenderSystem::setDebugMeshComponentData(anax::Entity& entity)
 void RenderSystem::setLightComponentData(anax::Entity& entity)
 {
     auto& lightComponent = entity.getComponent<LightComponent>();
-    auto &transform = entity.getComponent<TransformComponent>();
+    auto& transform = entity.getComponent<TransformComponent>();
+
+	if (lightComponent.coronaNode) {
+		RenderManager::Get()->unregisterLDREffectNode(lightComponent.coronaNode);
+		lightComponent.coronaNode->remove();
+		lightComponent.coronaNode = nullptr;
+	}
 
 	if (lightComponent.mode == LM_DYNAMIC || lightComponent.mode == LM_DYNAMIC_SHADOW)
 	{
@@ -441,9 +446,6 @@ void RenderSystem::setLightComponentData(anax::Entity& entity)
 		lightComponent.node =
 			RenderManager::Get()->sceneManager()->addLightSceneNode(transform.node);
 
-		// DEPRECATED
-		//lightComponent.node->setPosition(transform.position + lightComponent.offset);
-
 		lightComponent.node->setID(entity.getComponent<DescriptorComponent>().id);
 
 		if (entity.getComponent<DescriptorComponent>().isDebug && Engine::Get()->isGameMode()) {
@@ -451,6 +453,25 @@ void RenderSystem::setLightComponentData(anax::Entity& entity)
 		}
 
 		setLightData(lightComponent);
+
+		if (lightComponent.showCorona) {
+			auto* sm  = RenderManager::Get()->sceneManager();
+			auto* drv = RenderManager::Get()->driver();
+
+			lightComponent.coronaNode = sm->addBillboardSceneNode(
+				transform.node,
+				irr::core::dimension2d<irr::f32>(lightComponent.coronaSize, lightComponent.coronaSize));
+
+			auto* tex = drv->getTexture("content/texture/fx/corona.png");
+			if (tex)
+				lightComponent.coronaNode->setMaterialTexture(0, tex);
+
+			lightComponent.coronaNode->setMaterialType(EMT_TRANSPARENT_ADD_COLOR);
+			lightComponent.coronaNode->setMaterialFlag(EMF_LIGHTING, false);
+			lightComponent.coronaNode->setMaterialFlag(EMF_ZWRITE_ENABLE, false);
+
+			RenderManager::Get()->registerLDREffectNode(lightComponent.coronaNode);
+		}
 	}
 }
 void RenderSystem::setBillboardComponentData(anax::Entity& entity)
@@ -677,9 +698,16 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 	}
 	
 	if (entity.hasComponent<LightComponent>()) {
-		
-		if (entity.getComponent<LightComponent>().mode != LM_STATIC)
-			entity.getComponent<LightComponent>().node->remove();
+		auto& lc = entity.getComponent<LightComponent>();
+
+		if (lc.coronaNode) {
+			RenderManager::Get()->unregisterLDREffectNode(lc.coronaNode);
+			lc.coronaNode->remove();
+			lc.coronaNode = nullptr;
+		}
+
+		if (lc.mode != LM_STATIC)
+			lc.node->remove();
 	}
 
 	if (entity.hasComponent<BillboardSpriteComponent>()) {
@@ -748,6 +776,25 @@ void RenderSystem::update()
 				lightComponent.node->setID(entity.getComponent<DescriptorComponent>().id);
 
 				lightComponent.node->setVisible(render.isVisible && lightComponent.visible);
+				if (lightComponent.coronaNode) {
+					bool vis = render.isVisible && lightComponent.visible;
+					lightComponent.coronaNode->setVisible(vis);
+					if (vis) {
+						lightComponent.coronaNode->setSize(
+							dimension2d<f32>(lightComponent.coronaSize, lightComponent.coronaSize));
+						auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
+						if (cam) {
+							float dist = (cam->getAbsolutePosition() - lightComponent.node->getAbsolutePosition()).getLength();
+							float range = lightComponent.coronaFadeFar - lightComponent.coronaFadeNear;
+							float fade  = clamp((lightComponent.coronaFadeFar - dist) / (range > 0.001f ? range : 0.001f), 0.0f, 1.0f);
+							auto u8c = [&](float f) -> u32 { return static_cast<u32>(clamp(f * fade * 255.0f, 0.0f, 255.0f)); };
+							lightComponent.coronaNode->setColor(SColor(255,
+								u8c(lightComponent.color_diffuse.r * lightComponent.intensity),
+								u8c(lightComponent.color_diffuse.g * lightComponent.intensity),
+								u8c(lightComponent.color_diffuse.b * lightComponent.intensity)));
+						}
+					}
+				}
 
 				if (lightComponent.update_component_data) {
 					lightComponent.update_component_data = false;
@@ -869,6 +916,25 @@ void RenderSystem::forceTransformUpdate(bool updateLights)
 				lightComponent.node->setID(entity.getComponent<DescriptorComponent>().id);
 
 				lightComponent.node->setVisible(render.isVisible && lightComponent.visible);
+				if (lightComponent.coronaNode) {
+					bool vis = render.isVisible && lightComponent.visible;
+					lightComponent.coronaNode->setVisible(vis);
+					if (vis) {
+						lightComponent.coronaNode->setSize(
+							dimension2d<f32>(lightComponent.coronaSize, lightComponent.coronaSize));
+						auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
+						if (cam) {
+							float dist = (cam->getAbsolutePosition() - lightComponent.node->getAbsolutePosition()).getLength();
+							float range = lightComponent.coronaFadeFar - lightComponent.coronaFadeNear;
+							float fade  = clamp((lightComponent.coronaFadeFar - dist) / (range > 0.001f ? range : 0.001f), 0.0f, 1.0f);
+							auto u8c = [&](float f) -> u32 { return static_cast<u32>(clamp(f * fade * 255.0f, 0.0f, 255.0f)); };
+							lightComponent.coronaNode->setColor(SColor(255,
+								u8c(lightComponent.color_diffuse.r * lightComponent.intensity),
+								u8c(lightComponent.color_diffuse.g * lightComponent.intensity),
+								u8c(lightComponent.color_diffuse.b * lightComponent.intensity)));
+						}
+					}
+				}
 
 				if (lightComponent.update_component_data) {
 					lightComponent.update_component_data = false;

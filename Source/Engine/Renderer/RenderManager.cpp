@@ -113,74 +113,6 @@ void WaterShaderCallback::OnSetConstants(IMaterialRendererServices* services, s3
     services->setPixelShaderConstant("uAlpha",     &alpha,    1);
 }
 
-void CrystalShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
-{
-    const auto driver = services->getVideoDriver();
-
-    // Sampler slots — slot 2 (tRefraction) is injected by drawTransparentPass() each draw
-    int slot0 = 0, slot1 = 1, slot2 = 2;
-    services->setPixelShaderConstant("tDiffuse",    &slot0, 1);
-    services->setPixelShaderConstant("tNormalMap",  &slot1, 1);
-    services->setPixelShaderConstant("tRefraction", &slot2, 1);
-
-    float refractionStrength = m_currentMaterial.Shininess;
-    float transparency       = m_currentMaterial.SpecularColor.getAlpha() / 255.0f;
-    float crystalColor[3]    = {
-        m_currentMaterial.AmbientColor.getRed()   / 255.0f,
-        m_currentMaterial.AmbientColor.getGreen() / 255.0f,
-        m_currentMaterial.AmbientColor.getBlue()  / 255.0f
-    };
-    float fresnelStrength = m_currentMaterial.MaterialTypeParam;
-    float shimmerSpeed    = m_currentMaterial.MaterialTypeParam2;
-
-    static const auto s_startTime = std::chrono::steady_clock::now();
-    float uTime = std::chrono::duration<float>(
-        std::chrono::steady_clock::now() - s_startTime).count();
-
-    services->setPixelShaderConstant("uRefractionStrength", &refractionStrength, 1);
-    services->setPixelShaderConstant("uTransparency",       &transparency,       1);
-    services->setPixelShaderConstant("uFresnelPower",       &fresnelPower,       1);
-    services->setPixelShaderConstant("uFresnelStrength",    &fresnelStrength,    1);
-    services->setPixelShaderConstant("uShimmerSpeed",       &shimmerSpeed,       1);
-    services->setPixelShaderConstant("uTime",               &uTime,              1);
-    services->setPixelShaderConstant("uCrystalColor",        crystalColor,       3);
-
-    auto res = vector2df(
-        static_cast<f32>(driver->getScreenSize().Width),
-        static_cast<f32>(driver->getScreenSize().Height));
-    services->setPixelShaderConstant("iResolution", reinterpret_cast<f32*>(&res), 2);
-
-    // Lights in view space — same gather as ShaderConstantSetCallBack
-    static constexpr int MAX_LIGHTS = 8;
-    vector3df objectPos = driver->getTransform(ETS_WORLD).getTranslation();
-    auto lights = RenderManager::gatherClosestLights(driver, RenderManager::Get()->sceneManager(), objectPos, MAX_LIGHTS);
-
-    float lightPos   [MAX_LIGHTS * 3] = {};
-    float lightColor [MAX_LIGHTS * 4] = {};
-    float lightRadius[MAX_LIGHTS]     = {};
-    int   lightCount = static_cast<int>(lights.size());
-
-    for (int i = 0; i < lightCount; ++i)
-    {
-        lightPos[i * 3 + 0] = lights[i].pos.X;
-        lightPos[i * 3 + 1] = lights[i].pos.Y;
-        lightPos[i * 3 + 2] = lights[i].pos.Z;
-        lightColor[i * 4 + 0] = lights[i].color.r;
-        lightColor[i * 4 + 1] = lights[i].color.g;
-        lightColor[i * 4 + 2] = lights[i].color.b;
-        lightColor[i * 4 + 3] = 1.0f;
-        lightRadius[i] = lights[i].radius;
-    }
-
-    services->setPixelShaderConstant("uLightPos[0]",    lightPos,    MAX_LIGHTS * 3);
-    services->setPixelShaderConstant("uLightColor[0]",  lightColor,  MAX_LIGHTS * 4);
-    services->setPixelShaderConstant("uLightRadius[0]", lightRadius, MAX_LIGHTS);
-    float fLightCount = static_cast<float>(lightCount);
-    services->setPixelShaderConstant("uLightCount", &fLightCount, 1);
-
-    float ambient = RenderManager::Get()->sceneManager()->getAmbientLight().getRed();
-    services->setPixelShaderConstant("uAmbient", &ambient, 1);
-}
 
 void ShaderMaterialManager::add(ShaderMaterial material)
 {
@@ -347,10 +279,15 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     const irr::video::SMaterial& mat = m_currentMaterial;
     float roughness = 1.0f - sqrtf(irr::core::clamp(mat.Shininess, 0.0f, 128.0f) / 128.0f);
     float metallic  = static_cast<float>(mat.SpecularColor.getAlpha()) / 255.0f;
-    float ambient   = RenderManager::Get()->sceneManager()->getAmbientLight().getRed();
-    services->setPixelShaderConstant("uRoughness", &roughness, 1);
-    services->setPixelShaderConstant("uMetallic",  &metallic,  1);
-    services->setPixelShaderConstant("uAmbient",   &ambient,   1);
+    auto ambLight = RenderManager::Get()->sceneManager()->getAmbientLight();
+    float ambientColor[3] = { ambLight.getRed(), ambLight.getGreen(), ambLight.getBlue() };
+    services->setPixelShaderConstant("uRoughness",    &roughness,    1);
+    services->setPixelShaderConstant("uMetallic",     &metallic,     1);
+    services->setPixelShaderConstant("uAmbientColor", ambientColor,  3);
+
+    services->setPixelShaderConstant("uFogColor",   fogColor,    3);
+    services->setPixelShaderConstant("uFogDensity", &fogDensity, 1);
+    services->setPixelShaderConstant("uFogStart",   &fogStart,   1);
 
     // --- Environment map ---
     // Bind the equirectangular env map to slot 2 and tell the shader whether it's present.
@@ -383,6 +320,28 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
         services->setPixelShaderConstant("uCamUp",      reinterpret_cast<f32*>(&up),      3);
         services->setPixelShaderConstant("uCamForward", reinterpret_cast<f32*>(&forward), 3);
     }
+
+    // Fresnel rim + per-material alpha — read from MaterialTypeParams slots [2]/[3]
+    // and DiffuseColor.alpha so crystal/glassy props need no separate shader.
+    // Non-crystal materials leave these at 0/0/255 so defaults are harmless.
+    float fresnelStrength = m_currentMaterial.MaterialTypeParams[2];
+    float fresnelPower    = m_currentMaterial.MaterialTypeParams[3] > 0.0f
+                          ? m_currentMaterial.MaterialTypeParams[3] : 4.0f;
+    float matAlpha        = static_cast<float>(m_currentMaterial.DiffuseColor.getAlpha()) / 255.0f;
+    services->setPixelShaderConstant("uFresnelStrength", &fresnelStrength, 1);
+    services->setPixelShaderConstant("uFresnelPower",    &fresnelPower,    1);
+    services->setPixelShaderConstant("uAlpha",           &matAlpha,        1);
+
+    // UV scroll + warp — driven by MaterialTypeParams[4..7].
+    float uTimeSec    = static_cast<float>(Engine::Get()->getCurrentTime()) / 1000.0f;
+    float uvScroll[2] = { m_currentMaterial.MaterialTypeParams[4],
+                          m_currentMaterial.MaterialTypeParams[5] };
+    float warpAmp     = m_currentMaterial.MaterialTypeParams[6];
+    float warpSpeed   = m_currentMaterial.MaterialTypeParams[7];
+    services->setPixelShaderConstant("uTime",         &uTimeSec,  1);
+    services->setPixelShaderConstant("uTexScroll",    uvScroll,   2);
+    services->setPixelShaderConstant("uTexWarpAmp",   &warpAmp,   1);
+    services->setPixelShaderConstant("uTexWarpSpeed", &warpSpeed, 1);
 }
 
 void TerrainShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
@@ -472,6 +431,32 @@ void PixelateCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("uRcpFrame", rcpFrame, 2);
 }
 
+void ColorGradeCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int slot = 0;
+    services->setPixelShaderConstant("tScene",       &slot,      1);
+    services->setPixelShaderConstant("uSaturation",  &saturation, 1);
+    services->setPixelShaderConstant("uBrightness",  &brightness, 1);
+    services->setPixelShaderConstant("uColorTint",   colorTint,  3);
+}
+
+void PosterizeCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int slot = 0;
+    services->setPixelShaderConstant("tScene",    &slot,     1);
+    services->setPixelShaderConstant("uLevels",   &levels,   1);
+    services->setPixelShaderConstant("uStrength", &strength, 1);
+}
+
+void FilmGrainCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int slot = 0;
+    float t  = static_cast<float>(Engine::Get()->getCurrentTime()) / 1000.0f;
+    services->setPixelShaderConstant("tScene",         &slot,     1);
+    services->setPixelShaderConstant("uGrainStrength", &strength, 1);
+    services->setPixelShaderConstant("uTime",          &t,        1);
+}
+
 void FXAAShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
 {
     int slot = 0;
@@ -491,16 +476,14 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     if (m_ppRTT[0])      { m_driver->removeTexture(m_ppRTT[0]);      m_ppRTT[0]      = nullptr; }
     if (m_ppRTT[1])      { m_driver->removeTexture(m_ppRTT[1]);      m_ppRTT[1]      = nullptr; }
     if (m_lumRTT)        { m_driver->removeTexture(m_lumRTT);        m_lumRTT        = nullptr; }
-    if (m_refractionRTT) { m_driver->removeTexture(m_refractionRTT); m_refractionRTT = nullptr; }
 
     irr::core::dimension2du sz(w, h);
     m_sceneRTT      = m_driver->addRenderTargetTexture(sz, "pp_scene",     QUAD_COLOR_MODE);
     m_ppRTT[0]      = m_driver->addRenderTargetTexture(sz, "pp_buf0",      QUAD_COLOR_MODE);
     m_ppRTT[1]      = m_driver->addRenderTargetTexture(sz, "pp_buf1",      QUAD_COLOR_MODE);
     m_lumRTT        = m_driver->addRenderTargetTexture(irr::core::dimension2du(1, 1), "pp_lum", QUAD_COLOR_MODE);
-    m_refractionRTT = m_driver->addRenderTargetTexture(sz, "pp_refraction", QUAD_COLOR_MODE);
 
-    if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT || !m_refractionRTT)
+    if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT)
         spdlog::error("RenderManager: failed to create post-process RTTs ({}x{})", w, h);
 
     // Load FBO extension functions for depth blitting (only once — they don't change).
@@ -652,146 +635,6 @@ void RenderManager::drawFullscreenQuad()
         irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
 }
 
-void RenderManager::grabSceneForRefraction()
-{
-    if (!m_refractionRTT || !m_sceneRTT) return;
-
-    m_driver->setRenderTarget(m_refractionRTT, false, false, irr::video::SColor(0));
-
-    irr::video::SMaterial mat;
-    mat.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_blitMat);
-    mat.setTexture(0, m_sceneRTT);
-    mat.ZBuffer         = 0;
-    mat.ZWriteEnable    = false;
-    mat.Lighting        = false;
-    mat.BackfaceCulling = false;
-    m_driver->setMaterial(mat);
-    drawFullscreenQuad();
-
-    // Restore the scene RTT as the active render target so the crystal pass
-    // continues writing into it.
-    m_driver->setRenderTarget(m_sceneRTT, false, false, irr::video::SColor(0));
-}
-
-void RenderManager::drawCrystalPass()
-{
-    if (m_refractionNodes.empty() || !m_refractionRTT) return;
-
-    auto* camera = m_sceneManager->getActiveCamera();
-    if (!camera) return;
-
-    const irr::core::vector3df camPos = camera->getAbsolutePosition();
-
-    for (auto* node : m_refractionNodes)
-    {
-        if (!node->isVisible()) return;
-
-        irr::scene::IMesh* mesh = nullptr;
-        irr::scene::ESCENE_NODE_TYPE ntype = node->getType();
-
-        if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
-            mesh = static_cast<irr::scene::IMeshSceneNode*>(node)->getMesh();
-        else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
-        {
-            auto* anim = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
-            if (anim->getMesh())
-                mesh = anim->getMesh()->getMesh(anim->getFrameNr());
-        }
-
-        if (!mesh) continue;
-
-        m_driver->setTransform(irr::video::ETS_WORLD, node->getAbsoluteTransformation());
-
-        for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
-        {
-            irr::video::SMaterial mat = node->getMaterial(b);
-            mat.ZWriteEnable     = true;   // depth buffer resolves all triangle ordering
-            mat.FrontfaceCulling = false;  // render both faces; gl_FrontFacing handles normals
-            mat.BackfaceCulling  = false;
-            mat.setTexture(2, m_refractionRTT);
-
-            drawSortedCrystalBuffer(
-                mesh->getMeshBuffer(b), mat, camPos,
-                node->getAbsoluteTransformation());
-        }
-    }
-
-    // Restore state for subsequent passes
-    irr::video::SMaterial restore;
-    restore.ZWriteEnable = true;
-    m_driver->setMaterial(restore);
-}
-
-void RenderManager::drawSortedCrystalBuffer(
-    irr::scene::IMeshBuffer* buf,
-    const irr::video::SMaterial& mat,
-    const irr::core::vector3df& camWorldPos,
-    const irr::core::matrix4& worldTransform)
-{
-    const irr::u32 indexCount = buf->getIndexCount();
-    if (indexCount < 3) return;
-    const irr::u32 triCount = indexCount / 3;
-
-    // Vertex position accessor — handles all three Irrlicht vertex formats
-    auto getPos = [&](irr::u32 i) -> irr::core::vector3df
-    {
-        switch (buf->getVertexType())
-        {
-        case irr::video::EVT_2TCOORDS:
-            return static_cast<irr::video::S3DVertex2TCoords*>(buf->getVertices())[i].Pos;
-        case irr::video::EVT_TANGENTS:
-            return static_cast<irr::video::S3DVertexTangents*>(buf->getVertices())[i].Pos;
-        default:
-            return static_cast<irr::video::S3DVertex*>(buf->getVertices())[i].Pos;
-        }
-    };
-
-    const irr::u16* idx16 = nullptr;
-    const irr::u32* idx32 = nullptr;
-    if (buf->getIndexType() == irr::video::EIT_16BIT)
-        idx16 = reinterpret_cast<const irr::u16*>(buf->getIndices());
-    else
-        idx32 = reinterpret_cast<const irr::u32*>(buf->getIndices());
-
-    auto getIndex = [&](irr::u32 i) -> irr::u32
-    { return idx16 ? irr::u32(idx16[i]) : idx32[i]; };
-
-    // Compute per-triangle centroid distance to camera in world space
-    struct TriSort { float distSq; irr::u32 triIdx; };
-    std::vector<TriSort> tris(triCount);
-
-    for (irr::u32 t = 0; t < triCount; ++t)
-    {
-        irr::core::vector3df c = (getPos(getIndex(t * 3))
-                                + getPos(getIndex(t * 3 + 1))
-                                + getPos(getIndex(t * 3 + 2))) / 3.0f;
-        worldTransform.transformVect(c);
-        irr::core::vector3df d = c - camWorldPos;
-        tris[t] = { d.dotProduct(d), t };
-    }
-
-    // Near-to-far: early-Z rejects far triangles cheaply when ZWrite=true.
-    std::sort(tris.begin(), tris.end(),
-        [](const TriSort& a, const TriSort& b) { return a.distSq < b.distSq; });
-
-    // Build sorted 16-bit index list (vertex counts on crystal meshes won't exceed 65535)
-    std::vector<irr::u16> sortedIdx(indexCount);
-    for (irr::u32 t = 0; t < triCount; ++t)
-    {
-        irr::u32 src = tris[t].triIdx * 3;
-        sortedIdx[t * 3 + 0] = static_cast<irr::u16>(getIndex(src + 0));
-        sortedIdx[t * 3 + 1] = static_cast<irr::u16>(getIndex(src + 1));
-        sortedIdx[t * 3 + 2] = static_cast<irr::u16>(getIndex(src + 2));
-    }
-
-    m_driver->setMaterial(mat);
-    m_driver->drawVertexPrimitiveList(
-        buf->getVertices(), buf->getVertexCount(),
-        sortedIdx.data(), triCount,
-        buf->getVertexType(),
-        irr::scene::EPT_TRIANGLES,
-        irr::video::EIT_16BIT);
-}
 
 void RenderManager::runPostProcessChain()
 {
@@ -1058,7 +901,7 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     stringw windowName = name.c_str();
     m_device->setWindowCaption(windowName.c_str());
 
-    m_sceneManager->setAmbientLight(SColor(255, 0, 0, 0)); // black: per-pixel shader controls ambient via uAmbient
+    m_sceneManager->setAmbientLight(SColor(255, 0, 0, 0)); // black: per-pixel shader controls ambient via uAmbientColor
 
     m_sceneManager->getParameters()->setAttribute(ALLOW_ZWRITE_ON_TRANSPARENT, true);
 
@@ -1238,37 +1081,12 @@ void RenderManager::draw(f32 dt)
         m_ldrEffectNodes[i]->setVisible(false);
     }
 
-    // Hide refraction (crystal) nodes so the opaque-scene grab is clean — no dark
-    // crystal shapes baked into tRefraction before those nodes get a chance to draw.
-    std::vector<bool> refractionWasVisible(m_refractionNodes.size());
-    for (size_t i = 0; i < m_refractionNodes.size(); ++i)
-    {
-        refractionWasVisible[i] = m_refractionNodes[i]->isVisible();
-        m_refractionNodes[i]->setVisible(false);
-    }
-
     // Shadow depth pre-pass — renders the scene from the light's POV into m_shadowMapRTT.
-    // Viewmodel, debug, LDR effect, and refraction nodes are already hidden above,
-    // so they are automatically excluded from shadow casting.
     drawShadowPass();
 
     m_sceneManager->drawAll();
 
-    // Copy the opaque scene into the refraction buffer before crystal objects draw.
-    // Crystal fragments sample this to avoid a read/write feedback loop on m_sceneRTT.
-    grabSceneForRefraction();
-
-    // Restore refraction nodes for the crystal pass.
-    for (size_t i = 0; i < m_refractionNodes.size(); ++i)
-        m_refractionNodes[i]->setVisible(refractionWasVisible[i]);
-
-    // Crystal pass — dedicated opaque-style pass with ZWrite=true so the hardware
-    // depth buffer resolves all triangle ordering. Must run after the grab so
-    // crystals can sample the clean opaque scene from m_refractionRTT.
-    drawCrystalPass();
-
-    // Sorted transparent pass — real alpha-blended objects only (water, particles…).
-    // Crystals are excluded; they are handled entirely by drawCrystalPass above.
+    // Sorted transparent pass — water, particles, crystal props (now phong_perpixel_transparent).
     drawTransparentPass();
 
     // Blit world geometry depth from the scene RTT into the backbuffer NOW,
@@ -1381,18 +1199,9 @@ void RenderManager::draw(f32 dt)
             preSrc = dst;
         }
 
-        // Composite LDR effects into the pre-pixelate RTT.
-        m_driver->setRenderTarget(preSrc, false, false);
-        for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
-        {
-            if (!ldrWasVisible[i]) continue;
-            auto* n = m_ldrEffectNodes[i];
-            n->updateAbsolutePosition();
-            m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
-            n->render();
-        }
-
-        // Apply pixelate: preSrc (scene + LDR effects) → backbuffer.
+        // Apply pixelate: preSrc → backbuffer.
+        // LDR effect nodes are rendered to the backbuffer unconditionally below,
+        // after the depth blit, so they always depth-test against scene geometry.
         m_driver->setRenderTarget(nullptr, false, false);
         {
             PostProcessPass* pixPass = activePasses.back();
@@ -1423,16 +1232,11 @@ void RenderManager::draw(f32 dt)
         n->render();
     }
 
-    // Depth pre-pass and LDR-to-backbuffer only when pixelate did not already
-    // capture LDR effects into its input RTT above.
-    if (!pixelateCaptureLDR)
-    {
-        // Depth pre-pass: stamp viewmodel geometry into the backbuffer depth buffer so
-        // LDR effects depth-test against the gun, not just world geometry.
-        // GL_ALWAYS matches the clearZBuffer contract — viewmodels are unconditionally
-        // in front of the world, so their depth always wins at their covered pixels.
-        // Color writes are suppressed; depth func is restored by the first n->render() below.
-        if (!m_viewmodelNodes.empty())
+    // Depth pre-pass: stamp viewmodel geometry into the backbuffer depth buffer so
+    // LDR effects depth-test against the gun, not just world geometry.
+    // Runs unconditionally — LDR nodes always render to the backbuffer (which holds the
+    // blitted scene depth) so depth testing is consistent in both edit and game mode.
+    if (!m_viewmodelNodes.empty())
         {
             irr::video::SMaterial depthMat;
             depthMat.ZWriteEnable = true;
@@ -1462,21 +1266,26 @@ void RenderManager::draw(f32 dt)
             }
 
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        }
+            // The raw glDepthFunc(GL_ALWAYS) above desynchronises Irrlicht's state tracker:
+            // Irrlicht still believes depth func = GL_LEQUAL (from the setMaterial call before
+            // the override), so it won't re-emit glDepthFunc when LDR nodes render — leaving
+            // OpenGL in GL_ALWAYS mode and causing all LDR fragments to pass depth.
+            // Explicitly restore here so the tracker and OpenGL agree.
+            glDepthFunc(0x0203u /*GL_LEQUAL*/);
+    }
 
-        // Draw LDR effect nodes (muzzle flashes, SPARK particles) onto the tonemapped
-        // backbuffer. Their additive blending behaves identically to the pre-HDR pipeline
-        // because the destination pixels are already in [0,1] LDR after tonemapping.
-        // Parent bone transforms remain valid: the viewmodel pass updated the full subtree
-        // (including hidden children's params) before post-processing ran.
-        for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
-        {
-            if (!ldrWasVisible[i]) continue;
-            auto* n = m_ldrEffectNodes[i];
-            n->updateAbsolutePosition();
-            m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
-            n->render();
-        }
+    // Draw LDR effect nodes (muzzle flashes, SPARK particles) onto the tonemapped
+    // backbuffer. Their additive blending behaves identically to the pre-HDR pipeline
+    // because the destination pixels are already in [0,1] LDR after tonemapping.
+    // Parent bone transforms remain valid: the viewmodel pass updated the full subtree
+    // (including hidden children's params) before post-processing ran.
+    for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
+    {
+        if (!ldrWasVisible[i]) continue;
+        auto* n = m_ldrEffectNodes[i];
+        n->updateAbsolutePosition();
+        m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
+        n->render();
     }
 
     for (auto line : m_lineRenderableList[readBuffer])
@@ -1559,6 +1368,18 @@ void RenderManager::createDefaultShaders()
 {
     createShaderMaterial("phong_perpixel", "content/shader/phong_perpixel.frag", "content/shader/phong_perpixel.vert");
 
+    // Transparent variant — same shader, alpha-blended base material.
+    // Used for crystal/glassy props; Fresnel and opacity driven by MaterialTypeParams[2]/[3]
+    // and DiffuseColor.alpha rather than a separate shader + RTT pass.
+    {
+        ShaderMaterial phongTransp("phong_perpixel_transparent");
+        phongTransp.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/phong_perpixel.vert", "main", EVST_VS_2_0,
+            "content/shader/phong_perpixel.frag", "main", EPST_PS_2_0,
+            m_shaderConstantCallBack, EMT_TRANSPARENT_ALPHA_CHANNEL, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(phongTransp);
+    }
+
     // Barrel heat shader — identical PBR base, plus blackbody heat glow driven
     // by uHeatLevel pushed each frame by BarrelHeatShaderCallback.
     {
@@ -1617,19 +1438,6 @@ void RenderManager::createDefaultShaders()
         m_shadowDepthMat = shadowShader.material;
     }
 
-    // Crystal shader — screen-space refraction + Fresnel for transparent crystal props.
-    // Registered with isRefraction=true so drawTransparentPass() sorts and routes it
-    // automatically without touching Irrlicht's material type system.
-    {
-        m_crystalCallback = new CrystalShaderCallback();
-        ShaderMaterial crystalShader("crystal");
-        crystalShader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
-            "content/shader/crystal.vert", "main", EVST_VS_2_0,
-            "content/shader/crystal.frag", "main", EPST_PS_2_0,
-            m_crystalCallback, EMT_SOLID, 0, EGSL_DEFAULT);
-        crystalShader.isRefraction = true;
-        ShaderMaterialManager::add(crystalShader);
-    }
 
     // Post-process passes — blit (passthrough) and FXAA are mutually exclusive at startup.
     // Both shaders are always compiled; only one is enabled based on antialiasingFactor.
@@ -1695,6 +1503,39 @@ void RenderManager::createDefaultShaders()
             m_tonemapCallback, EMT_SOLID, 0, EGSL_DEFAULT);
         ShaderMaterialManager::add(s);
         registerPostProcessPass(PostProcessPass("tonemap", s.material, m_tonemapCallback, true));
+    }
+
+    // Color grading — saturation boost + tint + brightness (disabled by default; enable for Unreal mode).
+    {
+        m_colorGradeCallback = new ColorGradeCallback();
+        irr::s32 cgMat = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert", "main", EVST_VS_2_0,
+            "content/shader/colorgrade.frag", "main", EPST_PS_2_0,
+            m_colorGradeCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(ShaderMaterial("colorgrade", cgMat));
+        registerPostProcessPass(PostProcessPass("colorgrade", cgMat, m_colorGradeCallback, false));
+    }
+
+    // Posterize — color banding (disabled by default; enable for Unreal mode).
+    {
+        m_posterizeCallback = new PosterizeCallback();
+        irr::s32 pzMat = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert", "main", EVST_VS_2_0,
+            "content/shader/posterize.frag", "main", EPST_PS_2_0,
+            m_posterizeCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(ShaderMaterial("posterize", pzMat));
+        registerPostProcessPass(PostProcessPass("posterize", pzMat, m_posterizeCallback, false));
+    }
+
+    // Film grain — analog noise (disabled by default).
+    {
+        m_filmGrainCallback = new FilmGrainCallback();
+        irr::s32 fgMat = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert", "main", EVST_VS_2_0,
+            "content/shader/filmgrain.frag", "main", EPST_PS_2_0,
+            m_filmGrainCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(ShaderMaterial("filmgrain", fgMat));
+        registerPostProcessPass(PostProcessPass("filmgrain", fgMat, m_filmGrainCallback, false));
     }
 
     {

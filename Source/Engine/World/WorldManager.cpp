@@ -445,6 +445,26 @@ void WorldManager::importScene(const std::string& file)
 	RenderManager::Get()->setPixelateEnabled(m_currentSceneDescriptor.usePixelate);
 	RenderManager::Get()->pixelateCallback()->pixelSize = m_currentSceneDescriptor.pixelateSize;
 
+	{
+		auto* cb = RenderManager::Get()->mainShaderCallback();
+		cb->fogDensity  = m_currentSceneDescriptor.fogDensity;
+		cb->fogStart    = m_currentSceneDescriptor.fogStart;
+		cb->fogColor[0] = m_currentSceneDescriptor.fogColor.r;
+		cb->fogColor[1] = m_currentSceneDescriptor.fogColor.g;
+		cb->fogColor[2] = m_currentSceneDescriptor.fogColor.b;
+	}
+	RenderManager::Get()->setColorGradeEnabled(m_currentSceneDescriptor.useColorGrade);
+	RenderManager::Get()->colorGradeCallback()->saturation    = m_currentSceneDescriptor.cgSaturation;
+	RenderManager::Get()->colorGradeCallback()->brightness    = m_currentSceneDescriptor.cgBrightness;
+	RenderManager::Get()->colorGradeCallback()->colorTint[0]  = m_currentSceneDescriptor.cgTintR;
+	RenderManager::Get()->colorGradeCallback()->colorTint[1]  = m_currentSceneDescriptor.cgTintG;
+	RenderManager::Get()->colorGradeCallback()->colorTint[2]  = m_currentSceneDescriptor.cgTintB;
+	RenderManager::Get()->setPosterizeEnabled(m_currentSceneDescriptor.usePosterize);
+	RenderManager::Get()->posterizeCallback()->levels   = m_currentSceneDescriptor.posterizeLevels;
+	RenderManager::Get()->posterizeCallback()->strength = m_currentSceneDescriptor.posterizeStrength;
+	RenderManager::Get()->setFilmGrainEnabled(m_currentSceneDescriptor.useFilmGrain);
+	RenderManager::Get()->filmGrainCallback()->strength = m_currentSceneDescriptor.filmGrainStrength;
+
 	if (PropManager::Get() && !Engine::Get()->isEditorMode())
 		PropManager::Get()->setVegetationBatched(true);
 

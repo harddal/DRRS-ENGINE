@@ -66,16 +66,20 @@ struct StaticProp
     float roughness = 0.0f;  // maps to Shininess on all material buffers
     float emissive  = 0.0f;  // maps to SpecularColor alpha [0-1] on all material buffers
 
-    // Crystal shader params (only active when defaultShader == "crystal")
-    // Encoded into Shininess (refraction), SpecularColor.alpha (transparency),
-    // and AmbientColor (color tint) so the global CrystalShaderCallback can read them per-mesh.
-    float crystalRefraction   = 0.02f; // UV distortion strength (0=no distortion)
-    float crystalTransparency = 0.5f;  // 0=fully see-through, 1=fully opaque tint
-    float crystalGlow         = 0.6f;  // Fresnel rim brightness (maps to MaterialTypeParam)
-    float crystalShimmer      = 1.0f;  // normal map animation speed (maps to MaterialTypeParam2)
-    float crystalColorR       = 1.0f;  // RGB tint applied to the composite (white = no tint)
+    // Fresnel / glass params (active when defaultShader == "phong_perpixel_transparent" or legacy "crystal")
+    // crystalGlow → MaterialTypeParams[2] (uFresnelStrength), crystalTransparency → DiffuseColor.alpha
+    // crystalShimmer → MaterialTypeParams[3] (uFresnelPower)
+    float crystalRefraction   = 0.02f; // legacy — no longer used
+    float crystalTransparency = 0.5f;  // 0=fully see-through, 1=fully opaque
+    float crystalGlow         = 0.6f;  // Fresnel rim brightness  → MaterialTypeParams[2]
+    float crystalShimmer      = 4.0f;  // Fresnel power exponent  → MaterialTypeParams[3]
+    float crystalColorR       = 1.0f;  // legacy — no longer used
     float crystalColorG       = 1.0f;
     float crystalColorB       = 1.0f;
+
+    // Generic per-material shader params — applied to all material buffers before shader-specific overrides.
+    // Slots 2 and 3 are overridden by the transparent shader block (crystalGlow / crystalShimmer).
+    float materialTypeParams[8] = {};
 
     // Texture painting — serialized fields
     bool        isPaintable      = false;
@@ -121,7 +125,15 @@ struct StaticProp
            CEREAL_NVP(crystalShimmer),
            CEREAL_NVP(crystalColorR),
            CEREAL_NVP(crystalColorG),
-           CEREAL_NVP(crystalColorB));
+           CEREAL_NVP(crystalColorB),
+           cereal::make_nvp("mtp0", materialTypeParams[0]),
+           cereal::make_nvp("mtp1", materialTypeParams[1]),
+           cereal::make_nvp("mtp2", materialTypeParams[2]),
+           cereal::make_nvp("mtp3", materialTypeParams[3]),
+           cereal::make_nvp("mtp4", materialTypeParams[4]),
+           cereal::make_nvp("mtp5", materialTypeParams[5]),
+           cereal::make_nvp("mtp6", materialTypeParams[6]),
+           cereal::make_nvp("mtp7", materialTypeParams[7]));
     }
 
     template<class Archive>
@@ -154,6 +166,15 @@ struct StaticProp
         try { ar(CEREAL_NVP(crystalGlow), CEREAL_NVP(crystalShimmer)); }
         catch (cereal::Exception&) {}
         try { ar(CEREAL_NVP(crystalColorR), CEREAL_NVP(crystalColorG), CEREAL_NVP(crystalColorB)); }
+        catch (cereal::Exception&) {}
+        try { ar(cereal::make_nvp("mtp0", materialTypeParams[0]),
+                 cereal::make_nvp("mtp1", materialTypeParams[1]),
+                 cereal::make_nvp("mtp2", materialTypeParams[2]),
+                 cereal::make_nvp("mtp3", materialTypeParams[3]),
+                 cereal::make_nvp("mtp4", materialTypeParams[4]),
+                 cereal::make_nvp("mtp5", materialTypeParams[5]),
+                 cereal::make_nvp("mtp6", materialTypeParams[6]),
+                 cereal::make_nvp("mtp7", materialTypeParams[7])); }
         catch (cereal::Exception&) {}
     }
 };

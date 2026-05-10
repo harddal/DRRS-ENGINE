@@ -157,7 +157,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 				if (ImGui::CollapsingHeader("Rendering"))
 				{
-					static const char* shaderNames[] = { "phong_perpixel", "foliage", "grass", "crystal" };
+					static const char* shaderNames[] = { "phong_perpixel", "foliage", "grass", "phong_perpixel_transparent" };
 					static const int   shaderCount   = 4;
 					int currentShader = 0;
 					for (int s = 0; s < shaderCount; s++)
@@ -234,6 +234,34 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 								prop->node->getMaterial(i).SpecularColor.setAlpha(
 									static_cast<irr::u32>(prop->emissive * 255.0f));
 
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("UV Scroll");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						float uvScroll[2] = { prop->materialTypeParams[4], prop->materialTypeParams[5] };
+						if (ImGui::DragFloat2("##propUVScroll", uvScroll, 0.01f, -5.0f, 5.0f, "%.2f"))
+						{
+							prop->materialTypeParams[4] = uvScroll[0];
+							prop->materialTypeParams[5] = uvScroll[1];
+							for (auto i = 0; i < prop->node->getMaterialCount(); i++) {
+								prop->node->getMaterial(i).MaterialTypeParams[4] = uvScroll[0];
+								prop->node->getMaterial(i).MaterialTypeParams[5] = uvScroll[1];
+							}
+						}
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Warp Amp");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						if (ImGui::DragFloat("##propUVWarpAmp", &prop->materialTypeParams[6], 0.005f, 0.0f, 0.5f, "%.3f"))
+							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
+								prop->node->getMaterial(i).MaterialTypeParams[6] = prop->materialTypeParams[6];
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Warp Speed");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						if (ImGui::DragFloat("##propUVWarpSpd", &prop->materialTypeParams[7], 0.1f, 0.0f, 20.0f, "%.1f"))
+							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
+								prop->node->getMaterial(i).MaterialTypeParams[7] = prop->materialTypeParams[7];
+
 						ImGui::EndTable();
 					}
 				}
@@ -302,62 +330,38 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 					}
 				}
 
-				// --- Crystal ---
-				if (prop->defaultShader == "crystal")
+				// --- Fresnel / Glass ---
+				if (prop->defaultShader == "phong_perpixel_transparent")
 				{
 					ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-					if (ImGui::CollapsingHeader("Crystal"))
+					if (ImGui::CollapsingHeader("Fresnel / Glass"))
 					{
-						if (ImGui::BeginTable("##pp_crystal", 2, ImGuiTableFlags_SizingFixedFit))
+						if (ImGui::BeginTable("##pp_glass", 2, ImGuiTableFlags_SizingFixedFit))
 						{
-							ImGui::TableSetupColumn("##clbl", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-							ImGui::TableSetupColumn("##cval", ImGuiTableColumnFlags_WidthStretch);
+							ImGui::TableSetupColumn("##glbl", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+							ImGui::TableSetupColumn("##gval", ImGuiTableColumnFlags_WidthStretch);
 
 							ImGui::TableNextRow();
 							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Transparency");
 							ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-							if (ImGui::DragFloat("##propCrystalTrans", &prop->crystalTransparency, 0.01f, 0.0f, 1.0f, "%.2f"))
+							if (ImGui::DragFloat("##propGlassTrans", &prop->crystalTransparency, 0.01f, 0.0f, 1.0f, "%.2f"))
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
-									prop->node->getMaterial(i).SpecularColor.setAlpha(
+									prop->node->getMaterial(i).DiffuseColor.setAlpha(
 										static_cast<irr::u32>(prop->crystalTransparency * 255.0f));
 
 							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Shimmer");
+							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fresnel Glow");
 							ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-							if (ImGui::DragFloat("##propCrystalShimmer", &prop->crystalShimmer, 0.01f, 0.0f, 5.0f, "%.2f"))
+							if (ImGui::DragFloat("##propGlassGlow", &prop->crystalGlow, 0.01f, 0.0f, 5.0f, "%.2f"))
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
-									prop->node->getMaterial(i).MaterialTypeParam2 = prop->crystalShimmer;
+									prop->node->getMaterial(i).MaterialTypeParams[2] = prop->crystalGlow;
 
 							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Refraction");
+							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fresnel Power");
 							ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-							if (ImGui::DragFloat("##propCrystalRef", &prop->crystalRefraction, 0.001f, 0.0f, 0.5f, "%.3f"))
+							if (ImGui::DragFloat("##propGlassPower", &prop->crystalShimmer, 0.1f, 0.5f, 20.0f, "%.1f"))
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
-									prop->node->getMaterial(i).Shininess = prop->crystalRefraction;
-
-							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Glow");
-							ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-							if (ImGui::DragFloat("##propCrystalGlow", &prop->crystalGlow, 0.01f, 0.0f, 5.0f, "%.2f"))
-								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
-									prop->node->getMaterial(i).MaterialTypeParam = prop->crystalGlow;
-
-							ImGui::TableNextRow();
-							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Color");
-							ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-							float crystalCol[3] = { prop->crystalColorR, prop->crystalColorG, prop->crystalColorB };
-							if (ImGui::ColorEdit3("##propCrystalColor", crystalCol))
-							{
-								prop->crystalColorR = crystalCol[0];
-								prop->crystalColorG = crystalCol[1];
-								prop->crystalColorB = crystalCol[2];
-								irr::video::SColor tint(255,
-									static_cast<irr::u32>(crystalCol[0] * 255.0f),
-									static_cast<irr::u32>(crystalCol[1] * 255.0f),
-									static_cast<irr::u32>(crystalCol[2] * 255.0f));
-								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
-									prop->node->getMaterial(i).AmbientColor = tint;
-							}
+									prop->node->getMaterial(i).MaterialTypeParams[3] = prop->crystalShimmer;
 
 							ImGui::EndTable();
 						}
@@ -715,10 +719,9 @@ void EditorInterface::draw_window_prop_scene()
 		ImGui::Separator();
 		ImGui::Spacing();
 
-		float v = RenderManager::Get()->sceneManager()->getAmbientLight().r;
-		ImGui::SliderFloat("Ambient Light", &v, 0.0f, 1.0f, "%.2f");
-
-		scenedesc.ambient_light = irr::video::SColorf(v, v, v, v);
+		float ambArr[3] = { scenedesc.ambient_light.r, scenedesc.ambient_light.g, scenedesc.ambient_light.b };
+		ImGui::ColorEdit3("Ambient Color", ambArr);
+		scenedesc.ambient_light = irr::video::SColorf(ambArr[0], ambArr[1], ambArr[2], 1.0f);
 		RenderManager::Get()->sceneManager()->setAmbientLight(scenedesc.ambient_light);
 
 		ImGui::Spacing();
@@ -743,6 +746,63 @@ void EditorInterface::draw_window_prop_scene()
 		ImGui::SameLine();
 		ImGui::PushID("PIXELATE_SIZE");
 		ImGui::SliderFloat("Size", &RenderManager::Get()->pixelateCallback()->pixelSize, 1.0f, 32.0f, "%.1f");
+		ImGui::PopID();
+
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+
+		// ---- Fog ----
+		ImGui::Text("Fog:");
+		{
+			auto* cb = RenderManager::Get()->mainShaderCallback();
+			float fogArr[3] = { cb->fogColor[0], cb->fogColor[1], cb->fogColor[2] };
+			ImGui::ColorEdit3("Fog Color", fogArr);
+			cb->fogColor[0] = fogArr[0]; cb->fogColor[1] = fogArr[1]; cb->fogColor[2] = fogArr[2];
+			ImGui::PushID("FOG_DENSITY");
+			ImGui::SliderFloat("Density",    &cb->fogDensity, 0.0f, 0.1f, "%.4f");
+			ImGui::PopID();
+			ImGui::PushID("FOG_START");
+			ImGui::SliderFloat("Start Dist", &cb->fogStart,   0.0f, 200.0f, "%.1f");
+			ImGui::PopID();
+		}
+
+		ImGui::Spacing();
+		ImGui::Separator();
+		ImGui::Spacing();
+
+		// ---- Color Grading ----
+		ImGui::Text("Color Grading:");
+		ImGui::Checkbox("##useColorGrade", &scenedesc.useColorGrade);
+		RenderManager::Get()->setColorGradeEnabled(scenedesc.useColorGrade);
+		ImGui::SameLine();
+		ImGui::PushID("CG_SAT");
+		ImGui::SliderFloat("Saturation", &RenderManager::Get()->colorGradeCallback()->saturation, 0.0f, 4.0f, "%.2f");
+		ImGui::PopID();
+		ImGui::PushID("CG_BRIGHT");
+		ImGui::SliderFloat("Brightness", &RenderManager::Get()->colorGradeCallback()->brightness, -0.5f, 0.5f, "%.3f");
+		ImGui::PopID();
+		ImGui::ColorEdit3("Tint", RenderManager::Get()->colorGradeCallback()->colorTint);
+
+		// ---- Posterize ----
+		ImGui::Text("Posterize:");
+		ImGui::Checkbox("##usePosterize", &scenedesc.usePosterize);
+		RenderManager::Get()->setPosterizeEnabled(scenedesc.usePosterize);
+		ImGui::SameLine();
+		ImGui::PushID("PZ_LEVELS");
+		ImGui::SliderFloat("Levels",   &RenderManager::Get()->posterizeCallback()->levels,   4.0f, 64.0f, "%.0f");
+		ImGui::PopID();
+		ImGui::PushID("PZ_STR");
+		ImGui::SliderFloat("Strength", &RenderManager::Get()->posterizeCallback()->strength, 0.0f, 1.0f,  "%.2f");
+		ImGui::PopID();
+
+		// ---- Film Grain ----
+		ImGui::Text("Film Grain:");
+		ImGui::Checkbox("##useFilmGrain", &scenedesc.useFilmGrain);
+		RenderManager::Get()->setFilmGrainEnabled(scenedesc.useFilmGrain);
+		ImGui::SameLine();
+		ImGui::PushID("FG_STR");
+		ImGui::SliderFloat("Strength", &RenderManager::Get()->filmGrainCallback()->strength, 0.0f, 0.2f, "%.3f");
 		ImGui::PopID();
 
 		//ImGui::Text("Lightmaps:");
@@ -846,6 +906,21 @@ void EditorInterface::draw_window_prop_scene()
 			scenedesc.sharpenStrength   = RenderManager::Get()->sharpenCallback()->strength;
 			scenedesc.pixelateSize      = RenderManager::Get()->pixelateCallback()->pixelSize;
 
+			{
+				auto* cb = RenderManager::Get()->mainShaderCallback();
+				scenedesc.fogDensity  = cb->fogDensity;
+				scenedesc.fogStart    = cb->fogStart;
+				scenedesc.fogColor    = irr::video::SColorf(cb->fogColor[0], cb->fogColor[1], cb->fogColor[2], 1.0f);
+			}
+			scenedesc.cgSaturation  = RenderManager::Get()->colorGradeCallback()->saturation;
+			scenedesc.cgBrightness  = RenderManager::Get()->colorGradeCallback()->brightness;
+			scenedesc.cgTintR       = RenderManager::Get()->colorGradeCallback()->colorTint[0];
+			scenedesc.cgTintG       = RenderManager::Get()->colorGradeCallback()->colorTint[1];
+			scenedesc.cgTintB       = RenderManager::Get()->colorGradeCallback()->colorTint[2];
+			scenedesc.posterizeLevels   = RenderManager::Get()->posterizeCallback()->levels;
+			scenedesc.posterizeStrength = RenderManager::Get()->posterizeCallback()->strength;
+			scenedesc.filmGrainStrength = RenderManager::Get()->filmGrainCallback()->strength;
+
 			WorldManager::Get()->setCurrentSceneDescriptor(scenedesc);
 			scenedesc = WorldManager::Get()->getCurrentSceneDescriptor();
 		}
@@ -866,6 +941,26 @@ void EditorInterface::draw_window_prop_scene()
 			RenderManager::Get()->setSharpenEnabled(true);
 			RenderManager::Get()->sharpenCallback()->strength = 0.6f;
 			RenderManager::Get()->setAutoExposure(false);
+
+			{
+				auto* cb = RenderManager::Get()->mainShaderCallback();
+				cb->fogDensity  = desc.fogDensity;
+				cb->fogStart    = desc.fogStart;
+				cb->fogColor[0] = desc.fogColor.r;
+				cb->fogColor[1] = desc.fogColor.g;
+				cb->fogColor[2] = desc.fogColor.b;
+			}
+			RenderManager::Get()->setColorGradeEnabled(desc.useColorGrade);
+			RenderManager::Get()->colorGradeCallback()->saturation    = desc.cgSaturation;
+			RenderManager::Get()->colorGradeCallback()->brightness    = desc.cgBrightness;
+			RenderManager::Get()->colorGradeCallback()->colorTint[0]  = desc.cgTintR;
+			RenderManager::Get()->colorGradeCallback()->colorTint[1]  = desc.cgTintG;
+			RenderManager::Get()->colorGradeCallback()->colorTint[2]  = desc.cgTintB;
+			RenderManager::Get()->setPosterizeEnabled(desc.usePosterize);
+			RenderManager::Get()->posterizeCallback()->levels   = desc.posterizeLevels;
+			RenderManager::Get()->posterizeCallback()->strength = desc.posterizeStrength;
+			RenderManager::Get()->setFilmGrainEnabled(desc.useFilmGrain);
+			RenderManager::Get()->filmGrainCallback()->strength = desc.filmGrainStrength;
 
 			scenedesc = WorldManager::Get()->getCurrentSceneDescriptor();
 		}

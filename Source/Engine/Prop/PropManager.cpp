@@ -71,7 +71,6 @@ void PropManager::removeProp(uint32_t id)
 
         if (it->node)
         {
-            RenderManager::Get()->unregisterRefractionNode(it->node);
             it->node->remove();
         }
 
@@ -111,7 +110,6 @@ void PropManager::clearAll()
 
         if (prop.node)
         {
-            RenderManager::Get()->unregisterRefractionNode(prop.node);
             prop.node->remove();
         }
     }
@@ -297,27 +295,25 @@ void PropManager::applyNodeShaders(StaticProp& prop)
 
     prop.node->setMaterialFlag(EMF_BACK_FACE_CULLING, !prop.isVegetation);
 
-    if (prop.defaultShader == "crystal")
+    // Apply generic MaterialTypeParams to all buffers; shader-specific blocks below may override.
+    for (u32 b = 0; b < prop.node->getMaterialCount(); ++b)
+        for (u32 p = 0; p < 8; ++p)
+            prop.node->getMaterial(b).MaterialTypeParams[p] = prop.materialTypeParams[p];
+
+    if (prop.defaultShader == "crystal" || prop.defaultShader == "phong_perpixel_transparent")
     {
-        irr::video::SColor tint(255,
-            static_cast<irr::u32>(prop.crystalColorR * 255.0f),
-            static_cast<irr::u32>(prop.crystalColorG * 255.0f),
-            static_cast<irr::u32>(prop.crystalColorB * 255.0f));
+        const irr::s32 crystalMat = static_cast<irr::s32>(
+            ShaderMaterialManager::get("phong_perpixel_transparent"));
 
         for (u32 b = 0; b < prop.node->getMaterialCount(); ++b)
         {
-            prop.node->getMaterial(b).Shininess          = prop.crystalRefraction;
-            prop.node->getMaterial(b).MaterialTypeParam  = prop.crystalGlow;
-            prop.node->getMaterial(b).MaterialTypeParam2 = prop.crystalShimmer;
-            prop.node->getMaterial(b).SpecularColor.setAlpha(
-                static_cast<irr::u32>(prop.crystalTransparency * 255.0f));
-            prop.node->getMaterial(b).AmbientColor = tint;
+            auto& m = prop.node->getMaterial(b);
+            m.MaterialType              = static_cast<E_MATERIAL_TYPE>(crystalMat);
+            m.MaterialTypeParams[2]     = prop.crystalGlow;    // uFresnelStrength
+            m.MaterialTypeParams[3]     = prop.crystalShimmer; // uFresnelPower
+            m.DiffuseColor.setAlpha(static_cast<irr::u32>(prop.crystalTransparency * 255.0f));
+            m.BackfaceCulling           = false;
         }
-        RenderManager::Get()->registerRefractionNode(prop.node);
-    }
-    else
-    {
-        RenderManager::Get()->unregisterRefractionNode(prop.node);
     }
 }
 

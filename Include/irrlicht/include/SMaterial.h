@@ -230,7 +230,7 @@ namespace video
 		SMaterial()
 		: MaterialType(EMT_SOLID), AmbientColor(255,255,255,255), DiffuseColor(255,255,255,255),
 			EmissiveColor(0,0,0,0), SpecularColor(255,255,255,255),
-			Shininess(0.0f), MaterialTypeParam(0.0f), MaterialTypeParam2(0.0f), Thickness(1.0f),
+			Shininess(0.0f), MaterialTypeParams{}, Thickness(1.0f),
 			ZBuffer(ECFN_LESSEQUAL), AntiAliasing(EAAM_SIMPLE), ColorMask(ECP_ALL),
 			ColorMaterial(ECM_DIFFUSE), BlendOperation(EBO_NONE),
 			PolygonOffsetFactor(0), PolygonOffsetDirection(EPO_FRONT),
@@ -264,8 +264,7 @@ namespace video
 			EmissiveColor = other.EmissiveColor;
 			SpecularColor = other.SpecularColor;
 			Shininess = other.Shininess;
-			MaterialTypeParam = other.MaterialTypeParam;
-			MaterialTypeParam2 = other.MaterialTypeParam2;
+			for (u32 i = 0; i < 8; ++i) MaterialTypeParams[i] = other.MaterialTypeParams[i];
 			Thickness = other.Thickness;
 			for (u32 i=0; i<MATERIAL_MAX_TEXTURES; ++i)
 			{
@@ -349,14 +348,24 @@ namespace video
 		\endcode */
 		f32 Shininess;
 
-		//! Free parameter, dependent on the material type.
-		/** Mostly ignored, used for example in EMT_PARALLAX_MAP_SOLID
-		and EMT_TRANSPARENT_ALPHA_CHANNEL. */
-		f32 MaterialTypeParam;
-
-		//! Second free parameter, dependent on the material type.
-		/** Mostly ignored. */
-		f32 MaterialTypeParam2;
+		//! Free parameters, dependent on the material type.
+		/** MaterialTypeParam and MaterialTypeParam2 alias MaterialTypeParams[0] and [1]
+		for backward compatibility. Slots [2]..[7] are available for custom shader use. */
+		union
+		{
+			struct
+			{
+				f32 MaterialTypeParam;
+				f32 MaterialTypeParam2;
+				f32 MaterialTypeParam3;
+				f32 MaterialTypeParam4;
+				f32 MaterialTypeParam5;
+				f32 MaterialTypeParam6;
+				f32 MaterialTypeParam7;
+				f32 MaterialTypeParam8;
+			};
+			f32 MaterialTypeParams[8];
+		};
 
 		//! Thickness of non-3dimensional elements such as lines and points.
 		f32 Thickness;
@@ -634,8 +643,7 @@ namespace video
 				EmissiveColor != b.EmissiveColor ||
 				SpecularColor != b.SpecularColor ||
 				Shininess != b.Shininess ||
-				MaterialTypeParam != b.MaterialTypeParam ||
-				MaterialTypeParam2 != b.MaterialTypeParam2 ||
+				[&]{ for (u32 i=0;i<8;++i) if (MaterialTypeParams[i]!=b.MaterialTypeParams[i]) return true; return false; }() ||
 				Thickness != b.Thickness ||
 				Wireframe != b.Wireframe ||
 				PointCloud != b.PointCloud ||

@@ -673,6 +673,41 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			light.color_diffuse.b = color.Value.z;
 			light.color_diffuse.a = color.Value.w;
 
+			ImGui::PushID("LIGHT_INTENSITY");
+			ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 8.0f, "%.2f");
+			ImGui::PopID();
+
+			{
+				bool coronaChanged = ImGui::Checkbox("Corona", &light.showCorona);
+				if (light.showCorona) {
+					ImGui::PushID("CORONA_PROPS");
+					if (ImGui::BeginTable("##corona_tbl", 2, ImGuiTableFlags_SizingFixedFit)) {
+						ImGui::TableSetupColumn("##cl", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+						ImGui::TableSetupColumn("##cv", ImGuiTableColumnFlags_WidthStretch);
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Size");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						ImGui::DragFloat("##corona_size", &light.coronaSize, 0.05f, 0.1f, 20.0f, "%.2f");
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Full Range");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						ImGui::DragFloat("##corona_near", &light.coronaFadeNear, 0.25f, 0.0f, 200.0f, "%.1f");
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fade Range");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						ImGui::DragFloat("##corona_far", &light.coronaFadeFar, 0.5f, 0.0f, 500.0f, "%.1f");
+
+						ImGui::EndTable();
+					}
+					ImGui::PopID();
+				}
+				if (coronaChanged)
+					WorldManager::Get()->renderSystem()->setLightComponentData(entity);
+			}
+
 			light.update_component_data = true;
 			WorldManager::Get()->renderSystem()->forceTransformUpdate();
 
@@ -818,48 +853,26 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			ImGui::Spacing();
 
-			int mtype = static_cast<unsigned int>(mesh.renderMaterial);
-			ImGui::PushID("render_material_type");
-			if (ImGui::InputInt("", &mtype, 1, 1))
 			{
-				if (mtype > 24) mtype = 0;
-				if (mtype < 0)  mtype = 0;
-				mesh.renderMaterial = static_cast<irr::video::E_MATERIAL_TYPE>(mtype);
-				for (irr::u32 i = 0; i < mesh.node->getMaterialCount(); i++)
-					mesh.node->getMaterial(i).MaterialType = mesh.renderMaterial;
-			}
-			ImGui::PopID();
+				const auto& allShaders = ShaderMaterialManager::getAll();
+				std::vector<const char*> shaderNames;
+				shaderNames.reserve(allShaders.size());
+				for (const auto& s : allShaders)
+					shaderNames.push_back(s.name.c_str());
 
-			std::string mask_type;
-			switch (mesh.renderMaterial)
-			{
-			case irr::video::E_MATERIAL_TYPE::EMT_SOLID:                              mask_type = "EMT_SOLID";                              break;
-			case irr::video::E_MATERIAL_TYPE::EMT_SOLID_2_LAYER:                      mask_type = "EMT_SOLID_2_LAYER";                      break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP:                           mask_type = "EMT_LIGHTMAP";                           break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_ADD:                       mask_type = "EMT_LIGHTMAP_ADD";                       break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_M2:                        mask_type = "EMT_LIGHTMAP_M2";                        break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_M4:                        mask_type = "EMT_LIGHTMAP_M4";                        break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_LIGHTING:                  mask_type = "EMT_LIGHTMAP_LIGHTING";                  break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_LIGHTING_M2:               mask_type = "EMT_LIGHTMAP_LIGHTING_M2";               break;
-			case irr::video::E_MATERIAL_TYPE::EMT_LIGHTMAP_LIGHTING_M4:               mask_type = "EMT_LIGHTMAP_LIGHTING_M4";               break;
-			case irr::video::E_MATERIAL_TYPE::EMT_DETAIL_MAP:                         mask_type = "EMT_DETAIL_MAP";                         break;
-			case irr::video::E_MATERIAL_TYPE::EMT_SPHERE_MAP:                         mask_type = "EMT_SPHERE_MAP";                         break;
-			case irr::video::E_MATERIAL_TYPE::EMT_REFLECTION_2_LAYER:                 mask_type = "EMT_REFLECTION_2_LAYER";                 break;
-			case irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ADD_COLOR:              mask_type = "EMT_TRANSPARENT_ADD_COLOR";              break;
-			case irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL:          mask_type = "EMT_TRANSPARENT_ALPHA_CHANNEL";          break;
-			case irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL_REF:      mask_type = "EMT_TRANSPARENT_ALPHA_CHANNEL_REF";      break;
-			case irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_VERTEX_ALPHA:           mask_type = "EMT_TRANSPARENT_VERTEX_ALPHA";           break;
-			case irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_REFLECTION_2_LAYER:     mask_type = "EMT_TRANSPARENT_REFLECTION_2_LAYER";     break;
-			case irr::video::E_MATERIAL_TYPE::EMT_NORMAL_MAP_SOLID:                   mask_type = "EMT_NORMAL_MAP_SOLID";                   break;
-			case irr::video::E_MATERIAL_TYPE::EMT_NORMAL_MAP_TRANSPARENT_ADD_COLOR:   mask_type = "EMT_NORMAL_MAP_TRANSPARENT_ADD_COLOR";   break;
-			case irr::video::E_MATERIAL_TYPE::EMT_NORMAL_MAP_TRANSPARENT_VERTEX_ALPHA:mask_type = "EMT_NORMAL_MAP_TRANSPARENT_VERTEX_ALPHA";break;
-			case irr::video::E_MATERIAL_TYPE::EMT_PARALLAX_MAP_SOLID:                 mask_type = "EMT_PARALLAX_MAP_SOLID";                 break;
-			case irr::video::E_MATERIAL_TYPE::EMT_PARALLAX_MAP_TRANSPARENT_ADD_COLOR: mask_type = "EMT_PARALLAX_MAP_TRANSPARENT_ADD_COLOR"; break;
-			case irr::video::E_MATERIAL_TYPE::EMT_PARALLAX_MAP_TRANSPARENT_VERTEX_ALPHA: mask_type = "EMT_PARALLAX_MAP_TRANSPARENT_VERTEX_ALPHA"; break;
-			case irr::video::E_MATERIAL_TYPE::EMT_ONETEXTURE_BLEND:                   mask_type = "EMT_ONETEXTURE_BLEND";                   break;
-			default:                                                                   mask_type = "NULL";                                   break;
+				int currentIdx = 0;
+				for (int si = 0; si < (int)shaderNames.size(); ++si)
+					if (mesh.shaderName == shaderNames[si]) { currentIdx = si; break; }
+
+				ImGui::SetNextItemWidth(-1);
+				if (ImGui::Combo("##meshShader", &currentIdx, shaderNames.data(), (int)shaderNames.size()))
+				{
+					mesh.shaderName = shaderNames[currentIdx];
+					auto mat = ShaderMaterialManager::get(mesh.shaderName);
+					for (irr::u32 mi = 0; mi < mesh.node->getMaterialCount(); ++mi)
+						mesh.node->getMaterial(mi).MaterialType = mat;
+				}
 			}
-			ImGui::Text("Material Type: %s", mask_type.c_str());
 
 			ImGui::DragFloat("Roughness", &mesh.node->getMaterial(0).Shininess, 1.0f, 0.0f, 128.00);
 
