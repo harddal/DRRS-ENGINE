@@ -18,31 +18,31 @@ CameraFX g_CameraFX;
 
 #define vec3_t PxVec3
 
-#define MAX_SPEED 1.0f
 
 using namespace irr::core;
 using namespace physx;
 
 const float
-	g_sensitivity = 0.09f,
-	g_topAngle = -89.5f,
-	g_bottomAngle = 89.5f,
-	g_moveSpeed = 7.0f,
-	g_airSpeed = 0.15f,  // Reduced for realistic jump arcs (was 0.3)
-	g_gravity = -0.3f,
-	g_jumpVelocity = 0.1f,
-	g_jumpBoostForce = 0.1f,
-	g_jumpBoostDuration = 25.0f,
+	g_sensitivity      = 0.09f,
+	g_topAngle         = -89.5f,
+	g_bottomAngle      =  89.5f,
+	g_walkSpeed        =  8.0f,   // units/sec — normal ground speed
+	g_sprintSpeed      =  10.0f,   // units/sec — sprint
+	g_crouchSpeed      =  5.0f,   // units/sec — crouched
+	g_jumpSpeed        =  10.0f,   // units/sec — initial upward velocity
+	g_gravity          = 20.0f,   // units/sec² — downward acceleration
+	g_groundAccel      = 10.0f,   // GoldSrc sv_accelerate equivalent
+	g_groundFriction   =  4.0f,   // GoldSrc sv_friction equivalent
+	g_airAccel         = 10.0f,   // air acceleration multiplier
+	g_airSpeedCap      =  4.5f,   // max units/sec gainable per direction in air
 	g_headBobFrequency = 10.0f,
-	g_headBobAmplitude = 0.03f;
+	g_headBobAmplitude =  0.03f;
 
 bool g_hasFallen = false;
 bool g_isOnSurface = false;
 bool g_used = false;
-bool g_isJumpBoosting = false;
 
 int g_lastJumpTime = 0;
-int g_jumpBoostStartTime = 0;
 int g_lastStepTime = 0;
 
 float g_headBobTimer = 0.0f;
@@ -159,63 +159,35 @@ void PlayerController::init()
 	m_weaponController.init();
 }
 
-vector3df PlayerController::Accelerate(vector3df& accelDir, vector3df& prevVelocity, float accelerate, float max_velocity, float dt)
+vector3df PlayerController::Accelerate(vector3df& wishdir, vector3df& vel, float accel, float wishspeed, float dt)
 {
-	// Based on Quake 3's PM_Accelerate function
-	// Key difference: only limit speed in the wish direction, not total speed
-	// This allows perpendicular velocity to accumulate (strafe jumping)
-	
-	// Get current speed in the direction we want to move
-	float currentspeed = prevVelocity.dotProduct(accelDir);
-	
-	// How much speed we want to add
-	float addspeed = max_velocity - currentspeed;
-	
-	// If we're already going fast enough in this direction, don't add more
-	if (addspeed <= 0) {
-		return prevVelocity;
-	}
-	
-	// Calculate acceleration to add this frame
-	float accelspeed = accelerate * dt * max_velocity;
-	
-	// Cap the acceleration if it would overshoot
-	if (accelspeed > addspeed) {
-		accelspeed = addspeed;
-	}
-	
-	// Add the acceleration in the wish direction
-	return prevVelocity + accelDir * accelspeed;
+	float currentspeed = vel.dotProduct(wishdir);
+	float addspeed = wishspeed - currentspeed;
+	if (addspeed <= 0.0f) return vel;
+	float accelspeed = accel * wishspeed * dt;
+	if (accelspeed > addspeed) accelspeed = addspeed;
+	return vel + wishdir * accelspeed;
 }
 
-vector3df PlayerController::MoveGround(vector3df& accelDir, vector3df& prevVelocity, float friction, float ground_accelerate, float max_velocity_ground, float dt)
+vector3df PlayerController::MoveGround(vector3df& wishdir, vector3df& vel, float friction, float accel, float wishspeed, float dt)
 {
-	// Based on Quake 3's ground movement
-	// Apply friction first, then accelerate
-	
-	float speed = prevVelocity.getLength();
-	
-	if (speed != 0)
+	float speed = vel.getLength();
+	if (speed > 0.001f)
 	{
-		// Quake 3 applies friction based on control value
-		// Higher friction when not moving or moving slowly
-		float control = speed < 1.0f ? 1.0f : speed;
+		// GoldSrc-style: friction rate is at minimum wishspeed so stopping is always crisp
+		float control = speed < wishspeed ? wishspeed : speed;
 		float drop = control * friction * dt;
-		
-		// Scale the velocity to apply friction
 		float newspeed = std::max(speed - drop, 0.0f);
-		prevVelocity *= newspeed / speed;
+		vel *= newspeed / speed;
 	}
-
-	// Now accelerate in the wish direction
-	return Accelerate(accelDir, prevVelocity, ground_accelerate, max_velocity_ground, dt);
+	return Accelerate(wishdir, vel, accel, wishspeed, dt);
 }
 
-vector3df PlayerController::MoveAir(vector3df& accelDir, vector3df& prevVelocity, float air_accelerate, float max_velocity_air, float dt)
+vector3df PlayerController::MoveAir(vector3df& wishdir, vector3df& vel, float accel, float airSpeedCap, float dt)
 {
-	// Quake 3 air movement: identical to Accelerate, no friction
-	// This allows momentum preservation and strafe jumping
-	return Accelerate(accelDir, prevVelocity, air_accelerate, max_velocity_air, dt);
+	// airSpeedCap limits speed gained per direction in air — allows steering
+	// without accumulating Quake-style bunny-hop momentum.
+	return Accelerate(wishdir, vel, accel, airSpeedCap, dt);
 }
 
 void PlayerController::update(float dt)
@@ -255,7 +227,7 @@ void PlayerController::update(float dt)
 	float
 		x_move = 0.0,
 		z_move = 0.0,
-		speed_mod = 0.0;
+		targetSpeed = g_walkSpeed;
 
 	vector2df mouseDelta;
 
@@ -297,10 +269,11 @@ void PlayerController::update(float dt)
 	// --- Camera FX: recoil kick + screen shake ---
 	// Applied as a pure additive overlay — never written back into
 	// m_cameraPitch/m_cameraYaw, so recovery truly returns to aim point.
+	float fxY = 0.0f;
 	if (!m_isDead)
 	{
 		float fxPitch = 0.0f, fxYaw = 0.0f, fxRoll = 0.0f;
-		g_CameraFX.tick(dt, fxPitch, fxYaw, fxRoll);
+		g_CameraFX.tick(dt, fxPitch, fxYaw, fxRoll, fxY);
 		cameraRotation.X += fxPitch;
 		cameraRotation.Y += fxYaw;
 		cameraRotation.Z += fxRoll;
@@ -316,22 +289,18 @@ void PlayerController::update(float dt)
 
 	if (is_crouched)
 	{
-		speed_mod = -2.0f;
+		targetSpeed = g_crouchSpeed;
 	}
 	else if (InputManager::Get()->isActionPressed("sprint") && m_currentStamina >= m_minSprintStamina)
 	{
-		// Sprint only if we have enough stamina
-		speed_mod = 2.5f;
-		// Drain stamina while sprinting
+		targetSpeed = g_sprintSpeed;
 		m_currentStamina -= m_sprintStaminaDrain * (dt / 1000.0f);
 		if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
-		// Record when stamina was consumed
 		m_lastStaminaConsumedTime = currentTime;
 	}
 	else
 	{
-		speed_mod = 0.0;
-		// Recharge stamina only after delay has passed
+		targetSpeed = g_walkSpeed;
 		if (currentTime - m_lastStaminaConsumedTime >= m_staminaRechargeDelay)
 		{
 			m_currentStamina += m_staminaRechargeRate * (dt / 1000.0f);
@@ -375,18 +344,16 @@ void PlayerController::update(float dt)
 		if (!is_crouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime && m_currentStamina >= m_minJumpStamina)
 		{
 			// Start buffered jump
-			player_velocity.Y = g_jumpVelocity;
-			
+			player_velocity.Y = g_jumpSpeed;
+
 			// Consume stamina for jumping
 			m_currentStamina -= m_jumpStaminaCost;
 			if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
 			// Record when stamina was consumed
 			m_lastStaminaConsumedTime = currentTime;
-			
+
 			m_isJumping = true;
 			m_jumpConsumed = true;  // Mark input as consumed to prevent repeat jumps
-			g_isJumpBoosting = true;
-			g_jumpBoostStartTime = currentTime;
 			g_lastJumpTime = currentTime;
 			m_lastJumpInputTime = -1000; // Clear buffer
 		}
@@ -399,41 +366,36 @@ void PlayerController::update(float dt)
 	if (!isPlayerLocked())
 	{
 		// Track jump input for buffering and reset consumed flag when button released
-		if (InputManager::Get()->isActionPressed("jump") && g_isOnSurface)
+		if (InputManager::Get()->isActionPressed("jump"))
 		{
-			m_lastJumpInputTime = currentTime;
-			
+			if (!m_jumpConsumed)
+				m_lastJumpInputTime = currentTime;
+
 			if (!isSwimming())
 			{
-				// Allow jump if grounded OR within coyote time window, and input hasn't been consumed
-				bool canJump = (currentTime - m_lastGroundedTime < m_coyoteTime) && 
-				               currentTime - g_lastJumpTime > 500 && 
+				bool canJump = (g_isOnSurface || currentTime - m_lastGroundedTime < m_coyoteTime) &&
+				               currentTime - g_lastJumpTime > 500 &&
 				               !is_crouched &&
-				               !m_jumpConsumed &&  // Only jump once per button press
-				               m_currentStamina >= m_minJumpStamina;  // Need stamina to jump
-				
+				               !m_jumpConsumed &&
+				               m_currentStamina >= m_minJumpStamina;
+
 				if (canJump)
 				{
-					// Start jump with initial upward velocity
-					player_velocity.Y = g_jumpVelocity;
-					
-					// Consume stamina for jumping
+					player_velocity.Y = g_jumpSpeed;
+
 					m_currentStamina -= m_jumpStaminaCost;
 					if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
-					// Record when stamina was consumed
 					m_lastStaminaConsumedTime = currentTime;
-					
+
 					m_isJumping = true;
-					m_jumpConsumed = true;  // Mark this button press as consumed
-					g_isJumpBoosting = true;
-					g_jumpBoostStartTime = currentTime;
+					m_jumpConsumed = true;
 					g_lastJumpTime = currentTime;
 				}
 			}
 			else
 			{
-				// Swim up - apply to vertical velocity
-				player_velocity.Y = g_moveSpeed;
+				// Swim up
+				player_velocity.Y = g_walkSpeed;
 			}
 		}
 		// Jump cut: reduce velocity when jump button released mid-jump
@@ -460,7 +422,7 @@ void PlayerController::update(float dt)
 			else
 			{
 				// Swim down - apply to vertical velocity
-				player_velocity.Y = -g_moveSpeed;
+				player_velocity.Y = -g_walkSpeed;
 			}
 		}
 		else if (is_crouched)
@@ -497,71 +459,101 @@ void PlayerController::update(float dt)
 		{
 			g_used = false;
 		}
+
+		// Double-tap dodge detection (Unreal-style)
+		if (!isSwimming())
+		{
+			bool lftPressed = InputManager::Get()->isActionPressed("strafel");
+			bool rgtPressed = InputManager::Get()->isActionPressed("strafer");
+
+			auto tryDodge = [&](bool pressed, bool& prevPressed, int& lastTapTime, float dvX, float dvZ)
+			{
+				if (pressed && !prevPressed)
+				{
+					if (g_isOnSurface && !m_isDodging && !is_crouched &&
+						currentTime - m_lastDodgeTime >= m_dodgeCooldown)
+					{
+						if (currentTime - lastTapTime < m_dodgeDoubleTapWindow)
+						{
+							// Local space (X=strafe, Z=forward) — displacement step applies camera yaw.
+							player_velocity.X = dvX * m_dodgeSpeed;
+							player_velocity.Z = dvZ * m_dodgeSpeed;
+							player_velocity.Y = g_jumpSpeed * 0.4f;
+							m_isDodging      = true;
+							m_dodgeStartTime = currentTime;
+							m_lastDodgeTime  = currentTime;
+							sound.play("jump");
+						}
+						lastTapTime = currentTime;
+					}
+					else if (!m_isDodging)
+					{
+						lastTapTime = currentTime;
+					}
+				}
+				prevPressed = pressed;
+			};
+
+			tryDodge(lftPressed, m_prevLeftPressed,  m_lastLeftTapTime,  -1.0f, 0.0f);
+			tryDodge(rgtPressed, m_prevRightPressed, m_lastRightTapTime,  1.0f, 0.0f);
+		}
 	}
 
-	// Apply jump boost for smooth acceleration
-	if (g_isJumpBoosting)
+	// Clear dodge when duration expires or player lands
+	if (m_isDodging)
 	{
-		float boostElapsed = static_cast<float>(currentTime - g_jumpBoostStartTime);
-		if (boostElapsed < g_jumpBoostDuration)
+		if (currentTime - m_dodgeStartTime >= m_dodgeDuration ||
+			(g_isOnSurface && player_velocity.Y <= 0.0f))
 		{
-			// Apply extra upward force during boost phase
-			// Force diminishes over time for smooth acceleration
-			float boostProgress = boostElapsed / g_jumpBoostDuration;
-			float boostMultiplier = 1.0f - boostProgress; // 1.0 at start, 0.0 at end
-			player_velocity.Y += g_jumpBoostForce * boostMultiplier * (dt / 1000.0f);
-		}
-		else
-		{
-			g_isJumpBoosting = false;
+			m_isDodging = false;
 		}
 	}
 
 	// Apply gravity continuously (unless swimming)
 	if (!isSwimming())
 	{
-		player_velocity.Y += g_gravity * (dt / 1000.0f);
+		player_velocity.Y -= g_gravity * (dt / 1000.0f);
 	}
 
 	// Reset vertical velocity and jump state when landing
 	if (g_isOnSurface && player_velocity.Y < 0)
 	{
+		if (m_lastAirVelocityY < -4.0f)
+		{
+			// Power curve: grows slowly near jump speed, aggressively on high falls.
+			// ~6.5 m/s (normal jump) → ~0.6°, ~11 m/s (3m fall) → ~2.8°, caps at 4°
+			float excess = -m_lastAirVelocityY - 4.0f;
+			float magnitude = powf(excess, 1.5f) * 0.15f;
+			g_CameraFX.addLandingBob(std::min(magnitude, 4.0f));
+		}
 		player_velocity.Y = 0;
-		m_isJumping = false; // Clear jump state on landing
+		m_isJumping = false;
+		m_lastAirVelocityY = 0.0f;
 	}
 
 	// Prepare horizontal movement input
 	vector3df horizontal_move = vector3df(x_move, 0, z_move);
+	vector3df wishdir = horizontal_move;
+	if (wishdir.getLength() > 0.001f) wishdir.normalize();
 
 	// Apply ground or air movement to horizontal velocity only
 	vector3df horizontal_velocity = vector3df(player_velocity.X, 0, player_velocity.Z);
 
 	if (g_isOnSurface)
 	{
-		horizontal_velocity = MoveGround(horizontal_move.normalize(), horizontal_velocity, 15.0f, g_moveSpeed + speed_mod, 1.0f, dt / 1000.0f);
+		horizontal_velocity = MoveGround(wishdir, horizontal_velocity, g_groundFriction, g_groundAccel, targetSpeed, dt / 1000.0f);
 	}
 	else
 	{
-		// Air movement uses ONLY g_airSpeed (no speed_mod)
-		// Sprint/crouch only affects ground speed, not air speed
-		horizontal_velocity = MoveAir(horizontal_move.normalize(), horizontal_velocity, g_airSpeed, 1.0f, dt / 1000.0f);
+		m_lastAirVelocityY = player_velocity.Y;
+		if (!m_isDodging)
+			horizontal_velocity = MoveAir(wishdir, horizontal_velocity, g_airAccel, g_airSpeedCap, dt / 1000.0f);
+		// While dodging, preserve the impulse velocity — no steering input applied
 	}
 
 	// Update player velocity with new horizontal velocity
 	player_velocity.X = horizontal_velocity.X;
 	player_velocity.Z = horizontal_velocity.Z;
-	
-	// Clamp horizontal velocity while airborne to prevent excessive jump momentum
-	if (!g_isOnSurface)
-	{
-		float currentSpeed = sqrtf(player_velocity.X * player_velocity.X + player_velocity.Z * player_velocity.Z);
-		if (currentSpeed > g_airSpeed)
-		{
-			float scale = g_airSpeed / currentSpeed;
-			player_velocity.X *= scale;
-			player_velocity.Z *= scale;
-		}
-	}
 
 	// Combine horizontal and vertical movement for final displacement
 	// Use the clean yaw (no FX offset) so recoil wobble doesn't deflect movement.
@@ -573,16 +565,13 @@ void PlayerController::update(float dt)
 	
 	physx::PxControllerFilters filters(&filterData);
 
-	cct.displacement = physx::PxVec3(
-		(player_velocity.Z * sin(moveDirection) + player_velocity.X * sin(moveDirection + __pi / 2.0f)),
-		player_velocity.Y,
-		(player_velocity.Z * cos(moveDirection) + player_velocity.X * cos(moveDirection + __pi / 2.0f)));
-
-	// CRITICAL: PhysX expects elapsedTime in SECONDS, but dt is in MILLISECONDS
-	// Passing milliseconds causes massive extrapolation and tunneling
-	
 	float elapsedSeconds = dt / 1000.0f;
-	
+
+	cct.displacement = physx::PxVec3(
+		(player_velocity.Z * sinf(moveDirection) + player_velocity.X * sinf(moveDirection + __pi / 2.0f)) * elapsedSeconds,
+		player_velocity.Y * elapsedSeconds,
+		(player_velocity.Z * cosf(moveDirection) + player_velocity.X * cosf(moveDirection + __pi / 2.0f)) * elapsedSeconds);
+
 	PxControllerCollisionFlags collisionFlags = cct.controller->move(cct.displacement, 0.001f, elapsedSeconds, filters);
 	
 	// Frame-based buffering to prevent collision flag flicker from causing head bob jitter
@@ -660,7 +649,7 @@ void PlayerController::update(float dt)
 		// Head bob runs whenever moving (not tied to ground state to avoid jitter)
 		// Scale head bob frequency based on movement modifier
 		// Base speed (1.0) + sprint (1.0) or crouch (-0.7)
-		float speedMultiplier = 1.0f + (speed_mod / g_moveSpeed);
+		float speedMultiplier = targetSpeed / g_walkSpeed;
 		float speedBasedFrequency = g_headBobFrequency * speedMultiplier;
 		
 		// Update head bob timer when moving (frequency scales with speed)
@@ -674,8 +663,8 @@ void PlayerController::update(float dt)
 		// Map height from [0.5, 2.0] to camera offset [0.25, 0.8]
 		float baseOffset = 0.25f + (m_currentCrouchHeight - 0.5f) * ((0.8f - 0.25f) / (2.0f - 0.5f));
 		
-		// Combine base offset + head bob
-		camera.offset.Y = baseOffset + bobOffset;
+		// Combine base offset + head bob + landing dip
+		camera.offset.Y = baseOffset + bobOffset + fxY;
 		
 		// Play footstep when bob crosses zero going down (foot hits ground)
 		// Use airborne frame count instead of g_isOnSurface for more reliable ground detection
@@ -699,7 +688,7 @@ void PlayerController::update(float dt)
 		
 		// Immediately snap camera to rest position when stopped
 		float targetY = 0.25f + (m_currentCrouchHeight - 0.5f) * ((0.8f - 0.25f) / (2.0f - 0.5f));
-		camera.offset.Y = targetY;
+		camera.offset.Y = targetY + fxY;
 		
 		// Reset head bob state
 		g_headBobTimer = 0.0f;

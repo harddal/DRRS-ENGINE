@@ -92,6 +92,25 @@ private:
 	const int m_coyoteTime = 50;                // Grace period for jumping after leaving ground (ms)
 	const int m_jumpBufferTime = 50;            // Time to buffer jump inputs (ms)
 	const float m_maxJumpHorizontalSpeed = 1.5f; // Maximum horizontal speed during jump (prevents excessive forward velocity)
+
+	// Dodge mechanic (Unreal-style double-tap)
+	int   m_lastForwardTapTime  = -1000;
+	int   m_lastBackwardTapTime = -1000;
+	int   m_lastLeftTapTime     = -1000;
+	int   m_lastRightTapTime    = -1000;
+	bool  m_prevForwardPressed  = false;
+	bool  m_prevBackwardPressed = false;
+	bool  m_prevLeftPressed     = false;
+	bool  m_prevRightPressed    = false;
+	int   m_lastDodgeTime       = -10000;
+	bool  m_isDodging           = false;
+	int   m_dodgeStartTime      = 0;
+	const int   m_dodgeDoubleTapWindow = 500;
+	const int   m_dodgeCooldown        = 1000;
+	const float m_dodgeSpeed           = 10.0f; // units/sec burst (~1.2x sprint speed)
+	const int   m_dodgeDuration        = 500;
+
+	float m_lastAirVelocityY = 0.0f;
 	
 	// Stamina system
 	float m_currentStamina = 100.0f;             // Current stamina (0-100) // Need to serialize this!!!

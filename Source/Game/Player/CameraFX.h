@@ -23,6 +23,17 @@ struct CameraFX
 	float shakeDuration = 0.0f;   // Total duration of current shake event (ms)
 	float shakeTimer    = 0.0f;   // Elapsed time since shake started (ms)
 
+	// ---- Landing bob (damped spring) -------------------------------------
+	// Pitch: positive = pitched down. k=200/c=16 → ζ≈0.57, returns in ~270ms
+	// with a small upward overshoot — reads as a soft spring, not a hard jolt.
+	float landingBobPos = 0.0f;   // Current pitch displacement (degrees)
+	float landingBobVel = 0.0f;   // Rate of change (degrees/sec)
+
+	// Y dip: camera drops in world-Y then returns. k=200/c=20 → ζ≈0.71,
+	// critically damped — smooth return with no vertical bounce.
+	float landingDipPos = 0.0f;   // Current Y offset (units, negative = down)
+	float landingDipVel = 0.0f;   // Rate of change (units/sec)
+
 	// ------------------------------------------------------------------
 	// Call from a weapon on fire to kick the camera.
 	// pitch : upward kick in degrees (negative = up in Irrlicht)
@@ -32,6 +43,24 @@ struct CameraFX
 	{
 		recoilPitch += pitch;
 		recoilYaw   += yaw;
+	}
+
+	// ------------------------------------------------------------------
+	// Landing impact: displaces pitch downward by magnitude degrees and
+	// lets the spring pull it back. Only triggers if the new impact would
+	// produce more motion than the current spring state.
+	// magnitude : peak downward pitch in degrees
+	// ------------------------------------------------------------------
+	void addLandingBob(float magnitude)
+	{
+		float currentEnergy = fabsf(landingBobPos) + fabsf(landingBobVel) * 0.05f;
+		if (magnitude > currentEnergy)
+		{
+			landingBobPos = magnitude;          // pitch dips down
+			landingBobVel = 0.0f;
+			landingDipPos = -magnitude * 0.012f; // camera drops in Y
+			landingDipVel = 0.0f;
+		}
 	}
 
 	// ------------------------------------------------------------------
@@ -55,7 +84,7 @@ struct CameraFX
 	// Outputs X (pitch), Y (yaw), and Z (roll) offsets in degrees.
 	// dt : delta time in milliseconds
 	// ------------------------------------------------------------------
-	void tick(float dt, float& outPitchOffset, float& outYawOffset, float& outRollOffset)
+	void tick(float dt, float& outPitchOffset, float& outYawOffset, float& outRollOffset, float& outYOffset)
 	{
 		float dtSec = dt / 1000.0f;
 
@@ -89,9 +118,31 @@ struct CameraFX
 			shakeAmount = 0.0f; // reset when done
 		}
 
-		outPitchOffset = recoilPitch + shakeX;
+		// --- Integrate landing bob springs -----------------------------------
+		auto integrateSpring = [&](float& pos, float& vel, float k, float c, float deadPos, float deadVel)
+		{
+			if (fabsf(pos) > deadPos || fabsf(vel) > deadVel)
+			{
+				float force = -k * pos - c * vel;
+				vel += force * dtSec;
+				pos += vel * dtSec;
+				if (fabsf(pos) < deadPos && fabsf(vel) < deadVel)
+				{
+					pos = 0.0f;
+					vel = 0.0f;
+				}
+			}
+		};
+
+		// Pitch bob: k=200, c=16 — slightly underdamped, subtle overshoot
+		integrateSpring(landingBobPos, landingBobVel, 200.0f, 16.0f, 0.001f, 0.01f);
+		// Y dip: k=200, c=20 — near-critically damped, no vertical bounce
+		integrateSpring(landingDipPos, landingDipVel, 200.0f, 20.0f, 0.0001f, 0.001f);
+
+		outPitchOffset = recoilPitch + shakeX + landingBobPos;
 		outYawOffset   = recoilYaw;
 		outRollOffset  = shakeZ;
+		outYOffset     = landingDipPos;
 	}
 };
 
