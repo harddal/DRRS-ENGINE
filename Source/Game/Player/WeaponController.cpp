@@ -50,15 +50,19 @@ void WeaponController::update()
 		m_firstUpdate = true;
 	}
 
+	// Mouse wheel: scroll up = previous weapon, scroll down = next weapon
+	float wheel = InputManager::Get()->getMouseWheelDelta();
+	if (wheel < 0.f)
+		switchNextWeapon();
+	else if (wheel > 0.f)
+		switchPreviousWeapon();
+
+	// [ ] keys
 	static bool lb = false, rb = false;
 	if (!InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_LBRACKET) && lb)
-	{
 		lb = false;
-	}
 	if (!InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_RBRACKET) && rb)
-	{
 		rb = false;
-	}
 	if (InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_LBRACKET) && !lb)
 	{
 		switchPreviousWeapon();
@@ -68,6 +72,19 @@ void WeaponController::update()
 	{
 		switchNextWeapon();
 		rb = true;
+	}
+
+	// Number keys 0–9: 0 = no weapon, 1–N = weapon slot N (auto-scales to vector size)
+	static const int numKeys[10] = {
+		KEY_NUM0, KEY_NUM1, KEY_NUM2, KEY_NUM3, KEY_NUM4,
+		KEY_NUM5, KEY_NUM6, KEY_NUM7, KEY_NUM8, KEY_NUM9
+	};
+	static bool numKeyState[10] = {};
+	const int weaponCount = static_cast<int>(m_player_weapon.size());
+	for (int i = 0; i < 10 && i < weaponCount; i++)
+	{
+		if (InputManager::Get()->getKeyPressOnce(numKeys[i], &numKeyState[i]))
+			switchWeapon(static_cast<PLAYER_WEAPON>(i));
 	}
 
 	current_weapon->update();

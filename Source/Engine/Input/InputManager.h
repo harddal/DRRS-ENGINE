@@ -129,6 +129,9 @@ public:
 
 	irr::core::vector2df getMouseDelta();
 
+	float getMouseWheelDelta() const { return m_wheelDelta; }
+	void  accumulateWheelDelta(float delta) { m_wheelDelta += delta; }
+
     bool canProcessInput(bool process = false);
     bool blockMouseInput(bool process = true);
 
@@ -152,6 +155,7 @@ private:
     static InputManager* s_Instance;
 
 	bool m_canProcessInput, m_blockMouseInput;
+	float m_wheelDelta;
 
     InputConfiguration m_configuration;
 

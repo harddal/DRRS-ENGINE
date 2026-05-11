@@ -32,7 +32,7 @@ const float
 	g_jumpSpeed        =  10.0f,   // units/sec — initial upward velocity
 	g_gravity          = 20.0f,   // units/sec² — downward acceleration
 	g_groundAccel      = 10.0f,   // GoldSrc sv_accelerate equivalent
-	g_groundFriction   =  4.0f,   // GoldSrc sv_friction equivalent
+	g_groundFriction   =  8.0f,   // GoldSrc sv_friction equivalent (default, overridden per material)
 	g_airAccel         = 10.0f,   // air acceleration multiplier
 	g_airSpeedCap      =  4.5f,   // max units/sec gainable per direction in air
 	g_headBobFrequency = 10.0f,
@@ -47,6 +47,20 @@ int g_lastStepTime = 0;
 
 float g_headBobTimer = 0.0f;
 float g_lastHeadBobValue = 0.0f;
+
+// Friction per E_MANAGED_MATERIAL (index matches enum order).
+// MAT_GLASS covers ice textures — intentionally low for slick surfaces.
+static const float g_materialFriction[] = {
+	8.0f,   // MAT_INVALID  — fallback, same as stone
+	9.0f,   // MAT_EARTH    — soil/grass, good grip
+	10.0f,  // MAT_GRAVEL   — loose but grippy
+	5.0f,   // MAT_WATER    — slippery
+	8.0f,   // MAT_STONE    — concrete/brick, normal
+	6.0f,   // MAT_METAL    — somewhat slippery
+	2.5f,   // MAT_GLASS    — glass/ice, very slippery
+	11.0f,  // MAT_CARPET   — high grip
+	8.5f,   // MAT_WOOD     — normal
+};
 
 void DisplayPlayerStats()
 {
@@ -541,7 +555,13 @@ void PlayerController::update(float dt)
 
 	if (g_isOnSurface)
 	{
-		horizontal_velocity = MoveGround(wishdir, horizontal_velocity, g_groundFriction, g_groundAccel, targetSpeed, dt / 1000.0f);
+		auto surfaceTex = RenderManager::Get()->getMeshMaterialFromRay(
+			transform.getPosition(),
+			transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f));
+		auto surfaceMat = Engine::Get()->getMaterialBuilder().getMaterialFromTexture(surfaceTex);
+		float surfaceFriction = g_materialFriction[static_cast<int>(surfaceMat)];
+
+		horizontal_velocity = MoveGround(wishdir, horizontal_velocity, surfaceFriction, g_groundAccel, targetSpeed, dt / 1000.0f);
 	}
 	else
 	{

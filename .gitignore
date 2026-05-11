@@ -57,6 +57,7 @@ Binaries/AS_DEBUG/
 Binaries/log/
 Binaries/saves/
 Binaries/temp/
+Binaries/content/scene/**/*_tmp.png
 Intermediate/
 Licenses/
 log/

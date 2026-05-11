@@ -120,7 +120,7 @@ std::array<const char*, KEY_KEYCOUNT + 2> KEYBOARD_KEY_STRING =
 };
 
 InputManager::InputManager() :
-	m_canProcessInput(true), m_blockMouseInput(false),
+	m_canProcessInput(true), m_blockMouseInput(false), m_wheelDelta(0.f),
 	m_xSensitivity(0.f), m_ySensitivity(0.f),
 	m_fixedMousePosition(0, 0)
 {
@@ -170,6 +170,8 @@ InputManager::InputManager() :
 
 void InputManager::update(bool processInput)
 {
+	m_wheelDelta = 0.f;
+
 	m_fixedMousePosition = irr::core::vector2df(
 		static_cast<float>(RenderManager::Get()->getConfiguration().width / 2),
 		static_cast<float>(RenderManager::Get()->getConfiguration().height / 2));

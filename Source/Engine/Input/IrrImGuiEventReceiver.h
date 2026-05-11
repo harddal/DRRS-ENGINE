@@ -2,6 +2,7 @@
 
 #include "irrlicht.h"
 #include <IMGUI/imgui.h>
+#include "Engine/Input/InputManager.h"
 
 // Translates Irrlicht SEvent input into ImGui IO events.
 // Used as the IrrlichtDevice's event receiver so ImGui receives keyboard/mouse input.
@@ -29,6 +30,8 @@ public:
             case irr::EMIE_MMOUSE_LEFT_UP:      io.AddMouseButtonEvent(2, false); break;
             case irr::EMIE_MOUSE_WHEEL:
                 io.AddMouseWheelEvent(0.0f, m.Wheel);
+                if (InputManager::Get())
+                    InputManager::Get()->accumulateWheelDelta(m.Wheel);
                 break;
             default: break;
             }
