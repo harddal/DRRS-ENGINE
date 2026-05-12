@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+	<value0>
+		<fullscreen>false</fullscreen>
+		<vSync>false</vSync>
+		<pointFilterOverride>false</pointFilterOverride>
+		<api>0</api>
+		<width>1920</width>
+		<height>1080</height>
+		<editor_width>1920</editor_width>
+		<editor_height>1080</editor_height>
+		<depth>32</depth>
+		<aspect>2</aspect>
+		<mode>3</mode>
+		<dpi_scale>1</dpi_scale>
+		<anisotropyFactor>8</anisotropyFactor>
+		<antialiasingFactor>1</antialiasingFactor>
+		<frameLimit>60</frameLimit>
+	</value0>
+</cereal>
+

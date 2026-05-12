@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+	<value0>
+		<key_forward>22</key_forward>
+		<key_backward>18</key_backward>
+		<key_strafel>0</key_strafel>
+		<key_strafer>3</key_strafer>
+		<key_jump>57</key_jump>
+		<key_crouch>2</key_crouch>
+		<key_sprint>38</key_sprint>
+		<key_use>4</key_use>
+		<key_reload>17</key_reload>
+		<key_firemode>23</key_firemode>
+		<key_inventory>8</key_inventory>
+		<key_primary>101</key_primary>
+		<key_secondary>102</key_secondary>
+		<xsens>0.20000000298023224</xsens>
+		<ysens>0.20000000298023224</ysens>
+	</value0>
+</cereal>
+

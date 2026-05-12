@@ -73,6 +73,9 @@ Binaries/generate_docs.py
 Binaries/ASSETS_TO_GET.txt
 Binaries/Bugs.txt
 Binaries/Notes.txt
+Binaries/content/dialog/
+Binaries/content/item/
+Brainstorming Plot/
 Intermediate/
 Licenses/
 log/
