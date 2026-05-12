@@ -58,6 +58,21 @@ Binaries/log/
 Binaries/saves/
 Binaries/temp/
 Binaries/content/scene/**/*_tmp.png
+Binaries/content/scene/**/*.pak
+
+# Editor/tool shortcuts and runtime files
+*.lnk
+*.exp
+*.ini
+Binaries/imgui.ini
+Binaries/script_functions.txt
+Binaries/script_reference.html
+Binaries/test.ent
+Binaries/gear_icon.ico
+Binaries/generate_docs.py
+Binaries/ASSETS_TO_GET.txt
+Binaries/Bugs.txt
+Binaries/Notes.txt
 Intermediate/
 Licenses/
 log/
