@@ -64,7 +64,7 @@ protected:
 	irr::core::vector3df MoveAir(irr::core::vector3df& accelDir, irr::core::vector3df& prevVelocity, float air_accelerate, float max_velocity_air, float dt);
 
 private:
-    bool m_locked = false, m_isMoving = false, m_firstUpdate = true, m_isSwimming = false, m_isHeadUnderWater = false, m_isBlocking = false;
+    bool m_locked = false, m_isMoving = false, m_firstUpdate = true, m_isSwimming = false, m_isHeadUnderWater = false, m_isBlocking = false, m_isSliding = false;
 
 	// Clean camera orientation (no FX baked in) — driven by mouse input,
 	// used as the authoritative base so recoil offsets decay back to the
@@ -111,6 +111,8 @@ private:
 	const int   m_dodgeDuration        = 500;
 
 	float m_lastAirVelocityY = 0.0f;
+	irr::core::vector3df m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	irr::core::vector3df m_lastSlopeNormal    = irr::core::vector3df(0.0f, 1.0f, 0.0f);
 	
 	// Stamina system
 	float m_currentStamina = 100.0f;             // Current stamina (0-100) // Need to serialize this!!!

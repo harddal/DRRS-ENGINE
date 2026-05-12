@@ -44,7 +44,7 @@ bool g_used = false;
 
 int g_lastJumpTime = 0;
 int g_lastStepTime = 0;
-
+ 
 float g_headBobTimer = 0.0f;
 float g_lastHeadBobValue = 0.0f;
 
@@ -52,14 +52,14 @@ float g_lastHeadBobValue = 0.0f;
 // MAT_GLASS covers ice textures — intentionally low for slick surfaces.
 static const float g_materialFriction[] = {
 	8.0f,   // MAT_INVALID  — fallback, same as stone
-	9.0f,   // MAT_EARTH    — soil/grass, good grip
-	10.0f,  // MAT_GRAVEL   — loose but grippy
+	8.0f,   // MAT_EARTH    — soil/grass, good grip
+	8.0f,  // MAT_GRAVEL   — loose but grippy
 	5.0f,   // MAT_WATER    — slippery
 	8.0f,   // MAT_STONE    — concrete/brick, normal
 	6.0f,   // MAT_METAL    — somewhat slippery
-	2.5f,   // MAT_GLASS    — glass/ice, very slippery
-	11.0f,  // MAT_CARPET   — high grip
-	8.5f,   // MAT_WOOD     — normal
+	1.0f,   // MAT_GLASS    — glass/ice, very slippery
+	8.0f,  // MAT_CARPET   — high grip
+	8.0f,   // MAT_WOOD     — normal
 };
 
 void DisplayPlayerStats()
@@ -508,8 +508,8 @@ void PlayerController::update(float dt)
 				prevPressed = pressed;
 			};
 
-			tryDodge(lftPressed, m_prevLeftPressed,  m_lastLeftTapTime,  -1.0f, 0.0f);
-			tryDodge(rgtPressed, m_prevRightPressed, m_lastRightTapTime,  1.0f, 0.0f);
+			//tryDodge(lftPressed, m_prevLeftPressed,  m_lastLeftTapTime,  -1.0f, 0.0f);
+			//tryDodge(rgtPressed, m_prevRightPressed, m_lastRightTapTime,  1.0f, 0.0f);
 		}
 	}
 
@@ -561,10 +561,144 @@ void PlayerController::update(float dt)
 		auto surfaceMat = Engine::Get()->getMaterialBuilder().getMaterialFromTexture(surfaceTex);
 		float surfaceFriction = g_materialFriction[static_cast<int>(surfaceMat)];
 
-		horizontal_velocity = MoveGround(wishdir, horizontal_velocity, surfaceFriction, g_groundAccel, targetSpeed, dt / 1000.0f);
+		m_isSliding = false;
+
+		// Raycast for slope normal on every grounded frame — used both for ice
+		// slide gravity and for stick-to-slope on all surfaces. Cache last valid
+		// result so a missed frame doesn't lose the normal.
+		{
+			irr::core::triangle3df hitTriangle;
+			irr::core::vector3df   hitPoint;
+			irr::core::line3df     slopeRay(
+				transform.getPosition(),
+				transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f));
+
+			auto* collMgr = RenderManager::Get()->sceneManager()->getSceneCollisionManager();
+			if (collMgr->getSceneNodeAndCollisionPointFromRay(slopeRay, hitPoint, hitTriangle))
+			{
+				irr::core::vector3df n = hitTriangle.getNormal();
+				n.normalize();
+				if (n.Y < 0.0f) n = -n;
+				m_lastSlopeNormal = n;
+			}
+		}
+
+		if (surfaceFriction < 3.0f)
+		{
+			// Ice: skip MoveGround friction (it would zero out slide velocity before it
+			// builds, because control = max(speed, wishspeed) starts at walkSpeed even
+			// when stationary). Allow minimal player steering via Accelerate only.
+			horizontal_velocity = Accelerate(wishdir, horizontal_velocity, g_groundAccel * 0.15f, targetSpeed, dt / 1000.0f);
+
+			irr::core::vector3df gravVec(0.0f, -g_gravity, 0.0f);
+			m_lastSlideWorldAccel = gravVec - m_lastSlopeNormal * gravVec.dotProduct(m_lastSlopeNormal);
+
+			float yawRad = deg2rad(m_cameraYaw);
+			float localX = m_lastSlideWorldAccel.X * cosf(yawRad) - m_lastSlideWorldAccel.Z * sinf(yawRad);
+			float localZ = m_lastSlideWorldAccel.X * sinf(yawRad) + m_lastSlideWorldAccel.Z * cosf(yawRad);
+
+			horizontal_velocity.X += localX * (dt / 1000.0f);
+			horizontal_velocity.Z += localZ * (dt / 1000.0f);
+
+			float slideSpeed = horizontal_velocity.getLength();
+			if (slideSpeed > targetSpeed * 1.5f)
+				horizontal_velocity *= (targetSpeed * 1.5f) / slideSpeed;
+
+			// Suppress footsteps only during passive sliding (no player input).
+			// Walking against the slide (e.g. up-slope with W) still makes noise.
+			m_isSliding = (m_lastSlideWorldAccel.getLength() > 0.5f) && (wishdir.getLength() < 0.01f);
+		}
+		else
+		{
+			m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+			horizontal_velocity = MoveGround(wishdir, horizontal_velocity, surfaceFriction, g_groundAccel, targetSpeed, dt / 1000.0f);
+
+			// Downward-raycast steep slope handling (catches moderate slopes).
+			const float maxWalkSlopeY = 0.5f;
+			if (m_lastSlopeNormal.Y < maxWalkSlopeY && m_lastSlopeNormal.Y > 0.1f)
+			{
+				float yawRad = deg2rad(m_cameraYaw);
+
+				irr::core::vector3df slopeHN(m_lastSlopeNormal.X, 0.0f, m_lastSlopeNormal.Z);
+				float slopeHNLen = slopeHN.getLength();
+				if (slopeHNLen > 0.01f)
+				{
+					slopeHN /= slopeHNLen;
+					float localNX = slopeHN.X * cosf(yawRad) - slopeHN.Z * sinf(yawRad);
+					float localNZ = slopeHN.X * sinf(yawRad) + slopeHN.Z * cosf(yawRad);
+					irr::core::vector3df slopeHN_local(localNX, 0.0f, localNZ);
+
+					float penetration = -horizontal_velocity.dotProduct(slopeHN_local);
+					if (penetration > 0.0f)
+						horizontal_velocity += slopeHN_local * penetration;
+				}
+
+				irr::core::vector3df gravVec(0.0f, -g_gravity, 0.0f);
+				m_lastSlideWorldAccel = gravVec - m_lastSlopeNormal * gravVec.dotProduct(m_lastSlopeNormal);
+
+				float localX = m_lastSlideWorldAccel.X * cosf(yawRad) - m_lastSlideWorldAccel.Z * sinf(yawRad);
+				float localZ = m_lastSlideWorldAccel.X * sinf(yawRad) + m_lastSlideWorldAccel.Z * cosf(yawRad);
+				horizontal_velocity.X += localX * (dt / 1000.0f);
+				horizontal_velocity.Z += localZ * (dt / 1000.0f);
+			}
+		}
+
+		// Forward ray: catches near-vertical surfaces the downward ray misses entirely
+		// because the ray hits the floor rather than the slope face. Cast in the
+		// movement direction; if anything steep is within reach, cancel into it.
+		{
+			float yawRad = deg2rad(m_cameraYaw);
+
+			// World-space direction of current horizontal movement (prefer wishdir so
+			// we block the player before they reach the surface, not just after).
+			irr::core::vector3df checkDir = wishdir.getLength() > 0.01f ? wishdir : horizontal_velocity;
+			float worldDirX = checkDir.Z * sinf(yawRad) + checkDir.X * cosf(yawRad);
+			float worldDirZ = checkDir.Z * cosf(yawRad) - checkDir.X * sinf(yawRad);
+			irr::core::vector3df worldDir(worldDirX, 0.0f, worldDirZ);
+
+			if (worldDir.getLength() > 0.01f)
+			{
+				worldDir.normalize();
+
+				irr::core::triangle3df fwdTri;
+				irr::core::vector3df   fwdHit;
+				irr::core::line3df     fwdRay(
+					transform.getPosition(),
+					transform.getPosition() + worldDir * 0.75f);
+
+				auto* collMgr = RenderManager::Get()->sceneManager()->getSceneCollisionManager();
+				if (collMgr->getSceneNodeAndCollisionPointFromRay(fwdRay, fwdHit, fwdTri))
+				{
+					irr::core::vector3df wallN = fwdTri.getNormal();
+					wallN.normalize();
+					if (wallN.Y < 0.0f) wallN = -wallN;
+
+					const float maxWalkSlopeY = 0.5f;
+					if (wallN.Y < maxWalkSlopeY)
+					{
+						irr::core::vector3df wallHN(wallN.X, 0.0f, wallN.Z);
+						float wallHNLen = wallHN.getLength();
+						if (wallHNLen > 0.01f)
+						{
+							wallHN /= wallHNLen;
+							float localNX = wallHN.X * cosf(yawRad) - wallHN.Z * sinf(yawRad);
+							float localNZ = wallHN.X * sinf(yawRad) + wallHN.Z * cosf(yawRad);
+							irr::core::vector3df wallHN_local(localNX, 0.0f, localNZ);
+
+							float penetration = -horizontal_velocity.dotProduct(wallHN_local);
+							if (penetration > 0.0f)
+								horizontal_velocity += wallHN_local * penetration;
+						}
+					}
+				}
+			}
+		}
 	}
 	else
 	{
+		m_isSliding = false;
+		m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+		m_lastSlopeNormal     = irr::core::vector3df(0.0f, 1.0f, 0.0f);
 		m_lastAirVelocityY = player_velocity.Y;
 		if (!m_isDodging)
 			horizontal_velocity = MoveAir(wishdir, horizontal_velocity, g_airAccel, g_airSpeedCap, dt / 1000.0f);
@@ -575,9 +709,23 @@ void PlayerController::update(float dt)
 	player_velocity.X = horizontal_velocity.X;
 	player_velocity.Z = horizontal_velocity.Z;
 
-	// Combine horizontal and vertical movement for final displacement
-	// Use the clean yaw (no FX offset) so recoil wobble doesn't deflect movement.
+	// Stick-to-slope: when sliding on ice, override Y so the total displacement
+	// is tangent to the slope surface. Without this, horizontal slide velocity
+	// penetrates the slope geometry and the CCT deflects the player upward each
+	// frame, causing a bounce. The required Y is derived by solving:
+	//   dot(velocity_world, slopeNormal) = 0
+	//   worldVelX*n.X + Y*n.Y + worldVelZ*n.Z = 0  →  Y = -(worldVelX*n.X + worldVelZ*n.Z) / n.Y
 	float moveDirection = deg2rad(m_cameraYaw);
+	// slopeNormal.Y < 0.999 means the surface is sloped enough to matter (~2.5°).
+	// Flat ground has Y = 1.0 so this is a no-op there.
+	if (g_isOnSurface && m_lastSlopeNormal.Y < 0.999f && m_lastSlopeNormal.Y > 0.3f)
+	{
+		float worldVelX = player_velocity.Z * sinf(moveDirection) + player_velocity.X * sinf(moveDirection + __pi / 2.0f);
+		float worldVelZ = player_velocity.Z * cosf(moveDirection) + player_velocity.X * cosf(moveDirection + __pi / 2.0f);
+		float stickY = -(worldVelX * m_lastSlopeNormal.X + worldVelZ * m_lastSlopeNormal.Z) / m_lastSlopeNormal.Y;
+		if (stickY < 0.0f)
+			player_velocity.Y = stickY;
+	}
 
 	// Configure collision filters to detect static geometry
 	PxFilterData filterData;
@@ -689,7 +837,7 @@ void PlayerController::update(float dt)
 		// Play footstep when bob crosses zero going down (foot hits ground)
 		// Use airborne frame count instead of g_isOnSurface for more reliable ground detection
 		// m_airborneFrameCount < 3 means player is effectively on ground (even if PhysX collision flags flicker)
-		if (!isSwimming() && m_airborneFrameCount < 3)
+		if (!isSwimming() && !m_isSliding && m_airborneFrameCount < 3)
 		{
 			// Only play if enough time has elapsed since last footstep
 			if (/*g_lastHeadBobValue > 0.0f && bobValue <= 0.0f &&*/ currentTime - m_lastFootstepTime >= m_minFootstepInterval && !isSwimming())

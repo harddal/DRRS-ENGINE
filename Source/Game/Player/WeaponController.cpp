@@ -131,7 +131,7 @@ void WeaponController::switchNextWeapon()
 
 	if (m_current_weapon == WEAP_COUNT - 1)
 	{
-		m_current_weapon = WEAP_MELEE;
+		m_current_weapon = WEAP_NONE;
 	}
 	else
 	{

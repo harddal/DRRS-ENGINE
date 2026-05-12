@@ -593,7 +593,7 @@ void CCTSubsystem::init(PxScene* scene)
     m_capsuleDesc.scaleCoeff = 0.8f;
     m_capsuleDesc.volumeGrowth = 1.5f;
     m_capsuleDesc.density = 10.0f;
-    m_capsuleDesc.slopeLimit = 0.65f;
+    m_capsuleDesc.slopeLimit = 0.37f;
     m_capsuleDesc.stepOffset = 0.5f;
     m_capsuleDesc.contactOffset = 0.1f;        // Position interpolation now hides jitter
     m_capsuleDesc.invisibleWallHeight = 0.0f;

@@ -152,7 +152,7 @@ public:
     NavigationManager* navigationManager() { return &m_navigationManager; }
 	RNG*		       rng()               { return &m_rng; }
 
-    MaterialBuilder getMaterialBuilder() { return m_materialBuilder; }
+    const MaterialBuilder& getMaterialBuilder() { return m_materialBuilder; }
 
 	irr::f32 getPhysicsTime() { return m_physicsTime; }
 	irr::f32 getRenderTime() { return m_renderTime; }

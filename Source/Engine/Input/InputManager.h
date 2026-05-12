@@ -129,7 +129,7 @@ public:
 
 	irr::core::vector2df getMouseDelta();
 
-	float getMouseWheelDelta() const { return m_wheelDelta; }
+	float getMouseWheelDelta() const { return m_frameWheelDelta; }
 	void  accumulateWheelDelta(float delta) { m_wheelDelta += delta; }
 
     bool canProcessInput(bool process = false);
@@ -155,7 +155,8 @@ private:
     static InputManager* s_Instance;
 
 	bool m_canProcessInput, m_blockMouseInput;
-	float m_wheelDelta;
+	float m_wheelDelta;       // accumulated from event receiver between updates
+	float m_frameWheelDelta;  // snapshot taken at start of update(), read by game code
 
     InputConfiguration m_configuration;
 

@@ -2,7 +2,7 @@
 
 #include <array>
 #include <string>
-#include <vector>
+#include <unordered_map>
 
 enum E_MANAGED_MATERIAL
 {
@@ -17,7 +17,7 @@ enum E_MANAGED_MATERIAL
     MAT_WOOD
 };
 
-const std::array<std::string, 9> g_managedMaterialName = 
+const std::array<std::string, 9> g_managedMaterialName =
 {
     "invalid",
     "earth",
@@ -33,15 +33,14 @@ const std::array<std::string, 9> g_managedMaterialName =
 class MaterialBuilder
 {
 public:
-    MaterialBuilder();
-    
+    MaterialBuilder() = default;
+
 	void buildMaterialTable();
 
-	std::string getMaterialName(E_MANAGED_MATERIAL material);
-	E_MANAGED_MATERIAL getMaterialFromTexture(const std::string& texture);
-    std::string getMaterialNameFromTexture(const std::string& texture);
-    
+	std::string        getMaterialName(E_MANAGED_MATERIAL material) const;
+	E_MANAGED_MATERIAL getMaterialFromTexture(const std::string& texture) const;
+    std::string        getMaterialNameFromTexture(const std::string& texture) const;
+
 private:
-	std::vector<std::pair<std::string, E_MANAGED_MATERIAL>> m_managedMaterialList;
-	std::vector<std::pair<std::string, E_MANAGED_MATERIAL>> m_regexList;
+	std::unordered_map<std::string, E_MANAGED_MATERIAL> m_materialMap;
 };

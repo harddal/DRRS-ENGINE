@@ -12,94 +12,78 @@ using namespace std;
 using namespace boost;
 using namespace filesystem;
 
-MaterialBuilder::MaterialBuilder()
-{
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(dev)"							), MAT_INVALID));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(grass|dirt|earth|sand|snow)"  ), MAT_EARTH  ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(gravel|pebbles)"				), MAT_GRAVEL ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(sludge|mud|goo|water|wet)"	), MAT_WATER  ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(concrete|brick|rock|stone)"	), MAT_STONE  ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(metal|iron|steel)"			), MAT_METAL  ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(glass|tile|ceramic|ice)"      ), MAT_GLASS  ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(carpet|soft|felt)"			), MAT_CARPET ));
-    m_regexList.emplace_back(std::pair<std::string, E_MANAGED_MATERIAL>(std::string("(wood|plank|bark|board)"		), MAT_WOOD   ));
-}
-
 void MaterialBuilder::buildMaterialTable()
 {
+	if (!m_materialMap.empty()) return;
+
+	static const pair<const char*, E_MANAGED_MATERIAL> k_patterns[] = {
+		{ "(dev)",                         MAT_INVALID },
+		{ "(grass|dirt|earth|sand|snow)",  MAT_EARTH   },
+		{ "(gravel|pebbles)",              MAT_GRAVEL  },
+		{ "(sludge|mud|goo|water|wet)",    MAT_WATER   },
+		{ "(concrete|brick|rock|stone)",   MAT_STONE   },
+		{ "(metal|iron|steel)",            MAT_METAL   },
+		{ "(glass|tile|ceramic|ice)",      MAT_GLASS   },
+		{ "(carpet|soft|felt)",            MAT_CARPET  },
+		{ "(wood|plank|bark|board)",       MAT_WOOD    },
+	};
+
+	// Compile regex objects once at startup.
+	static vector<pair<regex, E_MANAGED_MATERIAL>> k_compiled;
+	if (k_compiled.empty())
+	{
+		for (const auto& p : k_patterns)
+			k_compiled.emplace_back(regex(p.first), p.second);
+	}
+
 	const path dir = "content/";
 	recursive_directory_iterator it(dir), end;
 
-	vector<std::wstring> files;
-	for (auto& entry : make_iterator_range(it, end)) {
-		if (is_regular(entry)) {
-			files.emplace_back(entry.path().native());
-		}
-	}
+	for (auto& entry : make_iterator_range(it, end))
+	{
+		if (!is_regular_file(entry)) continue;
 
-	for (auto& file : files) {
-		const auto 
-	        filepath = string(file.begin(), file.end()),
-	        filename = Utility::FilenameFromPath(filepath),
-	        file_ext = Utility::FileExtensionFromPath(filepath);
+		const auto filepath = string(entry.path().native().begin(), entry.path().native().end());
+		const auto filename = Utility::FilenameFromPath(filepath);
+		const auto file_ext = Utility::FileExtensionFromPath(filepath);
 
-		auto match = false;
-	    for (const auto& mat : m_managedMaterialList) {
-	        if (mat.first == filename) {
-				match = true;
-	        }
-	    }
-	    
-	    if (match) {
-		    continue;
-	    }
+		if (m_materialMap.count(filename)) continue;
 
-		if (
-            file_ext == string("png") ||
-            file_ext == string("jpg") ||
-			file_ext == string("bmp") ||
-            file_ext == string("dds") ||
-            file_ext == string("tga"))
+		if (file_ext != "png" && file_ext != "jpg" && file_ext != "bmp" &&
+		    file_ext != "dds" && file_ext != "tga")
+			continue;
+
+		smatch result;
+		for (const auto& compiled : k_compiled)
 		{
-		    for (auto expr : m_regexList) {
-		        smatch result;
-
-				if (regex_search(filename, result, regex(expr.first))) {
-					m_managedMaterialList.emplace_back(pair<string, E_MANAGED_MATERIAL>(filename, expr.second));
-					spdlog::debug("Material Builder Loaded: \'{0}\' as material \'{1}\'", filename, expr.second);
-				}
-		    }
+			if (regex_search(filename, result, compiled.first))
+			{
+				m_materialMap.emplace(filename, compiled.second);
+				spdlog::debug("Material Builder Loaded: '{}' as material '{}'", filename, static_cast<int>(compiled.second));
+				break;
+			}
 		}
 	}
 }
 
-std::string MaterialBuilder::getMaterialName(E_MANAGED_MATERIAL material)
+std::string MaterialBuilder::getMaterialName(E_MANAGED_MATERIAL material) const
 {
-    if (static_cast<unsigned int>(material) > g_managedMaterialName.size() - 1 || static_cast<unsigned int>(material) < 0) {
-		return g_managedMaterialName.at(0);
-    }
-    
-	return g_managedMaterialName[static_cast<unsigned int>(material)];
+	int idx = static_cast<int>(material);
+	if (idx < 0 || idx >= static_cast<int>(g_managedMaterialName.size()))
+		return g_managedMaterialName[0];
+	return g_managedMaterialName[idx];
 }
 
-E_MANAGED_MATERIAL MaterialBuilder::getMaterialFromTexture(const std::string& texture)
+E_MANAGED_MATERIAL MaterialBuilder::getMaterialFromTexture(const std::string& texture) const
 {
-    for (const auto& pair : m_managedMaterialList) {
-        if (pair.first == texture) {
-			return pair.second;
-        }
-    }
-
-	return MAT_INVALID;
+	auto it = m_materialMap.find(texture);
+	return it != m_materialMap.end() ? it->second : MAT_INVALID;
 }
 
-std::string MaterialBuilder::getMaterialNameFromTexture(const std::string& texture)
+std::string MaterialBuilder::getMaterialNameFromTexture(const std::string& texture) const
 {
-    for (const auto& pair : m_managedMaterialList) {
-        if (pair.first == texture) {
-            return g_managedMaterialName[static_cast<unsigned int>(pair.second)];
-        }
-    }
-
-    return g_managedMaterialName.at(0);
+	auto it = m_materialMap.find(texture);
+	if (it != m_materialMap.end())
+		return g_managedMaterialName[static_cast<int>(it->second)];
+	return g_managedMaterialName[0];
 }
