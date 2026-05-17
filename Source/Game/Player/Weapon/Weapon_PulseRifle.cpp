@@ -17,14 +17,14 @@ void Weapon_PulseRifle::precache()
 
 void Weapon_PulseRifle::init()
 {
-	m_descriptor.name = "Player_Weapon_Minigun";
+	m_descriptor.name = "Player_Weapon_PulseRifle";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.25f, -0.1f, 0.3f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
+	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
-	m_mesh.mesh = "content/mesh/player/weapon/pulse_rifle/hud.b3d";
+	m_mesh.mesh = "content/mesh/player/weapon/beam_cutter/hud.b3d";
 
 	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
 	if (!m_mesh.trimesh)
@@ -97,31 +97,35 @@ void Weapon_PulseRifle::init()
 	RenderManager::Get()->registerViewmodelNode(m_mesh.node);
 	m_mesh.node->setVisible(false);
 
-	m_muzzleNode = m_mesh.node->getJointNode("MUZZLE");
+	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
 	if (!m_muzzleNode)
-		spdlog::warn("Weapon_PulseRifle: 'MUZZLE' joint not found");
+		spdlog::warn("Weapon_PulseRifle: 'FIRESPOT' joint not found");
 
-	m_muzzleFlashMaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+	m_muzzleFlashMaterialType = ShaderMaterialManager::get("additive_color");
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair038.png");
 
-	// Pre-build shell casing pool (no per-shot alloc/PhysX cost)
-	auto* shellMesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/shellmedium.obj");
-	auto* shellTex = RenderManager::Get()->driver()->getTexture("content/mesh/prop/shells/shellsColor.png");
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	// Create persistent laser beam node (unit plane stretched per-shot in createLaserBeam)
 	{
-		m_shellPool[i].node = RenderManager::Get()->sceneManager()->addMeshSceneNode(shellMesh);
-		if (m_shellPool[i].node)
+		auto* geo = RenderManager::Get()->sceneManager()->getGeometryCreator();
+		irr::scene::IMesh* planeMesh = geo->createPlaneMesh(
+			irr::core::dimension2df(0.05f, 1.0f), irr::core::dimension2du(1, 1));
+		m_laserNode = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
+		planeMesh->drop();
+		if (m_laserNode)
 		{
-			m_shellPool[i].node->setMaterialTexture(0, shellTex);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
-			m_shellPool[i].node->setRotation(irr::core::vector3df(0.0f, 180.0f, 0.0f));
-			m_shellPool[i].node->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
-			m_shellPool[i].node->setMaterialType(perpixelMat);
-			m_shellPool[i].node->setVisible(false);
+			auto* laserTex = RenderManager::Get()->driver()->getTexture("content/texture/particle/trace_07.png");
+			m_laserNode->setMaterialTexture(0, laserTex);
+			m_laserNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+			m_laserNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+			m_laserNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
+			m_laserNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
+			m_laserNode->setMaterialType(m_muzzleFlashMaterialType);
+			m_laserNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 30, 30);
+			m_laserNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 30, 30);
+			m_laserNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 30, 30);
+			m_laserNode->setVisible(false);
 		}
-		m_shellPool[i].active = false;
 	}
 
 	initImpactSparkSystem();
@@ -129,25 +133,12 @@ void Weapon_PulseRifle::init()
 
 void Weapon_PulseRifle::destroy()
 {
-	// Clean up shell casing pool
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	// Clean up laser beam node
+	if (m_laserNode)
 	{
-		if (m_shellPool[i].node)
-		{
-			m_shellPool[i].node->remove();
-			m_shellPool[i].node = nullptr;
-		}
+		m_laserNode->remove();
+		m_laserNode = nullptr;
 	}
-
-	// Clean up all tracer beams
-	for (auto& tracer : m_tracerBeams)
-	{
-		if (tracer.node)
-		{
-			tracer.node->remove();
-		}
-	}
-	m_tracerBeams.clear();
 
 	// Destroy active impact systems
 	for (auto* sys : m_impactSystems)
@@ -185,19 +176,19 @@ void Weapon_PulseRifle::update()
 		fire();
 	}
 
-	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
+	//RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 
 	static bool r = false;
 	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
 	{
 		m_mesh.node->setLoopMode(false);
-		m_mesh.node->setFrameLoop(375, 428);
+		m_mesh.node->setFrameLoop(96, 179);
 	}
 
 	if (m_mesh.animation_call_back->hasAnimationEnded())
 	{
 		m_mesh.node->setLoopMode(true);
-		m_mesh.node->setFrameLoop(23, 49);
+		m_mesh.node->setFrameLoop(20, 50);
 	}
 }
 
@@ -205,14 +196,37 @@ void Weapon_PulseRifle::persist()
 {
 	float dt = Engine::Get()->getDeltaTime();
 
-	// Update muzzle flash effect
+	bool fireHeld = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
+
+	// While firing, reset the flash timer so updateMuzzleFlash keeps it at full brightness
+	if (fireHeld && m_muzzleStarNode && m_muzzleStarNode->isVisible())
+		m_muzzleFlashTime = 0.0f;
+
+	// Update muzzle flash effect (fades when timer is not being reset)
 	updateMuzzleFlash(dt);
 
-	// Update tracer beams
-	updateTracers(dt);
+	// Drive the laser beam every frame while the fire button is held
+	if (fireHeld && m_mesh.node && m_mesh.node->isVisible() && m_muzzleNode)
+	{
+		m_mesh.node->updateAbsolutePosition();
+		m_muzzleNode->updateAbsolutePosition();
+		irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
-	// Update shell casings
-	updateShells(dt);
+		anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		if (player.isValid() && player.hasComponent<CameraComponent>())
+		{
+			auto& camera = player.getComponent<CameraComponent>();
+			irr::core::vector3df forward = (camera.camera->getTarget() - camera.camera->getAbsolutePosition()).normalize();
+			irr::core::vector3df rayEnd = muzzlePos + forward * 1000.0f;
+
+			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(muzzlePos, rayEnd, true);
+			createLaserBeam(muzzlePos, hit.hit ? hit.point : rayEnd);
+		}
+	}
+	else
+	{
+		updateLaserBeam(dt);
+	}
 
 	// Tick impact particle systems, remove finished ones
 	for (auto it = m_impactSystems.begin(); it != m_impactSystems.end();)
@@ -277,22 +291,9 @@ void Weapon_PulseRifle::fire()
 	// Get camera target for aiming direction
 	irr::core::vector3df target = camera.camera->getTarget();
 	irr::core::vector3df cameraPos = camera.camera->getAbsolutePosition();
-	irr::core::vector3df forward = (target - cameraPos).normalize();
+	irr::core::vector3df direction = (target - cameraPos).normalize();
 
-	// Calculate right and down vectors relative to camera orientation for spread
-	irr::core::vector3df up(0, 1, 0);
-	irr::core::vector3df right = forward.crossProduct(up).normalize();
-	irr::core::vector3df down = right.crossProduct(forward).normalize();
-
-	// Calculate direction from camera to crosshair (screen center)
-	irr::core::vector3df direction = forward;
-
-	// Apply random offset in right and down directions
-	float spreadRight = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
-	float spreadDown  = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
-	direction = (direction + right * spreadRight + down * spreadDown).normalize();
-
-	// Perform raycast from muzzle position in spread direction
+	// Perform raycast from muzzle position in aim direction
 	// Cast ray a long distance (1000 units)
 	irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
@@ -328,29 +329,8 @@ void Weapon_PulseRifle::fire()
 		}
 	}
 
-	// Increment shot counter for tracer logic
-	m_shotCounter++;
-	bool isTracerRound = (m_shotCounter % m_tracerFrequency == 0);
-
-	// Create tracer beam for every Nth shot
-	if (isTracerRound)
-	{
-		// Determine tracer end point (hit point or max range)
-		irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ? 
-			raycastResult.point : (muzzlePos + direction * 1000.0f);
-		
-		createTracerBeam(muzzlePos, tracerEnd);
-	}
-
 	// Create muzzle flash effect
 	createMuzzleFlash();
-
-	// Eject shell casing
-	ejectShell();
-
-	// Camera recoil kick — random yaw drift for a natural, unsteady feel
-	auto recoilYaw = Engine::Get()->rng()->getFloat(-0.1f, 0.1f);
-	g_CameraFX.addRecoil(-0.5f, recoilYaw);
 
 	SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", false);
 }
@@ -379,7 +359,7 @@ void Weapon_PulseRifle::createMuzzleFlash()
 	{
 		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
 			m_muzzleNode,
-			irr::core::dimension2df(1.2f, 1.2f),
+			irr::core::dimension2df(0.5f, 0.5f),
 			flashOffset
 		);
 
@@ -392,7 +372,7 @@ void Weapon_PulseRifle::createMuzzleFlash()
 		//m_muzzleStarNode->getMaterial(0).setTexture(1, RenderManager::Get()->renderer()->getMRT(2));
 	}
 
-	std::string starPath = "content/texture/particle/star_05.png";
+	std::string starPath = "content/texture/particle/star_06.png";
 	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
 	m_muzzleStarNode->setMaterialTexture(0, starTex);
 	m_muzzleStarNode->setVisible(true);
@@ -400,19 +380,19 @@ void Weapon_PulseRifle::createMuzzleFlash()
 	// Force immediate position update to prevent lag during fast camera movement
 	m_muzzleStarNode->updateAbsolutePosition();
 
-	// Tint star yellow-orange for minigun effect
-	m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 204, 76);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 204, 76);
-	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 204, 76);
+	// Tint star red for laser effect
+	m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 30, 30);
+	m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 30, 30);
+	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 30, 30);
 
-	// Create/show blue point light at muzzle if not exists
+	// Create/show red point light at muzzle if not exists
 	if (!m_muzzleLightNode)
 	{
 		m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
 			m_muzzleNode,
-			flashOffset,  // Same position as flash
-			irr::video::SColorf(1.0f, 1.0f, 0.0f),  // Blue light
-			3.0f  // Small radius
+			flashOffset,
+			irr::video::SColorf(1.0f, 0.0f, 0.0f),  // Red light
+			3.0f
 		);
 	}
 	if (m_muzzleLightNode)
@@ -453,272 +433,54 @@ void Weapon_PulseRifle::updateMuzzleFlash(float dt)
 	}
 }
 
-void Weapon_PulseRifle::createTracerBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
+void Weapon_PulseRifle::createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
 {
-	// Calculate beam properties
-	irr::core::vector3df direction = (end - start);
+	if (!m_laserNode)
+		return;
+
+	irr::core::vector3df direction = end - start;
 	float distance = direction.getLength();
-	
 	if (distance < 0.1f)
-		return; // Too short to render
-	
+		return;
+
 	direction.normalize();
-	
-	// Create a plane mesh for the tracer beam
-	irr::scene::IMesh* planeMesh = RenderManager::Get()->sceneManager()->getGeometryCreator()->createPlaneMesh(
-		irr::core::dimension2df(0.1f, distance), // Width x Length
-		irr::core::dimension2du(1, 1)
-	);
-	
-	irr::scene::IMeshSceneNode* tracerNode = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
-	
-	if (!tracerNode)
-	{
-		spdlog::warn("Failed to create tracer beam mesh");
-		return;
-	}
-	
-	// Position at start point
-	tracerNode->setPosition(start);
-	
-	// Rotate to align with beam direction
-	// The plane is created facing +Y, we need to align it with the beam direction
-	irr::core::vector3df targetDirection = direction;
-	
-	// Calculate rotation to align plane with beam
-	// Default plane normal is (0, 1, 0), we want it to point along the beam
+
+	// Stretch the unit-length plane to match the shot distance
+	m_laserNode->setScale(irr::core::vector3df(1.0f, 1.0f, distance));
+
+	// Position at beam midpoint
+	m_laserNode->setPosition(start + direction * (distance * 0.5f));
+
+	// Align plane's Z axis with beam direction
 	irr::core::vector3df rotation;
-	rotation.Y = atan2f(targetDirection.X, targetDirection.Z) * (180.0f / 3.14159265f);
-	rotation.X = -asinf(targetDirection.Y) * (180.0f / 3.14159265f);
-	rotation.Z = 0;
-	
-	tracerNode->setRotation(rotation);
-	
-	// Offset position to center the beam (since plane starts at one end)
-	irr::core::vector3df offset = direction * (distance * 0.5f);
-	tracerNode->setPosition(start + offset);
-	
-	// Load tracer texture (glowing line)
-	auto* tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/particle/trace_07.png");
-	if (!tracerTexture)
-	{
-		// Fallback to a simple particle texture
-		tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png");
-	}
-	
-	tracerNode->setMaterialTexture(0, tracerTexture);
-	
-	// Bind depth texture (texture unit 1) for depth-aware rendering
-	//tracerNode->setMaterialTexture(1, RenderManager::Get()->renderer()->getMRT(2));
-	
-	// Configure material for glowing effect
-	tracerNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-	tracerNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-	tracerNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false); // Render both sides
-	tracerNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-	
-	// Use the same muzzle flash shader for depth-aware transparency
-	tracerNode->setMaterialType(m_muzzleFlashMaterialType);
-	
-	// Set bright yellow/orange color for tracer
-	tracerNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 200, 100);
-	tracerNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 200, 100);
-	tracerNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 200, 100);
-	
-	// Store tracer for update/cleanup
-	TracerBeam tracer;
-	tracer.node = tracerNode;
-	tracer.spawnTime = Engine::Get()->getCurrentTime();
-	m_tracerBeams.push_back(tracer);
+	rotation.Y = atan2f(direction.X, direction.Z) * (180.0f / 3.14159265f);
+	rotation.X = -asinf(irr::core::clamp(direction.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
+	rotation.Z = 0.0f;
+	m_laserNode->setRotation(rotation);
+
+	// Reset alpha and restart fade timer
+	m_laserNode->getMaterial(0).AmbientColor.setAlpha(255);
+	m_laserNode->getMaterial(0).DiffuseColor.setAlpha(255);
+	m_laserFireTime = Engine::Get()->getCurrentTime();
+	m_laserNode->setVisible(true);
 }
 
-void Weapon_PulseRifle::ejectShell()
+void Weapon_PulseRifle::updateLaserBeam(float dt)
 {
-	if (!m_mesh.node)
+	if (!m_laserNode || !m_laserNode->isVisible())
 		return;
 
-	// Find a free slot in the pool
-	ShellCasing* shell = nullptr;
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	float elapsed = Engine::Get()->getCurrentTime() - m_laserFireTime;
+	if (elapsed >= m_laserFadeDuration)
 	{
-		if (!m_shellPool[i].active)
-		{
-			shell = &m_shellPool[i];
-			break;
-		}
-	}
-	if (!shell || !shell->node)
-		return; // Pool exhausted, skip
-
-	// Sync weapon hierarchy so eject bone is at the correct world position
-	m_mesh.node->updateAbsolutePosition();
-	m_mesh.node->animateJoints();
-
-	irr::scene::IBoneSceneNode* ejectBone = m_mesh.node->getJointNode("BRASS");
-	if (!ejectBone)
-	{
-		spdlog::warn("BRASS bone not found on minigun model - cannot eject shell");
+		m_laserNode->setVisible(false);
 		return;
 	}
-	ejectBone->updateAbsolutePosition();
 
-	irr::core::vector3df ejectPosition = ejectBone->getAbsolutePosition()
-		+ irr::core::vector3df(0.0f, Engine::Get()->rng()->getFloat(-0.1f, 0.1f), 0.0f);
-
-	// Derive ejection vectors from current camera orientation
-	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (!player.isValid() || !player.hasComponent<CameraComponent>())
-		return;
-
-	auto& camera = player.getComponent<CameraComponent>();
-	irr::core::vector3df target   = camera.camera->getTarget();
-	irr::core::vector3df camPos   = camera.camera->getAbsolutePosition();
-	irr::core::vector3df forward  = (target - camPos).normalize();
-
-	irr::core::vector3df worldUp(0, 1, 0);
-	irr::core::vector3df right   = forward.crossProduct(worldUp).normalize();
-	irr::core::vector3df localUp = right.crossProduct(forward).normalize();
-
-	irr::core::vector3df randomOffset(
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f)
-	);
-	irr::core::vector3df ejectionDir = (-right + localUp + randomOffset).normalize();
-	float randomSpeed = m_shellEjectionSpeed * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
-
-	// Orient shell to match camera yaw/pitch
-	float yaw   = atan2f(forward.X, forward.Z) * (180.0f / 3.14159265f);
-	float pitch = asinf(irr::core::clamp(forward.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
-
-	// Activate this pool slot — immediate, no frame delay
-	shell->node->setPosition(ejectPosition);
-	shell->rotation = irr::core::vector3df(-pitch, yaw, 0.0f);
-	shell->node->setRotation(shell->rotation);
-	shell->velocity = ejectionDir * randomSpeed;
-	shell->angularVelocity = irr::core::vector3df(
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f)
-	);
-	shell->spawnTime     = static_cast<float>(Engine::Get()->getCurrentTime());
-	shell->active        = true;
-	shell->physicsActive = true;
-	shell->bounceCount   = 0;
-	shell->node->setVisible(true);
-}
-
-void Weapon_PulseRifle::updateTracers(float dt)
-{
-	float currentTime = Engine::Get()->getCurrentTime();
-	
-	// Update and remove expired tracers
-	for (auto it = m_tracerBeams.begin(); it != m_tracerBeams.end();)
-	{
-		float elapsed = currentTime - it->spawnTime;
-		
-		if (elapsed >= it->lifetime)
-		{
-			// Remove expired tracer
-			if (it->node)
-			{
-				it->node->remove();
-			}
-			it = m_tracerBeams.erase(it);
-		}
-		else
-		{
-			// Update fade based on lifetime
-			float fadeProgress = elapsed / it->lifetime;
-			irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-			
-			if (it->node)
-			{
-				it->node->getMaterial(0).AmbientColor.setAlpha(alpha);
-				it->node->getMaterial(0).DiffuseColor.setAlpha(alpha);
-			}
-			
-			++it;
-		}
-	}
-}
-
-void Weapon_PulseRifle::updateShells(float dt)
-{
-	const float dt_s = dt * 0.001f; // ms -> seconds
-	const float currentTime = static_cast<float>(Engine::Get()->getCurrentTime());
-	const float shellLifetime = 10000.0f; // ms
-
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		ShellCasing& shell = m_shellPool[i];
-		if (!shell.active)
-			continue;
-
-		// Lifetime expiry — return slot to pool
-		if (currentTime - shell.spawnTime >= shellLifetime)
-		{
-			shell.active = false;
-			shell.node->setVisible(false);
-			continue;
-		}
-
-		if (!shell.physicsActive)
-			continue;
-
-		// Gravity
-		shell.velocity.Y -= m_shellGravity * dt_s;
-
-		// Candidate new position
-		irr::core::vector3df pos    = shell.node->getPosition();
-		irr::core::vector3df newPos = pos + shell.velocity * dt_s;
-
-		// Cast ray along direction of travel — detects floors, walls, ceilings, ramps
-		float speed = shell.velocity.getLength();
-		if (speed > 0.001f)
-		{
-			irr::core::vector3df travelDir = shell.velocity / speed; // manual normalize (avoid mutate-in-place)
-			irr::core::vector3df rayStart  = pos;
-			irr::core::vector3df rayEnd    = newPos + travelDir * 0.1f; // small look-ahead past new pos
-			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(rayStart, rayEnd, true);
-
-			if (hit.hit)
-			{
-				// Reflect velocity off surface normal: v' = v - 2(v·n)n
-				irr::core::vector3df n = hit.normal;
-				float dot = shell.velocity.dotProduct(n);
-				shell.velocity = (shell.velocity - n * (2.0f * dot)) * 0.45f;
-				shell.angularVelocity *= 0.5f;
-
-				// Place shell just off the surface so it doesn't tunnel next frame
-				newPos = hit.point + n * 0.05f;
-
-				// Bounce sound — throttled so rapid shell cascades don't stack up
-				if (shell.bounceCount < 2 && (currentTime - m_lastShellBounceSound) >= m_shellBounceSoundInterval)
-				{
-					std::string soundFile = "content/sound/prop/shell"
-						+ std::to_string(Engine::Get()->rng()->getInt(1, 2)) + ".wav";
-					SoundManager::Get()->sound()->play3D(soundFile.c_str(), shell.node->getPosition(), false, false, true, 0, 0.5f);
-					m_lastShellBounceSound = currentTime;
-				}
-
-				shell.bounceCount++;
-
-				// After 3 bounces the shell has settled — stop simulating
-				if (shell.bounceCount >= 3)
-				{
-					shell.physicsActive = false;
-					shell.velocity = irr::core::vector3df(0, 0, 0);
-				}
-			}
-		}
-
-		shell.node->setPosition(newPos);
-
-		// Spin
-		shell.rotation += shell.angularVelocity * dt_s;
-		shell.node->setRotation(shell.rotation);
-	}
+	float fadeProgress = elapsed / m_laserFadeDuration;
+	irr::u32 alpha = static_cast<irr::u32>((1.0f - fadeProgress) * 255.0f);
+	m_laserNode->getMaterial(0).AmbientColor.setAlpha(alpha);
+	m_laserNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
 }
 
 // ---------------------------------------------------------------------------

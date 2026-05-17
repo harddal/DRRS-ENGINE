@@ -17,6 +17,14 @@
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|Win32">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Include\anax\src\anax\detail\BaseSystem.cpp" />
@@ -58,16 +66,19 @@
     <ClCompile Include="Source\Editor\Interface\EditorInterface_ScriptEditor.cpp">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Toolbar.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Utilities.cpp" />
     <ClCompile Include="Source\Editor\Interface\TextEditor\TextDiff.cpp">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
     <ClCompile Include="Source\Editor\Interface\TextEditor\TextEditor.cpp">
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
     <ClCompile Include="Source\Editor\SceneInteractionManager.cpp" />
     <ClCompile Include="Source\Editor\TexturePainter.cpp" />
@@ -488,6 +499,13 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
@@ -495,6 +513,13 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v141</PlatformToolset>
@@ -512,10 +537,16 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
@@ -529,6 +560,11 @@
     <IntDir>Intermediate\$(Configuration)\</IntDir>
     <TargetName>Engine</TargetName>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|Win32'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)Binaries\</OutDir>
     <IntDir>Intermediate\$(Configuration)\</IntDir>
@@ -538,6 +574,12 @@
     <OutDir>$(SolutionDir)Binaries\</OutDir>
     <IntDir>Intermediate\$(Configuration)\</IntDir>
     <TargetName>Engine</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <OutDir>$(SolutionDir)Binaries\</OutDir>
+    <IntDir>Intermediate\$(Configuration)\</IntDir>
+    <TargetName>Engine</TargetName>
+    <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -604,6 +646,30 @@
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
     </Manifest>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\freetype\include;$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\irrimgui\dependency\;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\irrimgui\includes\IrrIMGUI\;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib;$(ProjectDir)Include\physx\physx\bin\win.x86_32.vc141.mt\release\;$(ProjectDir)Include\physx\PhysXSDK\Lib\Release\;$(ProjectDir)Include\assimp\lib\Release;$(ProjectDir)Include\irrimgui\Release\;$(ProjectDir)Include\boost\stage\lib;$(ProjectDir)Include\irrlicht\lib\Win32-visualstudio;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;$(ProjectDir)Include\spdlog\Release\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;spdlog.lib;angelscript.lib;IrrIMGUI.lib;assimp-vc141-mt.lib;PhysXExtensions_static_32.lib;PhysX_32.lib;PhysXPvdSDK_static_32.lib;PhysXVehicle_static_32.lib;PhysXCharacterKinematic_static_32.lib;PhysXCooking_32.lib;PhysXCommon_32.lib;SnippetUtils_static_32.lib;SnippetRender_static_32.lib;PhysXFoundation_32.lib;shlwapi.lib;soloud_static_x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -617,6 +683,33 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <LanguageStandard>stdcpp14</LanguageStandard>
+      <DebugInformationFormat>None</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>$(ProjectDir)Include\soloud\lib\x64;$(ProjectDir)Include\physx\physx\bin\win.x86_64.vc141.mt\release\;$(ProjectDir)Include\assimp\bin\Release\;$(ProjectDir)Include\boost\stage\lib;$(ProjectDir)Include\irrlicht\source\Irrlicht\x64\Release\;$(ProjectDir)Include\angelscript\sdk\angelscript\lib\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Irrlicht.lib;opengl32.lib;angelscript64.lib;assimp-vc141-mt.lib;PhysXExtensions_static_64.lib;PhysX_static_64.lib;PhysXPvdSDK_static_64.lib;PhysXVehicle_static_64.lib;PhysXCharacterKinematic_static_64.lib;PhysXCooking_static_64.lib;PhysXCommon_static_64.lib;PhysXFoundation_static_64.lib;shlwapi.lib;soloud_static_x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4099 %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\freetype\include;$(ProjectDir)Include\soloud\include;$(ProjectDir)Source\Engine\Navigation\Recast\Include;$(ProjectDir)Source\Engine\Navigation\Detour\Include;$(ProjectDir)Source\Engine\Navigation\DetourCrowd\Include;$(ProjectDir)Source\Engine\Navigation\DetourTileCache\Include;$(ProjectDir)Source\Engine\Renderer\Spark\include;$(ProjectDir)Include\tinyxml2\;$(ProjectDir)Include\physx\pxshared\include\;$(ProjectDir)Include\physx\physx\include\;$(ProjectDir)Include\assimp\include\;$(ProjectDir)Include\assimp\include\assimp\;$(ProjectDir)Include\anax\include\;$(ProjectDir)Include\imgui;$(ProjectDir)Include\cereal\include\;$(ProjectDir)Include\irrlicht\include;$(ProjectDir)Include\angelscript\sdk\angelscript\include\;$(ProjectDir)Include\boost\;$(ProjectDir)Include\glm\;$(ProjectDir)Include\spdlog\include\;$(ProjectDir)Source\;$(ProjectDir)Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;PX_PHYSX_STATIC_LIB;_IRR_STATIC_LIB_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

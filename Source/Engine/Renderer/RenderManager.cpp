@@ -1367,6 +1367,18 @@ void RenderManager::createDefaultShaders()
 {
     createShaderMaterial("phong_perpixel", "content/shader/phong_perpixel.frag", "content/shader/phong_perpixel.vert");
 
+    // Additive color shader — texture * DiffuseColor uniform, additive blending.
+    // Used for laser beams, muzzle flashes, and any effect that needs a tinted additive material.
+    {
+        m_additiveColorCallback = new AdditiveColorCallback();
+        ShaderMaterial s("additive_color");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/additive_color.vert", "main", EVST_VS_2_0,
+            "content/shader/additive_color.frag", "main", EPST_PS_2_0,
+            m_additiveColorCallback, EMT_TRANSPARENT_ADD_COLOR, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+    }
+
     // Transparent variant — same shader, alpha-blended base material.
     // Used for crystal/glassy props; Fresnel and opacity driven by MaterialTypeParams[2]/[3]
     // and DiffuseColor.alpha rather than a separate shader + RTT pass.

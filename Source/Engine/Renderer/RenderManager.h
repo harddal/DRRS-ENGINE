@@ -332,6 +332,25 @@ public:
     float tiling[4] = { 8.f, 8.f, 8.f, 8.f };
 };
 
+// Additive color shader callback — reads DiffuseColor from the material and uploads
+// it as uColor so billboards and beam meshes render with the correct tint and alpha.
+class AdditiveColorCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial& material) override { m_currentMaterial = material; }
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override
+    {
+        int texSlot = 0;
+        services->setPixelShaderConstant("tDiffuse", &texSlot, 1);
+
+        const auto& c = m_currentMaterial.DiffuseColor;
+        float color[4] = { c.getRed() / 255.f, c.getGreen() / 255.f, c.getBlue() / 255.f, c.getAlpha() / 255.f };
+        services->setPixelShaderConstant("uColor", color, 4);
+    }
+private:
+    irr::video::SMaterial m_currentMaterial;
+};
+
 // Dedicated callback for the water shader.
 // Per-entity colors are encoded by RenderSystem into the material's AmbientColor
 // (shallow) and DiffuseColor (deep, alpha = opacity) so the single global callback
@@ -779,6 +798,7 @@ private:
     irr::scene::ISceneManager* m_sceneManager;
 
     ShaderConstantSetCallBack* m_shaderConstantCallBack;
+    AdditiveColorCallback*     m_additiveColorCallback = nullptr;
     WaterShaderCallback*       m_waterCallback;
     BarrelHeatShaderCallback*  m_barrelHeatCallback;
     TerrainShaderCallback*     m_terrainCallback;

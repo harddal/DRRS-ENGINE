@@ -1,8 +1,9 @@
 #include "Weapon_Rifle.h"
 
 #include "Engine/Engine.h"
+#include "Utility/Utility.h"
 
-#include <random>
+#include "../CameraFX.h"
 
 #undef MB_RIGHT
 
@@ -19,11 +20,11 @@ void Weapon_Rifle::init()
 	m_descriptor.name = "Player_Weapon_Rifle";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.25f, -0.3f, 0.6f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
-	m_viewScaleOffset = irr::core::vector3df(0.75f, 0.75f, 0.75f);
+	m_viewPositionOffset = irr::core::vector3df(0.25f, 0.0f, 0.4f);
+	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
-	m_mesh.mesh = "content/mesh/player/weapon/plasma_rifle/plasma_rifle.b3d";
+	m_mesh.mesh = "content/mesh/player/weapon/bolt_driver/hud.b3d";
 
 	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
 	if (!m_mesh.trimesh)
@@ -39,30 +40,32 @@ void Weapon_Rifle::init()
 
 	m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);
 
-	auto* t = RenderManager::Get()->driver()->getTexture("content/mesh/player/weapon/plasma_rifle/plasma_rifle.png");
-	m_mesh.node->setMaterialTexture(0, t);
+	m_mesh.node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+	m_mesh.node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
+	m_mesh.node->setMaterialFlag(irr::video::EMF_ANISOTROPIC_FILTER, true);
+	m_mesh.node->setMaterialFlag(irr::video::EMF_ANTI_ALIASING, true);
+	m_mesh.node->setMaterialFlag(irr::video::EMF_USE_MIP_MAPS, true);
 
-	// Set nearest-neighbor filtering for pixelated effect
-	m_mesh.node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, false);
-	m_mesh.node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, false);
-
-//	RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(m_mesh.node);
+	//RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(m_mesh.node);
 
 	m_mesh.fps = 20;
 	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(0, 0);
+	m_mesh.node->setLoopMode(true);
+	m_mesh.node->setFrameLoop(23, 49);
+
+	// EJUOR_READ: animation plays automatically; bones are still accessible for lookup.
+	// (EJUOR_CONTROL would freeze the animation until animateJoints() is called manually.)
+	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
 	m_mesh.node->setAnimationEndCallback(m_mesh.animation_call_back.get());
 
 	m_mesh.node->setScale(m_viewScaleOffset);
 
+	// Apply the standard PBR shader to every buffer as the baseline (body, gear, etc.)
 	auto perpixelMat = ShaderMaterialManager::get("phong_perpixel");
-	if (perpixelMat != irr::video::EMT_SOLID) // only assign if shader compiled successfully
-	{
+	if (perpixelMat != irr::video::EMT_SOLID)
 		m_mesh.node->setMaterialType(perpixelMat);
-	}
 
 	for (auto i = 0; i < m_mesh.node->getMaterialCount(); i++)
 	{
@@ -94,32 +97,57 @@ void Weapon_Rifle::init()
 	RenderManager::Get()->registerViewmodelNode(m_mesh.node);
 	m_mesh.node->setVisible(false);
 
-	// Build SPARK templates
-	initPlasmaSparkSystem();
-	initImpactSparkSystem();
+	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
+	if (!m_muzzleNode)
+		spdlog::warn("Weapon_Rifle: 'FIRESPOT' joint not found");
 
 	m_muzzleFlashMaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
 
-	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair039.png");
+	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair038.png");
+
+	// Pre-build shell casing pool (no per-shot alloc/PhysX cost)
+	auto* shellMesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/shellmedium.obj");
+	auto* shellTex = RenderManager::Get()->driver()->getTexture("content/mesh/prop/shells/shellsColor.png");
+	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	{
+		m_shellPool[i].node = RenderManager::Get()->sceneManager()->addMeshSceneNode(shellMesh);
+		if (m_shellPool[i].node)
+		{
+			m_shellPool[i].node->setMaterialTexture(0, shellTex);
+			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
+			m_shellPool[i].node->setRotation(irr::core::vector3df(0.0f, 180.0f, 0.0f));
+			m_shellPool[i].node->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
+			m_shellPool[i].node->setMaterialType(perpixelMat);
+			m_shellPool[i].node->setVisible(false);
+		}
+		m_shellPool[i].active = false;
+	}
+
+	initImpactSparkSystem();
 }
 
 void Weapon_Rifle::destroy()
 {
-	// Clean up all projectiles and their SPARK systems
-	for (auto& proj : m_projectiles)
+	// Clean up shell casing pool
+	for (int i = 0; i < SHELL_POOL_SIZE; i++)
 	{
-		if (proj.sparkSystem)
+		if (m_shellPool[i].node)
 		{
-			SPK_Destroy(proj.sparkSystem);
-			proj.sparkSystem = nullptr;
-		}
-
-		if (proj.entity.isValid() && proj.entity.hasComponent<DescriptorComponent>())
-		{
-			proj.entity.getComponent<DescriptorComponent>().isAlive = false;
+			m_shellPool[i].node->remove();
+			m_shellPool[i].node = nullptr;
 		}
 	}
-	m_projectiles.clear();
+
+	// Clean up all tracer beams
+	for (auto& tracer : m_tracerBeams)
+	{
+		if (tracer.node)
+		{
+			tracer.node->remove();
+		}
+	}
+	m_tracerBeams.clear();
 
 	// Destroy active impact systems
 	for (auto* sys : m_impactSystems)
@@ -130,13 +158,6 @@ void Weapon_Rifle::destroy()
 	{
 		SPK_Destroy(SPK_Get(SPK::System, m_impactSparkBaseID));
 		m_impactSparkBaseID = SPK::NO_ID;
-	}
-
-	// Destroy the template SPARK system
-	if (m_projectileSparkBaseID != SPK::NO_ID)
-	{
-		SPK_Destroy(SPK_Get(SPK::System, m_projectileSparkBaseID));
-		m_projectileSparkBaseID = SPK::NO_ID;
 	}
 
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
@@ -152,43 +173,46 @@ void Weapon_Rifle::update()
 
 	float currentTime = Engine::Get()->getCurrentTime();
 	float dt = Engine::Get()->getDeltaTime();
+	m_isFiring = false;  // reset each frame; set true below if fire() is called
 
-	// Check if fire button is held
 	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
-	bool altFireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_RIGHT);
 
-	// Automatic fire with rate limiting
-	if (fireButtonPressed && !altFireButtonPressed)
+	const float fireRate = 100.0f; // ms between shots
+	if (fireButtonPressed && (currentTime - m_lastFireTime) >= fireRate)
 	{
-		if (currentTime - m_lastFireTime >= m_fireRate)
-		{
-			fire();
-			m_lastFireTime = currentTime;
-		}
-	}
-
-	// Automatic fire with rate limiting
-	if (!fireButtonPressed && altFireButtonPressed)
-	{
-		if (currentTime - m_lastFireTime >= m_fireRateAlt)
-		{
-			fire();
-			m_lastFireTime = currentTime;
-		}
+		m_lastFireTime = currentTime;
+		m_isFiring = true;
+		fire();
 	}
 
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
+
+	static bool r = false;
+	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
+	{
+		m_mesh.node->setLoopMode(false);
+		m_mesh.node->setFrameLoop(96, 179);
+	}
+
+	if (m_mesh.animation_call_back->hasAnimationEnded())
+	{
+		m_mesh.node->setLoopMode(true);
+		m_mesh.node->setFrameLoop(20, 50);
+	}
 }
 
 void Weapon_Rifle::persist()
 {
 	float dt = Engine::Get()->getDeltaTime();
 
-	// Update all active projectiles
-	updateProjectiles(dt);
-
 	// Update muzzle flash effect
 	updateMuzzleFlash(dt);
+
+	// Update tracer beams
+	updateTracers(dt);
+
+	// Update shell casings
+	updateShells(dt);
 
 	// Tick impact particle systems, remove finished ones
 	for (auto it = m_impactSystems.begin(); it != m_impactSystems.end();)
@@ -227,102 +251,108 @@ void Weapon_Rifle::move()
 
 void Weapon_Rifle::fire()
 {
-	spawnProjectile();
-}
-
-void Weapon_Rifle::spawnProjectile()
-{
+	// Raycast-based instant hit
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 	if (!player.isValid() || !player.hasComponent<CameraComponent>())
 		return;
 
 	auto& camera = player.getComponent<CameraComponent>();
 
+	// Get the FIRESPOT bone scene node from the weapon
 	if (!m_mesh.node)
 		return;
 
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("Muzzle");
-	if (!muzzleBone)
+	// Force immediate update of weapon hierarchy
+	m_mesh.node->updateAbsolutePosition();
+
+	if (!m_muzzleNode)
 	{
-		spdlog::warn("Muzzle bone not found on weapon model - cannot spawn projectile");
+		spdlog::warn("Weapon_Rifle: muzzle node not found - cannot fire");
 		return;
 	}
 
-	irr::core::vector3df spawnPos = muzzleBone->getAbsolutePosition();
+	m_muzzleNode->updateAbsolutePosition();
+	irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
-	irr::core::vector3df target    = camera.camera->getTarget();
+	// Get camera target for aiming direction
+	irr::core::vector3df target = camera.camera->getTarget();
 	irr::core::vector3df cameraPos = camera.camera->getAbsolutePosition();
-	irr::core::vector3df forward   = (target - cameraPos).normalize();
+	irr::core::vector3df forward = (target - cameraPos).normalize();
 
+	// Calculate right and down vectors relative to camera orientation for spread
 	irr::core::vector3df up(0, 1, 0);
 	irr::core::vector3df right = forward.crossProduct(up).normalize();
-	irr::core::vector3df down  = right.crossProduct(forward).normalize();
+	irr::core::vector3df down = right.crossProduct(forward).normalize();
 
-	irr::core::vector3df direction = (target - spawnPos).normalize();
+	// Calculate direction from camera to crosshair (screen center)
+	irr::core::vector3df direction = forward;
 
-	static std::random_device rd;
-	static std::mt19937 gen(rd());
-	std::uniform_real_distribution<float> spreadDist(-m_recoil, m_recoil);
-
-	float spreadRight = spreadDist(gen);
-	float spreadDown  = spreadDist(gen);
+	// Apply random offset in right and down directions
+	float spreadRight = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
+	float spreadDown = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
 	direction = (direction + right * spreadRight + down * spreadDown).normalize();
 
-	// Create projectile entity (no mesh - SPARK provides the visual)
-	anax::Entity projectileEntity = WorldManager::Get()->managerSystem()->getWorld().createEntity();
+	// Perform raycast from muzzle position in spread direction
+	// Cast ray a long distance (1000 units)
+	irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
-	projectileEntity.addComponent<DescriptorComponent>();
-	auto& descriptor   = projectileEntity.getComponent<DescriptorComponent>();
-	descriptor.id      = WorldManager::Get()->getNewID();
-	descriptor.name    = "plasma_projectile_" + std::to_string(descriptor.id);
-	descriptor.type    = ET_DYNAMIC;
-	descriptor.isSerializable = false;
+	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(
+		muzzlePos,
+		rayEnd,
+		true  // Exclude debug nodes
+	);
 
-	projectileEntity.addComponent<TransformComponent>();
-	auto& transform          = projectileEntity.getComponent<TransformComponent>();
-	transform.position       = spawnPos;
-	transform.initialPosition = spawnPos;
-	transform.scale          = irr::core::vector3df(0.05f, 0.05f, 0.05f);
-
-	projectileEntity.addComponent<RenderComponent>();
-	projectileEntity.getComponent<RenderComponent>().isVisible = true;
-
-	// Point light for environment glow
-	projectileEntity.addComponent<LightComponent>();
-	auto& light         = projectileEntity.getComponent<LightComponent>();
-	light.type          = LT_POINT;
-	light.visible       = true;
-	light.radius        = 2.0f;
-	light.color_diffuse = irr::video::SColorf(0.2f, 0.3f, 1.0f);
-	light.offset        = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-
-	projectileEntity.activate();
-
-	// Create projectile data and immediately attach a SPARK system
-	WeaponProjectile proj;
-	proj.entity          = projectileEntity;
-	proj.velocity        = direction * proj.speed;
-	proj.previousPosition = spawnPos;
-
-	// Clone the SPARK template and position it at the muzzle
-	if (m_projectileSparkBaseID != SPK::NO_ID)
+	// Check if we hit something
+	if (raycastResult.hit && raycastResult.node)
 	{
-		SPK::System* system = SPK_Copy(SPK::System, m_projectileSparkBaseID);
-		IRRSystem* irrSys   = static_cast<IRRSystem*>(system);
-		if (irrSys)
+		auto& hitEntity = WorldManager::Get()->managerSystem()->getEntityByID(raycastResult.node->getID());
+
+		// Check if hit entity is valid and has correct type
+		if (hitEntity.isValid() && hitEntity.hasComponent<DescriptorComponent>())
 		{
-			irrSys->setVisible(true);
-			irrSys->setPosition(spawnPos);
-			irrSys->updateAbsolutePosition();
+			auto& hitDescriptor = hitEntity.getComponent<DescriptorComponent>();
+
+			// Only register collision with static or dynamic entities
+			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
+			{
+				// Deal damage if entity can receive it
+				if (hitEntity.hasComponent<DamageReceiverComponent>())
+				{
+					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
+					damageComp.damageReceived += 25; // Minigun damage
+				}
+
+				// Create impact spark particles at hit position with surface normal
+				createImpactEffect(raycastResult.point);
+			}
 		}
-		proj.sparkSystem = system;
 	}
 
-	m_projectiles.emplace_back(proj);
+	// Increment shot counter for tracer logic
+	m_shotCounter++;
+	bool isTracerRound = (m_shotCounter % m_tracerFrequency == 0);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/plasma_rifle/fire.wav", false);
+	// Create tracer beam for every Nth shot
+	if (isTracerRound)
+	{
+		// Determine tracer end point (hit point or max range)
+		irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ?
+			raycastResult.point : (muzzlePos + direction * 1000.0f);
 
+		createTracerBeam(muzzlePos, tracerEnd);
+	}
+
+	// Create muzzle flash effect
 	createMuzzleFlash();
+
+	// Eject shell casing
+	ejectShell();
+
+	// Camera recoil kick — random yaw drift for a natural, unsteady feel
+	auto recoilYaw = Engine::Get()->rng()->getFloat(-0.1f, 0.1f);
+	g_CameraFX.addRecoil(-0.5f, recoilYaw);
+
+	SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", false);
 }
 
 void Weapon_Rifle::reload()
@@ -330,125 +360,366 @@ void Weapon_Rifle::reload()
 
 }
 
-// ---------------------------------------------------------------------------
-// initPlasmaSparkSystem
-// ---------------------------------------------------------------------------
-// Builds the shared SPARK template that is cloned once per projectile.
-//
-// Groups:
-//   1. Core glow  – tight cluster of bright white-blue billboards at the bolt
-//                   head; very short lifetime so they stay centred on the bolt.
-//   2. Trail sparks – direction-aligned streaks emitted at the current bolt
-//                   position with near-zero velocity; they linger behind as
-//                   the bolt moves forward.
-// ---------------------------------------------------------------------------
-void Weapon_Rifle::initPlasmaSparkSystem()
+
+void Weapon_Rifle::createMuzzleFlash()
 {
-	auto* driver = RenderManager::Get()->driver();
-	auto* smgr   = RenderManager::Get()->sceneManager();
+	if (!m_mesh.node)
+		return;
 
-	// -----------------------------------------------------------------------
-	// Renderers
-	// -----------------------------------------------------------------------
+	m_mesh.node->updateAbsolutePosition();
 
-	// Core: circular glow billboard, additive
-	IRRQuadRenderer* coreRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	coreRenderer->setTexturingMode(TEXTURE_2D);
-	coreRenderer->setTexture(driver->getTexture("content/texture/particle/star_09.png"));
-	coreRenderer->setBlending(BLENDING_ADD);
-	coreRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	coreRenderer->setShared(true);
+	if (!m_muzzleNode)
+		return;
 
-	// Trail: billboard sparks, additive
-	IRRQuadRenderer* trailRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	trailRenderer->setTexturingMode(TEXTURE_2D);
-	trailRenderer->setTexture(driver->getTexture("content/texture/particle/star_09.png"));
-	trailRenderer->setBlending(BLENDING_ADD);
-	trailRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	trailRenderer->setShared(true);
+	m_muzzleNode->updateAbsolutePosition();
 
-	// -----------------------------------------------------------------------
-	// Models
-	// -----------------------------------------------------------------------
+	irr::core::vector3df flashOffset(0, 0, 0.0f);
 
-	// Core: white-blue, fades from 1 → 0, random size in [0.18, 0.32]
-	Model* coreModel = Model::create(
-		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA,
-		FLAG_SIZE | FLAG_RED | FLAG_GREEN);
+	if (!m_muzzleStarNode)
+	{
+		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
+			m_muzzleNode,
+			irr::core::dimension2df(1.2f, 1.2f),
+			flashOffset
+		);
 
-	coreModel->setParam(PARAM_RED,   0.75f, 1.0f);
-	coreModel->setParam(PARAM_GREEN, 0.80f, 1.0f);
-	coreModel->setParam(PARAM_BLUE,  1.0f,  1.0f);
-	coreModel->setParam(PARAM_ALPHA, 1.0f,  0.0f);
-	coreModel->setParam(PARAM_SIZE,  0.18f, 0.32f);
-	coreModel->setLifeTime(0.05f, 0.09f);
-	coreModel->setShared(true);
+		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
+		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
 
-	// Trail: deep blue fading in colour and alpha, random size in [0.05, 0.12]
-	Model* trailModel = Model::create(
-		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA | FLAG_RED | FLAG_GREEN,
-		FLAG_SIZE);
+		// Bind depth texture (texture unit 1)
+		//m_muzzleStarNode->getMaterial(0).setTexture(1, RenderManager::Get()->renderer()->getMRT(2));
+	}
 
-	trailModel->setParam(PARAM_RED,   0.25f, 0.05f);
-	trailModel->setParam(PARAM_GREEN, 0.50f, 0.10f);
-	trailModel->setParam(PARAM_BLUE,  1.0f,  0.80f);
-	trailModel->setParam(PARAM_ALPHA, 0.85f, 0.0f);
-	trailModel->setParam(PARAM_SIZE,  0.05f, 0.12f);
-	trailModel->setLifeTime(0.18f, 0.35f);
-	trailModel->setShared(true);
+	std::string starPath = "content/texture/particle/star_05.png";
+	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
+	m_muzzleStarNode->setMaterialTexture(0, starTex);
+	m_muzzleStarNode->setVisible(true);
 
-	// -----------------------------------------------------------------------
-	// Zones
-	// -----------------------------------------------------------------------
+	// Force immediate position update to prevent lag during fast camera movement
+	m_muzzleStarNode->updateAbsolutePosition();
 
-	Sphere* coreZone  = Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.025f);
-	Point*  trailZone = Point::create(Vector3D(0.0f, 0.0f, 0.0f));
+	// Tint star yellow-orange for minigun effect
+	m_muzzleStarNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 255, 204, 76);
+	m_muzzleStarNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 255, 204, 76);
+	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 204, 76);
 
-	// -----------------------------------------------------------------------
-	// Emitters
-	// -----------------------------------------------------------------------
+	// Create/show blue point light at muzzle if not exists
+	if (!m_muzzleLightNode)
+	{
+		m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
+			m_muzzleNode,
+			flashOffset,  // Same position as flash
+			irr::video::SColorf(1.0f, 1.0f, 0.0f),  // Blue light
+			3.0f  // Small radius
+		);
+	}
+	if (m_muzzleLightNode)
+	{
+		m_muzzleLightNode->setVisible(true);
+		// Force immediate position update for light as well
+		m_muzzleLightNode->updateAbsolutePosition();
+	}
 
-	// Core: continuous, isotropic burst from tiny sphere
-	StaticEmitter* coreEmitter = StaticEmitter::create();
-	coreEmitter->setZone(coreZone);
-	coreEmitter->setFlow(120);
-	coreEmitter->setForce(0.05f, 0.20f);
-
-	// Trail: continuous from bolt centre, near-zero velocity so particles lag
-	StaticEmitter* trailEmitter = StaticEmitter::create();
-	trailEmitter->setZone(trailZone);
-	trailEmitter->setFlow(90);
-	trailEmitter->setForce(0.0f, 0.05f);
-
-	// -----------------------------------------------------------------------
-	// Groups
-	// -----------------------------------------------------------------------
-
-	Group* coreGroup = Group::create(coreModel, 30);
-	coreGroup->addEmitter(coreEmitter);
-	coreGroup->setRenderer(coreRenderer);
-
-	Group* trailGroup = Group::create(trailModel, 60);
-	trailGroup->addEmitter(trailEmitter);
-	trailGroup->setRenderer(trailRenderer);
-	trailGroup->setGravity(Vector3D(0.0f, -0.25f, 0.0f)); // gentle downward drift
-	trailGroup->setFriction(0.6f);
-
-	// -----------------------------------------------------------------------
-	// System
-	// -----------------------------------------------------------------------
-
-	IRRSystem* system = IRRSystem::create(smgr->getRootSceneNode(), smgr);
-	system->addGroup(coreGroup);
-	system->addGroup(trailGroup);
-	system->setAutoUpdateEnabled(false, false); // we drive updates manually
-	static_cast<irr::scene::ISceneNode*>(system)->setVisible(false);
-
-	m_projectileSparkBaseID = system->getSPKID();
+	m_muzzleFlashTime = 0.0f;
 }
 
+void Weapon_Rifle::updateMuzzleFlash(float dt)
+{
+	if (!m_muzzleStarNode)
+		return;
+
+	m_muzzleFlashTime += dt;
+
+	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
+	{
+		if (m_muzzleStarNode)
+			m_muzzleStarNode->setVisible(false);
+		if (m_muzzleLightNode)
+			m_muzzleLightNode->setVisible(false);
+	}
+	else
+	{
+		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
+		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
+
+		if (m_muzzleStarNode)
+		{
+			m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
+			m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
+			m_muzzleStarNode->getMaterial(0).EmissiveColor.setAlpha(alpha);
+		}
+	}
+}
+
+void Weapon_Rifle::createTracerBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
+{
+	// Calculate beam properties
+	irr::core::vector3df direction = (end - start);
+	float distance = direction.getLength();
+
+	if (distance < 0.1f)
+		return; // Too short to render
+
+	direction.normalize();
+
+	// Create a plane mesh for the tracer beam
+	irr::scene::IMesh* planeMesh = RenderManager::Get()->sceneManager()->getGeometryCreator()->createPlaneMesh(
+		irr::core::dimension2df(0.1f, distance), // Width x Length
+		irr::core::dimension2du(1, 1)
+	);
+
+	irr::scene::IMeshSceneNode* tracerNode = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
+
+	if (!tracerNode)
+	{
+		spdlog::warn("Failed to create tracer beam mesh");
+		return;
+	}
+
+	// Position at start point
+	tracerNode->setPosition(start);
+
+	// Rotate to align with beam direction
+	// The plane is created facing +Y, we need to align it with the beam direction
+	irr::core::vector3df targetDirection = direction;
+
+	// Calculate rotation to align plane with beam
+	// Default plane normal is (0, 1, 0), we want it to point along the beam
+	irr::core::vector3df rotation;
+	rotation.Y = atan2f(targetDirection.X, targetDirection.Z) * (180.0f / 3.14159265f);
+	rotation.X = -asinf(targetDirection.Y) * (180.0f / 3.14159265f);
+	rotation.Z = 0;
+
+	tracerNode->setRotation(rotation);
+
+	// Offset position to center the beam (since plane starts at one end)
+	irr::core::vector3df offset = direction * (distance * 0.5f);
+	tracerNode->setPosition(start + offset);
+
+	// Load tracer texture (glowing line)
+	auto* tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/particle/trace_07.png");
+	if (!tracerTexture)
+	{
+		// Fallback to a simple particle texture
+		tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png");
+	}
+
+	tracerNode->setMaterialTexture(0, tracerTexture);
+
+	// Bind depth texture (texture unit 1) for depth-aware rendering
+	//tracerNode->setMaterialTexture(1, RenderManager::Get()->renderer()->getMRT(2));
+
+	// Configure material for glowing effect
+	tracerNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+	tracerNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+	tracerNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false); // Render both sides
+	tracerNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
+
+	// Use the same muzzle flash shader for depth-aware transparency
+	tracerNode->setMaterialType(m_muzzleFlashMaterialType);
+
+	// Set bright yellow/orange color for tracer
+	tracerNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 255, 200, 100);
+	tracerNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 255, 200, 100);
+	tracerNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 200, 100);
+
+	// Store tracer for update/cleanup
+	TracerBeam tracer;
+	tracer.node = tracerNode;
+	tracer.spawnTime = Engine::Get()->getCurrentTime();
+	m_tracerBeams.push_back(tracer);
+}
+
+void Weapon_Rifle::ejectShell()
+{
+	if (!m_mesh.node)
+		return;
+
+	// Find a free slot in the pool
+	ShellCasing* shell = nullptr;
+	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	{
+		if (!m_shellPool[i].active)
+		{
+			shell = &m_shellPool[i];
+			break;
+		}
+	}
+	if (!shell || !shell->node)
+		return; // Pool exhausted, skip
+
+	// Sync weapon hierarchy so eject bone is at the correct world position
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
+
+	irr::scene::IBoneSceneNode* ejectBone = m_mesh.node->getJointNode("BRASS");
+	if (!ejectBone)
+	{
+		spdlog::warn("BRASS bone not found on minigun model - cannot eject shell");
+		return;
+	}
+	ejectBone->updateAbsolutePosition();
+
+	irr::core::vector3df ejectPosition = ejectBone->getAbsolutePosition()
+		+ irr::core::vector3df(0.0f, Engine::Get()->rng()->getFloat(-0.1f, 0.1f), 0.0f);
+
+	// Derive ejection vectors from current camera orientation
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+	if (!player.isValid() || !player.hasComponent<CameraComponent>())
+		return;
+
+	auto& camera = player.getComponent<CameraComponent>();
+	irr::core::vector3df target = camera.camera->getTarget();
+	irr::core::vector3df camPos = camera.camera->getAbsolutePosition();
+	irr::core::vector3df forward = (target - camPos).normalize();
+
+	irr::core::vector3df worldUp(0, 1, 0);
+	irr::core::vector3df right = forward.crossProduct(worldUp).normalize();
+	irr::core::vector3df localUp = right.crossProduct(forward).normalize();
+
+	irr::core::vector3df randomOffset(
+		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
+		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
+		Engine::Get()->rng()->getFloat(-0.3f, 0.3f)
+	);
+	irr::core::vector3df ejectionDir = (-right + localUp + randomOffset).normalize();
+	float randomSpeed = m_shellEjectionSpeed * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
+
+	// Orient shell to match camera yaw/pitch
+	float yaw = atan2f(forward.X, forward.Z) * (180.0f / 3.14159265f);
+	float pitch = asinf(irr::core::clamp(forward.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
+
+	// Activate this pool slot — immediate, no frame delay
+	shell->node->setPosition(ejectPosition);
+	shell->rotation = irr::core::vector3df(-pitch, yaw, 0.0f);
+	shell->node->setRotation(shell->rotation);
+	shell->velocity = ejectionDir * randomSpeed;
+	shell->angularVelocity = irr::core::vector3df(
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f)
+	);
+	shell->spawnTime = static_cast<float>(Engine::Get()->getCurrentTime());
+	shell->active = true;
+	shell->physicsActive = true;
+	shell->bounceCount = 0;
+	shell->node->setVisible(true);
+}
+
+void Weapon_Rifle::updateTracers(float dt)
+{
+	float currentTime = Engine::Get()->getCurrentTime();
+
+	// Update and remove expired tracers
+	for (auto it = m_tracerBeams.begin(); it != m_tracerBeams.end();)
+	{
+		float elapsed = currentTime - it->spawnTime;
+
+		if (elapsed >= it->lifetime)
+		{
+			// Remove expired tracer
+			if (it->node)
+			{
+				it->node->remove();
+			}
+			it = m_tracerBeams.erase(it);
+		}
+		else
+		{
+			// Update fade based on lifetime
+			float fadeProgress = elapsed / it->lifetime;
+			irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
+
+			if (it->node)
+			{
+				it->node->getMaterial(0).AmbientColor.setAlpha(alpha);
+				it->node->getMaterial(0).DiffuseColor.setAlpha(alpha);
+			}
+
+			++it;
+		}
+	}
+}
+
+void Weapon_Rifle::updateShells(float dt)
+{
+	const float dt_s = dt * 0.001f; // ms -> seconds
+	const float currentTime = static_cast<float>(Engine::Get()->getCurrentTime());
+	const float shellLifetime = 10000.0f; // ms
+
+	for (int i = 0; i < SHELL_POOL_SIZE; i++)
+	{
+		ShellCasing& shell = m_shellPool[i];
+		if (!shell.active)
+			continue;
+
+		// Lifetime expiry — return slot to pool
+		if (currentTime - shell.spawnTime >= shellLifetime)
+		{
+			shell.active = false;
+			shell.node->setVisible(false);
+			continue;
+		}
+
+		if (!shell.physicsActive)
+			continue;
+
+		// Gravity
+		shell.velocity.Y -= m_shellGravity * dt_s;
+
+		// Candidate new position
+		irr::core::vector3df pos = shell.node->getPosition();
+		irr::core::vector3df newPos = pos + shell.velocity * dt_s;
+
+		// Cast ray along direction of travel — detects floors, walls, ceilings, ramps
+		float speed = shell.velocity.getLength();
+		if (speed > 0.001f)
+		{
+			irr::core::vector3df travelDir = shell.velocity / speed; // manual normalize (avoid mutate-in-place)
+			irr::core::vector3df rayStart = pos;
+			irr::core::vector3df rayEnd = newPos + travelDir * 0.1f; // small look-ahead past new pos
+			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(rayStart, rayEnd, true);
+
+			if (hit.hit)
+			{
+				// Reflect velocity off surface normal: v' = v - 2(v·n)n
+				irr::core::vector3df n = hit.normal;
+				float dot = shell.velocity.dotProduct(n);
+				shell.velocity = (shell.velocity - n * (2.0f * dot)) * 0.45f;
+				shell.angularVelocity *= 0.5f;
+
+				// Place shell just off the surface so it doesn't tunnel next frame
+				newPos = hit.point + n * 0.05f;
+
+				// Bounce sound — throttled so rapid shell cascades don't stack up
+				if (shell.bounceCount < 2 && (currentTime - m_lastShellBounceSound) >= m_shellBounceSoundInterval)
+				{
+					std::string soundFile = "content/sound/prop/shell"
+						+ std::to_string(Engine::Get()->rng()->getInt(1, 2)) + ".wav";
+					SoundManager::Get()->sound()->play3D(soundFile.c_str(), shell.node->getPosition(), false, false, true, 0, 0.5f);
+					m_lastShellBounceSound = currentTime;
+				}
+
+				shell.bounceCount++;
+
+				// After 3 bounces the shell has settled — stop simulating
+				if (shell.bounceCount >= 3)
+				{
+					shell.physicsActive = false;
+					shell.velocity = irr::core::vector3df(0, 0, 0);
+				}
+			}
+		}
+
+		shell.node->setPosition(newPos);
+
+		// Spin
+		shell.rotation += shell.angularVelocity * dt_s;
+		shell.node->setRotation(shell.rotation);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // initImpactSparkSystem
@@ -461,7 +732,7 @@ void Weapon_Rifle::initPlasmaSparkSystem()
 void Weapon_Rifle::initImpactSparkSystem()
 {
 	auto* driver = RenderManager::Get()->driver();
-	auto* smgr   = RenderManager::Get()->sceneManager();
+	auto* smgr = RenderManager::Get()->sceneManager();
 
 	// -----------------------------------------------------------------------
 	// Renderers
@@ -469,7 +740,7 @@ void Weapon_Rifle::initImpactSparkSystem()
 
 	IRRQuadRenderer* flashRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
 	flashRenderer->setTexturingMode(TEXTURE_2D);
-	flashRenderer->setTexture(driver->getTexture("content/texture/particle/star_09.png"));
+	flashRenderer->setTexture(driver->getTexture("content/texture/particle/star_04.png"));
 	flashRenderer->setBlending(BLENDING_ADD);
 	flashRenderer->enableRenderingHint(DEPTH_WRITE, false);
 	flashRenderer->setShared(true);
@@ -485,7 +756,7 @@ void Weapon_Rifle::initImpactSparkSystem()
 
 	IRRQuadRenderer* glowRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
 	glowRenderer->setTexturingMode(TEXTURE_2D);
-	glowRenderer->setTexture(driver->getTexture("content/texture/particle/star_09.png"));
+	glowRenderer->setTexture(driver->getTexture("content/texture/particle/flame_04.png"));
 	glowRenderer->setBlending(BLENDING_ADD);
 	glowRenderer->enableRenderingHint(DEPTH_WRITE, false);
 	glowRenderer->setShared(true);
@@ -499,11 +770,11 @@ void Weapon_Rifle::initImpactSparkSystem()
 		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
 		FLAG_ALPHA | FLAG_SIZE,
 		FLAG_NONE);
-	flashModel->setParam(PARAM_RED,   1.0f);
-	flashModel->setParam(PARAM_GREEN, 0.9f);
-	flashModel->setParam(PARAM_BLUE,  1.0f);
+	flashModel->setParam(PARAM_RED, 1.0f);
+	flashModel->setParam(PARAM_GREEN, 1.0f);
+	flashModel->setParam(PARAM_BLUE, 1.0f);
 	flashModel->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	flashModel->setParam(PARAM_SIZE,  0.6f, 0.05f);
+	flashModel->setParam(PARAM_SIZE, 0.6f, 0.05f);
 	flashModel->setLifeTime(0.08f, 0.14f);
 	flashModel->setShared(true);
 
@@ -512,24 +783,24 @@ void Weapon_Rifle::initImpactSparkSystem()
 		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
 		FLAG_ALPHA | FLAG_RED | FLAG_GREEN | FLAG_BLUE,
 		FLAG_SIZE);
-	sparkModel->setParam(PARAM_RED,   1.0f, 0.3f);
-	sparkModel->setParam(PARAM_GREEN, 0.9f, 0.4f);
-	sparkModel->setParam(PARAM_BLUE,  1.0f, 1.0f);
+	sparkModel->setParam(PARAM_RED, 1.0f, 0.3f);
+	sparkModel->setParam(PARAM_GREEN, 1.0f, 0.4f);
+	sparkModel->setParam(PARAM_BLUE, 1.0f, 1.0f);
 	sparkModel->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	sparkModel->setParam(PARAM_SIZE,  0.08f, 0.18f);
+	sparkModel->setParam(PARAM_SIZE, 0.08f, 0.18f);
 	sparkModel->setLifeTime(0.25f, 0.6f);
 	sparkModel->setShared(true);
 
-	// Glow: soft blue, expands and fades
+	// Glow: soft yellow, expands and fades
 	Model* glowModel = Model::create(
 		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
 		FLAG_ALPHA | FLAG_SIZE,
 		FLAG_NONE);
-	glowModel->setParam(PARAM_RED,   0.3f);
-	glowModel->setParam(PARAM_GREEN, 0.5f);
-	glowModel->setParam(PARAM_BLUE,  1.0f);
+	glowModel->setParam(PARAM_RED, 1.0f);
+	glowModel->setParam(PARAM_GREEN, 0.99f);
+	glowModel->setParam(PARAM_BLUE, 0.77f);
 	glowModel->setParam(PARAM_ALPHA, 0.6f, 0.0f);
-	glowModel->setParam(PARAM_SIZE,  0.1f, 0.55f);
+	glowModel->setParam(PARAM_SIZE, 0.1f, 0.55f);
 	glowModel->setLifeTime(0.15f, 0.3f);
 	glowModel->setShared(true);
 
@@ -597,7 +868,7 @@ void Weapon_Rifle::createImpactEffect(const irr::core::vector3df& pos)
 		return;
 
 	SPK::System* system = SPK_Copy(SPK::System, m_impactSparkBaseID);
-	IRRSystem* irrSys   = static_cast<IRRSystem*>(system);
+	IRRSystem* irrSys = static_cast<IRRSystem*>(system);
 	if (irrSys)
 	{
 		irrSys->setVisible(true);
@@ -606,250 +877,4 @@ void Weapon_Rifle::createImpactEffect(const irr::core::vector3df& pos)
 	}
 
 	m_impactSystems.push_back(system);
-}
-
-void Weapon_Rifle::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("Muzzle");
-	if (!muzzleBone)
-	{
-		spdlog::warn("Muzzle bone not found on weapon model");
-		return;
-	}
-
-	static std::random_device rd;
-	static std::mt19937 gen(rd());
-	std::uniform_int_distribution<int> starDist(1, 9);
-
-	irr::core::vector3df flashOffset(0, 0, 0.0f);
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			muzzleBone,
-			irr::core::dimension2df(1.2f, 1.2f),
-			flashOffset
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
-	}
-
-	int starIndex = starDist(gen);
-	std::string starPath = "content/texture/particle/star_0" + std::to_string(starIndex) + ".png";
-	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-
-	m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 100, 150, 255);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 100, 150, 255);
-	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 100, 150, 255);
-
-	if (!m_muzzleLightNode)
-	{
-		m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
-			muzzleBone,
-			flashOffset,
-			irr::video::SColorf(0.3f, 0.5f, 1.0f),
-			3.0f
-		);
-	}
-	if (m_muzzleLightNode)
-	{
-		m_muzzleLightNode->setVisible(true);
-	}
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_Rifle::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		if (m_muzzleStarNode)
-			m_muzzleStarNode->setVisible(false);
-		if (m_muzzleLightNode)
-			m_muzzleLightNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		if (m_muzzleStarNode)
-		{
-			m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).EmissiveColor.setAlpha(alpha);
-		}
-	}
-}
-
-void Weapon_Rifle::updateProjectiles(float dt)
-{
-	const float dtSeconds = dt / 1000.0f;
-
-	for (auto it = m_projectiles.begin(); it != m_projectiles.end();)
-	{
-		if (!it->entity.isValid() || !it->entity.hasComponent<TransformComponent>())
-		{
-			++it;
-			continue;
-		}
-
-		auto& transformComp = it->entity.getComponent<TransformComponent>();
-		irr::core::vector3df currentPos = transformComp.position; // read component field directly — node may not exist yet on frame 1
-
-		// -----------------------------------------------------------------------
-		// Move the SPARK system to follow the bolt this frame
-		// -----------------------------------------------------------------------
-		if (it->sparkSystem)
-		{
-			IRRSystem* irrSys = static_cast<IRRSystem*>(it->sparkSystem);
-			if (irrSys)
-			{
-				irrSys->setPosition(currentPos);
-				irrSys->updateAbsolutePosition();
-			}
-			it->sparkSystem->update(dtSeconds);
-		}
-
-		// -----------------------------------------------------------------------
-		// Swept raycast collision
-		// -----------------------------------------------------------------------
-		const float sphereRadius = 0.15f;
-
-		irr::core::vector3df rayStart = it->previousPosition;
-		irr::core::vector3df rayEnd   = currentPos;
-
-		irr::core::vector3df rayDirection = (rayEnd - rayStart);
-		float rayLength = rayDirection.getLength();
-		if (rayLength > 0.001f)
-		{
-			rayDirection.normalize();
-			rayStart = rayStart - rayDirection * sphereRadius;
-			rayEnd   = rayEnd   + rayDirection * sphereRadius;
-		}
-
-		RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(rayStart, rayEnd, true);
-
-		bool hitSomething = false;
-		irr::scene::ISceneNode* hitNode = nullptr;
-		irr::core::vector3df hitPoint   = currentPos;
-		irr::core::vector3df hitNormal(0, 1, 0);
-
-		if (raycastResult.hit && raycastResult.node)
-		{
-			float hitDistance      = (raycastResult.point - it->previousPosition).getLength();
-			float movementDistance = rayLength;
-
-			if (hitDistance <= movementDistance + sphereRadius)
-			{
-				auto& hitEntity = WorldManager::Get()->managerSystem()->getEntityByID(raycastResult.node->getID());
-
-				if (hitEntity.isValid() && hitEntity.hasComponent<DescriptorComponent>())
-				{
-					auto& hitDescriptor = hitEntity.getComponent<DescriptorComponent>();
-
-					if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
-					{
-						if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
-							hitDescriptor.id != it->entity.getComponent<DescriptorComponent>().id)
-						{
-							hitSomething = true;
-							hitNode  = raycastResult.node;
-							hitPoint = raycastResult.point;
-							hitNormal = raycastResult.normal;
-						}
-					}
-				}
-			}
-		}
-
-		bool shouldRemove      = false;
-		bool hitSomethingReal  = false;
-
-		if (hitSomething && hitNode)
-		{
-			entityid hitEntityID = hitNode->getID();
-
-			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
-				hitEntityID == it->entity.getComponent<DescriptorComponent>().id)
-			{
-				// Self-hit, ignore
-			}
-			else
-			{
-				hitSomethingReal = true;
-
-				auto entities = WorldManager::Get()->managerSystem()->getEntities();
-				for (auto& entity : entities)
-				{
-					if (entity.hasComponent<DescriptorComponent>() &&
-						entity.getComponent<DescriptorComponent>().id == hitEntityID)
-					{
-						if (entity.hasComponent<DamageReceiverComponent>())
-						{
-							entity.getComponent<DamageReceiverComponent>().damageReceived += 25;
-						}
-						break;
-					}
-				}
-
-				createImpactEffect(hitPoint);
-				shouldRemove = true;
-			}
-		}
-
-		// -----------------------------------------------------------------------
-		// Advance position
-		// -----------------------------------------------------------------------
-		irr::core::vector3df nextPos = currentPos + it->velocity * dtSeconds;
-
-		if (!hitSomethingReal)
-		{
-			transformComp.position = nextPos;
-			if (transformComp.node)
-			{
-				transformComp.node->setPosition(nextPos);
-				transformComp.node->updateAbsolutePosition();
-			}
-		}
-
-		it->previousPosition = currentPos;
-		it->lifetime += dt;
-
-		// -----------------------------------------------------------------------
-		// Remove expired / hit projectiles
-		// -----------------------------------------------------------------------
-		if (shouldRemove || it->lifetime >= it->maxLifetime)
-		{
-			if (it->sparkSystem)
-			{
-				SPK_Destroy(it->sparkSystem);
-				it->sparkSystem = nullptr;
-			}
-
-			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>())
-			{
-				WorldManager::Get()->killEntityByID(it->entity.getComponent<DescriptorComponent>().id);
-			}
-
-			it = m_projectiles.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
 }
