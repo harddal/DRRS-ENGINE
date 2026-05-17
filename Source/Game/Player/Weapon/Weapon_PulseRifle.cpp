@@ -208,14 +208,20 @@ void Weapon_PulseRifle::persist()
 	// Drive the laser beam every frame while the fire button is held
 	if (fireHeld && m_mesh.node && m_mesh.node->isVisible() && m_muzzleNode)
 	{
-		m_mesh.node->updateAbsolutePosition();
-		m_muzzleNode->updateAbsolutePosition();
-		irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
-
 		anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 		if (player.isValid() && player.hasComponent<CameraComponent>())
 		{
 			auto& camera = player.getComponent<CameraComponent>();
+
+			// Force full hierarchy update: camera → weapon → bones.
+			// Without this, getAbsolutePosition() returns last frame's value and
+			// the beam lags behind the viewmodel during camera movement.
+			camera.camera->updateAbsolutePosition();
+			m_mesh.node->updateAbsolutePosition();
+			m_mesh.node->animateJoints();
+			m_muzzleNode->updateAbsolutePosition();
+			irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
+
 			irr::core::vector3df forward = (camera.camera->getTarget() - camera.camera->getAbsolutePosition()).normalize();
 			irr::core::vector3df rayEnd = muzzlePos + forward * 1000.0f;
 
@@ -276,15 +282,16 @@ void Weapon_PulseRifle::fire()
 	if (!m_mesh.node)
 		return;
 
-	// Force immediate update of weapon hierarchy
-	m_mesh.node->updateAbsolutePosition();
-
 	if (!m_muzzleNode)
 	{
 		spdlog::warn("Weapon_PulseRifle: muzzle node not found - cannot fire");
 		return;
 	}
 
+	// Force full hierarchy update: camera → weapon → bones
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
 	m_muzzleNode->updateAbsolutePosition();
 	irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
@@ -446,7 +453,7 @@ void Weapon_PulseRifle::createLaserBeam(const irr::core::vector3df& start, const
 	direction.normalize();
 
 	// Stretch the unit-length plane to match the shot distance
-	m_laserNode->setScale(irr::core::vector3df(1.0f, 1.0f, distance));
+	m_laserNode->setScale(irr::core::vector3df(5.0f, 5.0f, distance));
 
 	// Position at beam midpoint
 	m_laserNode->setPosition(start + direction * (distance * 0.5f));
@@ -635,6 +642,7 @@ void Weapon_PulseRifle::createImpactEffect(const irr::core::vector3df& pos)
 	{
 		irrSys->setVisible(true);
 		irrSys->setPosition(pos);
+		irrSys->setScale(irr::core::vector3df(3.0f, 3.0f, 3.0f));
 		irrSys->updateAbsolutePosition();
 	}
 

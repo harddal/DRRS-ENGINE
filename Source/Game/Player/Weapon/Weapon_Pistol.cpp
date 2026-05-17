@@ -271,15 +271,16 @@ void Weapon_Pistol::fire()
 	if (!m_mesh.node)
 		return;
 
-	// Force immediate update of weapon hierarchy
-	m_mesh.node->updateAbsolutePosition();
-
 	if (!m_muzzleNode)
 	{
-		spdlog::warn("Weapon_PulseRifle: muzzle node not found - cannot fire");
+		spdlog::warn("Weapon_Pistol: muzzle node not found - cannot fire");
 		return;
 	}
 
+	// Force full hierarchy update: camera → weapon → bones
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
 	m_muzzleNode->updateAbsolutePosition();
 	irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
@@ -564,13 +565,18 @@ void Weapon_Pistol::ejectShell()
 		return; // Pool exhausted, skip
 
 	// Sync weapon hierarchy so eject bone is at the correct world position
+	{
+		anax::Entity& pl = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		if (pl.isValid() && pl.hasComponent<CameraComponent>())
+			pl.getComponent<CameraComponent>().camera->updateAbsolutePosition();
+	}
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
 
 	irr::scene::IBoneSceneNode* ejectBone = m_mesh.node->getJointNode("BRASS");
 	if (!ejectBone)
 	{
-		spdlog::warn("BRASS bone not found on minigun model - cannot eject shell");
+		spdlog::warn("BRASS bone not found on pistol model - cannot eject shell");
 		return;
 	}
 	ejectBone->updateAbsolutePosition();

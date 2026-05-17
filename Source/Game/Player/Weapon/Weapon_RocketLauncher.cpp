@@ -508,7 +508,11 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 		return;
 	}
 
-	// Get spawn position from muzzle bone's absolute position
+	// Force full hierarchy update: camera → weapon → bones
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
+	muzzleBone->updateAbsolutePosition();
 	irr::core::vector3df spawnPos = muzzleBone->getAbsolutePosition();
 
 	// Get camera target for aiming direction

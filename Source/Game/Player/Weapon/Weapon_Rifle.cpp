@@ -262,15 +262,16 @@ void Weapon_Rifle::fire()
 	if (!m_mesh.node)
 		return;
 
-	// Force immediate update of weapon hierarchy
-	m_mesh.node->updateAbsolutePosition();
-
 	if (!m_muzzleNode)
 	{
 		spdlog::warn("Weapon_Rifle: muzzle node not found - cannot fire");
 		return;
 	}
 
+	// Force full hierarchy update: camera → weapon → bones
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
 	m_muzzleNode->updateAbsolutePosition();
 	irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
@@ -551,6 +552,11 @@ void Weapon_Rifle::ejectShell()
 		return; // Pool exhausted, skip
 
 	// Sync weapon hierarchy so eject bone is at the correct world position
+	{
+		anax::Entity& pl = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		if (pl.isValid() && pl.hasComponent<CameraComponent>())
+			pl.getComponent<CameraComponent>().camera->updateAbsolutePosition();
+	}
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
 

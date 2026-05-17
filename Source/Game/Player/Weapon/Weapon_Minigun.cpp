@@ -522,10 +522,6 @@ void Weapon_Minigun::fire()
 	if (!m_mesh.node)
 		return;
 
-	// CRITICAL: Force immediate update of weapon hierarchy to prevent lag
-	// This ensures bone positions reflect the current frame's player/camera position
-	m_mesh.node->updateAbsolutePosition();
-
 	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("MUZZLE");
 	if (!muzzleBone)
 	{
@@ -533,10 +529,11 @@ void Weapon_Minigun::fire()
 		return;
 	}
 
-	// Force update MUZZLE bone to get current frame position
+	// Force full hierarchy update: camera → weapon → bones
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
 	muzzleBone->updateAbsolutePosition();
-
-	// Get spawn position from MUZZLE bone's absolute position
 	irr::core::vector3df muzzlePos = muzzleBone->getAbsolutePosition();
 
 	// Get camera target for aiming direction
@@ -823,6 +820,11 @@ void Weapon_Minigun::ejectShell()
 		return; // Pool exhausted, skip
 
 	// Sync weapon hierarchy so EJECT bone is at the correct world position
+	{
+		anax::Entity& pl = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		if (pl.isValid() && pl.hasComponent<CameraComponent>())
+			pl.getComponent<CameraComponent>().camera->updateAbsolutePosition();
+	}
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
 

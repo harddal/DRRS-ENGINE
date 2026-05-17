@@ -49,12 +49,12 @@ private:
 	irr::scene::IBillboardSceneNode* m_muzzleStarNode = nullptr;
 	irr::scene::ILightSceneNode* m_muzzleLightNode = nullptr;
 	float m_muzzleFlashTime = 0.0f;
-	const float m_muzzleFlashDuration = 250.0f;
+	const float m_muzzleFlashDuration = 50.0f;
 
 	// Continuous laser beam — single persistent node repositioned each shot
 	irr::scene::IMeshSceneNode* m_laserNode = nullptr;
 	float m_laserFireTime = -1.0f;
-	const float m_laserFadeDuration = 50.0f; // ms; must exceed fire interval to look continuous
+	const float m_laserFadeDuration = 5.0f;
 
 	irr::video::ITexture *m_crosshair;
 };
