@@ -19,11 +19,11 @@ void Weapon_Shotgun::init()
 	m_descriptor.name = "Player_Weapon_Shotgun";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.2f, -0.45f, 0.5f);
+	m_viewPositionOffset = irr::core::vector3df(0.3f, -0.1f, 0.4f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
-	m_mesh.mesh = "content/mesh/player/weapon/shotgun/shotgun.obj";
+	m_mesh.mesh = "content/mesh/player/weapon/shotgun/hud.b3d";
 
 	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
 	if (!m_mesh.trimesh)
@@ -40,13 +40,21 @@ void Weapon_Shotgun::init()
 		m_mesh.node->setMaterialTexture(0, t);
 	}
 
-	m_mesh.fps = 20;
+	m_mesh.fps = 30;
 	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(0, 0);
+	m_mesh.node->setLoopMode(true);
+	m_mesh.node->setFrameLoop(20, 50);
+	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
 	m_mesh.node->setAnimationEndCallback(m_mesh.animation_call_back.get());
+
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
 
 	m_mesh.node->setScale(m_viewScaleOffset);
 
@@ -131,67 +139,70 @@ void Weapon_Shotgun::destroy()
 
 void Weapon_Shotgun::update()
 {
-	// Semi-auto: reset fire flag when mouse is released
-	if (!InputManager::Get()->isMouseButtonPressed(MB_LEFT))
-	{
-		m_firedThisPress = false;
-	}
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
 
-	if (InputManager::Get()->isMouseButtonPressed(MB_LEFT) && !m_firedThisPress)
+	// Unequip: wait for anim to finish, then hide
+	if (m_isUnequipping)
 	{
-		fire();
-	}
-
-	// Reload animation
-	if (m_isReloading)
-	{
-		int currentTime = static_cast<int>(Engine::Get()->getCurrentTime());
-		int elapsed = currentTime - m_reloadStartTime;
-
-		if (elapsed >= m_reloadDuration)
+		if (animEnded)
 		{
-			m_isReloading = false;
-			m_mesh.node->setPosition(m_viewPositionOffset);
-			m_mesh.node->setRotation(m_viewRotationOffset);
+			m_isUnequipping = false;
+			m_mesh.node->setVisible(false);
 		}
+
+		// Recoil recovery still ticks during unequip
+		float dt = Engine::Get()->getDeltaTime() / 1000.0f;
+		float recovery = m_recoilRecoverySpeed * dt;
+		if (m_currentRecoilRotation > 0.0f)
+			m_currentRecoilRotation -= std::min(recovery, m_currentRecoilRotation);
 		else
+			m_currentRecoilRotation += std::min(recovery, -m_currentRecoilRotation);
+		if (m_currentRecoilHorizontal > 0.0f)
+			m_currentRecoilHorizontal -= std::min(recovery, m_currentRecoilHorizontal);
+		else
+			m_currentRecoilHorizontal += std::min(recovery, -m_currentRecoilHorizontal);
+		m_currentRecoilPosition -= std::min(recovery * 0.005f, m_currentRecoilPosition);
+
+		return;
+	}
+
+	// Equip: wait for anim to finish, then loop idle
+	if (m_isEquipping)
+	{
+		if (animEnded)
 		{
-			irr::core::vector3df pos = m_viewPositionOffset;
-			irr::core::vector3df rot = m_viewRotationOffset;
-
-			if (elapsed < m_reloadDownDuration)
-			{
-				float progress = static_cast<float>(elapsed) / static_cast<float>(m_reloadDownDuration);
-				float smooth = progress * progress * (3.0f - 2.0f * progress);
-				pos.Y += m_reloadPositionOffset * smooth;
-				rot.X += m_reloadRotationOffset * smooth;
-			}
-			else if (elapsed < m_reloadDownDuration + m_reloadPauseDuration)
-			{
-				int pauseElapsed = elapsed - m_reloadDownDuration;
-				pos.Y += m_reloadPositionOffset;
-				rot.X += m_reloadRotationOffset;
-
-				float wiggleProgress = static_cast<float>(pauseElapsed) / 1000.0f;
-				rot.Z += sin(wiggleProgress * 0.5f * 3.14159f * 2.0f) * m_reloadWiggleAmount;
-			}
-			else
-			{
-				int upElapsed = elapsed - m_reloadDownDuration - m_reloadPauseDuration;
-				float progress = static_cast<float>(upElapsed) / static_cast<float>(m_reloadUpDuration);
-				float smooth = progress * progress * (3.0f - 2.0f * progress);
-				float reverse = 1.0f - smooth;
-				pos.Y += m_reloadPositionOffset * reverse;
-				rot.X += m_reloadRotationOffset * reverse;
-			}
-
-			m_mesh.node->setPosition(pos);
-			m_mesh.node->setRotation(rot);
+			m_isEquipping = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
 		}
-
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
 	}
+
+	// Fire or reload anim playing: wait for completion
+	if (m_isAnimating)
+	{
+		if (animEnded)
+		{
+			m_isAnimating = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
+		return;
+	}
+
+	// Semi-auto: reset fire flag when mouse released
+	if (!InputManager::Get()->isMouseButtonPressed(MB_LEFT))
+		m_firedThisPress = false;
+
+	if (InputManager::Get()->isMouseButtonPressed(MB_LEFT) && !m_firedThisPress)
+		fire();
+
+	// Reload via R key
+	static bool r = false;
+	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
+		reload();
 
 	// Recoil recovery
 	{
@@ -246,19 +257,39 @@ void Weapon_Shotgun::persist()
 
 void Weapon_Shotgun::equip()
 {
-	m_isEquipping = true;
-	m_equipStartTime = static_cast<int>(Engine::Get()->getCurrentTime());
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+	m_isEquipping   = true;
+	m_isUnequipping = false;
+	m_isAnimating   = false;
+	m_firedThisPress = false;
+	m_currentRecoilRotation   = 0.0f;
+	m_currentRecoilHorizontal = 0.0f;
+	m_currentRecoilPosition   = 0.0f;
 
-	irr::core::vector3df startPos = m_viewPositionOffset;
-	startPos.Y += m_equipStartOffset;
-	m_mesh.node->setPosition(startPos);
-
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(1, 20);
+	m_mesh.node->setPosition(m_viewPositionOffset);
+	m_mesh.node->setRotation(m_viewRotationOffset);
 	m_mesh.node->setVisible(true);
 }
 
 void Weapon_Shotgun::unequip()
 {
+	m_isEquipping   = false;
+	m_isUnequipping = false;
+	m_isAnimating   = false;
 	m_mesh.node->setVisible(false);
+}
+
+void Weapon_Shotgun::startUnequip()
+{
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+	m_isUnequipping  = true;
+	m_isAnimating    = false;
+	m_firedThisPress = true; // block fire during transition
+
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(179, 190);
 }
 
 void Weapon_Shotgun::idle()
@@ -271,7 +302,7 @@ void Weapon_Shotgun::move()
 
 void Weapon_Shotgun::fire()
 {
-	if (m_isReloading)
+	if (m_isAnimating)
 		return;
 
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
@@ -345,15 +376,16 @@ void Weapon_Shotgun::fire()
 
 void Weapon_Shotgun::reload()
 {
-	if (m_isReloading)
+	if (m_isAnimating)
 		return;
 
 	m_currentRecoilRotation   = 0.0f;
 	m_currentRecoilHorizontal = 0.0f;
 	m_currentRecoilPosition   = 0.0f;
 
-	m_isReloading     = true;
-	m_reloadStartTime = static_cast<int>(Engine::Get()->getCurrentTime());
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(96, 179);
+	m_isAnimating = true;
 }
 
 void Weapon_Shotgun::initImpactParticleSystem()

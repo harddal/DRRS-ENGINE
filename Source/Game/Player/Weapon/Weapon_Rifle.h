@@ -19,16 +19,20 @@ public:
 	void destroy();
 	void equip();
 	void unequip();
+	void startUnequip() override;
+	bool isUnequipping() const override { return m_isUnequipping; }
 	void idle();
 	void move();
 	void fire();
 	void reload();
 
 private:
-	// Automatic fire variables
 	float m_recoil = 0.01f;
 	float m_lastFireTime = 0.0f;
-	bool m_isFiring = false;
+	bool m_isEquipping = false;
+	bool m_isUnequipping = false;
+	bool m_isPlayingFireAnim = false;
+	bool m_isReloadingAnim = false;
 
 	// Cached bone/scene nodes
 	irr::scene::ISceneNode* m_muzzleNode = nullptr;

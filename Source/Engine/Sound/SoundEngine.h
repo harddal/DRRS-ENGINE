@@ -62,12 +62,12 @@ public:
 	//   from clipping, e.g. 0.35f with maxConcurrent=3 keeps the sum near 1.0.
 	// poolGroup: optional shared-pool name. Voices from different source files that share the same
 	//   group count against one concurrent limit (e.g. fire1/2/3.wav treated as a single pool).
-	SoundHandle play2D(const char*   file,   bool loop = false, int maxConcurrent = 0, float volume = 1.0f, const char* poolGroup = nullptr, bool startPaused = false);
-	SoundHandle play2D(SoundSource* source,  bool loop = false, int maxConcurrent = 0, float volume = 1.0f, const char* poolGroup = nullptr, bool startPaused = false);
+	SoundHandle play2D(const char*   file,   bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false);
+	SoundHandle play2D(SoundSource* source,  bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false);
 
 	// 3D (positional) playback — 'track' parameter accepted but ignored (always returns handle)
-	SoundHandle play3D(const char*   file,   irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = 1.0f, const char* poolGroup = nullptr);
-	SoundHandle play3D(SoundSource* source,  irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = 1.0f, const char* poolGroup = nullptr);
+	SoundHandle play3D(const char*   file,   irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
+	SoundHandle play3D(SoundSource* source,  irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
 
 	// Source management — same file is only loaded once
 	SoundSource* getSoundSource(const char* file, bool preload = false);
@@ -90,6 +90,7 @@ public:
 		setListenerPosition(pos.X, pos.Y, pos.Z, look.X, look.Y, look.Z, up.X, up.Y, up.Z);
 	}
 
+	void stopAllVoices();   // stop all playing voices without unloading sources
 	void removeAllSoundSources();
 	void drop() {}  // compatibility shim — SoundManager::~SoundManager calls drop()
 

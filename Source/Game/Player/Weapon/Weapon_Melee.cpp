@@ -14,11 +14,11 @@ void Weapon_Melee::init()
 	m_descriptor.name = "Player_Weapon_Melee";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(-0.05f, -0.1f, -0.13f);
+	m_viewPositionOffset = irr::core::vector3df(0.3f, 0.0f, 0.5f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(0.25f, 0.25f, 0.25f);
 
-	m_mesh.mesh = _asset_b3d("player/weapon/knife/HUD");
+	m_mesh.mesh = _asset_b3d("player/weapon/sword/HUD");
 
 	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
 	if (!m_mesh.trimesh)

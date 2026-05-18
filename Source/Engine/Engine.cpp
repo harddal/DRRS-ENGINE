@@ -116,6 +116,8 @@ void Engine::update()
 		{
 			if (m_stateManager.next() != ESID_INVALID)
 			{
+				if (m_stateManager.current() != ESID_INVALID)
+					m_stateManager.pauseState(m_stateManager.current());
 				m_stateManager.initState(m_stateManager.next(), m_stateManager.getStateInitArgs());
 				m_stateManager.cycleNextState();
 			}

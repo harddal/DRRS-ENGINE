@@ -13,6 +13,7 @@
 
 #include "Engine/Types.h"
 #include "Game/GameplaySystem.h"
+#include "Game/NPC/NPCSystem.h"
 
 #include "Engine/Renderer/RenderManager.h"
 
@@ -252,6 +253,7 @@ public:
 	TweenSystem*      tweenSystem()      { return &m_tweenSystem; }
 	NavigationSystem* navigationSystem() { return &m_navigationSystem; }
 	GameplaySystem*   gameplaySystem()   { return &m_gameplaySystem; }
+	NPCSystem*        npcSystem()        { return &m_npcSystem; }
 
     static WorldManager* Get() { return s_Instance; }
 
@@ -264,6 +266,7 @@ public:
 	irr::f32 getSoundTime() { return m_soundTime; }
 	irr::f32 getTransformTime() { return m_transformTime; }
 	irr::f32 getGameplayTime() { return m_gameplayTime; }
+	irr::f32 getNpcTime()     { return m_npcTime; }
 
 protected:
     std::vector<GlobalCVar> m_globalCVarList;
@@ -298,6 +301,7 @@ private:
 	TweenSystem m_tweenSystem;
 	NavigationSystem m_navigationSystem;
 	GameplaySystem m_gameplaySystem;
+	NPCSystem      m_npcSystem;
 
 	irr::f32 m_worldCurrent, m_worldLast, m_worldTime;
 	irr::f32 m_cameraCurrent, m_cameraLast, m_cameraTime;
@@ -308,4 +312,5 @@ private:
 	irr::f32 m_soundCurrent, m_soundLast, m_soundTime;
 	irr::f32 m_transformCurrent, m_transformLast, m_transformTime;
 	irr::f32 m_gameplayCurrent, m_gameplayLast, m_gameplayTime;
+	irr::f32 m_npcCurrent, m_npcTime;
 };

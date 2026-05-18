@@ -918,8 +918,8 @@ static bool AS_NPC_GetAlive(entityid e)
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().isAlive;
+        if (!entity.hasComponent<DescriptorComponent>()) throw ex_ent_invalid_comp;
+        return entity.getComponent<DescriptorComponent>().isAlive;
     }
     catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetAlive", ex.what(), e); }
     return false;
@@ -930,8 +930,8 @@ static void AS_NPC_SetAlive(entityid e, bool v)
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().isAlive = v;
+        if (!entity.hasComponent<DescriptorComponent>()) throw ex_ent_invalid_comp;
+        entity.getComponent<DescriptorComponent>().isAlive = v;
     }
     catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetAlive", ex.what(), e); }
 }
@@ -1281,6 +1281,81 @@ static void AS_NPC_ClearNavPath(entityid e)
     catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_ClearNavPath", ex.what(), e); }
 }
 
+static bool AS_NPC_HasWaypoint(entityid e)
+{
+    try {
+        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+        if (!entity.isValid()) throw ex_ent_invalid_name;
+        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
+        return !entity.getComponent<NPCComponent>().current_waypoint.empty();
+    }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_HasWaypoint", ex.what(), e); }
+    return false;
+}
+
+static irr::core::vector3df AS_NPC_CurrentWaypointPos(entityid e)
+{
+    try {
+        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+        if (!entity.isValid()) throw ex_ent_invalid_name;
+        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
+        const std::string& wpName = entity.getComponent<NPCComponent>().current_waypoint;
+        if (wpName.empty()) return irr::core::vector3df(0.0f, 0.0f, 0.0f);
+        auto& wp = WorldManager::Get()->managerSystem()->getEntityByName(wpName);
+        if (!wp.isValid() || !wp.hasComponent<TransformComponent>())
+            return irr::core::vector3df(0.0f, 0.0f, 0.0f);
+        return wp.getComponent<TransformComponent>().getPosition();
+    }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_CurrentWaypointPos", ex.what(), e); }
+    return irr::core::vector3df(0.0f, 0.0f, 0.0f);
+}
+
+// Reads DataComponent of the current waypoint entity and advances current_waypoint to the next in the chain.
+// Clears navPath so the script picks up a fresh path to the new target.
+static void AS_NPC_AdvanceWaypoint(entityid e)
+{
+    try {
+        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+        if (!entity.isValid()) throw ex_ent_invalid_name;
+        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
+        auto& npc = entity.getComponent<NPCComponent>();
+        if (npc.current_waypoint.empty()) return;
+        auto& wp = WorldManager::Get()->managerSystem()->getEntityByName(npc.current_waypoint);
+        if (!wp.isValid() || !wp.hasComponent<DataComponent>()) {
+            npc.current_waypoint.clear();
+            return;
+        }
+        const auto& data = wp.getComponent<DataComponent>().data;
+        npc.current_waypoint = data.empty() ? std::string() : data.back();
+        npc.navPath.clear();
+        npc.navPathIndex = 0;
+    }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_AdvanceWaypoint", ex.what(), e); }
+}
+
+static float AS_NPC_GetMoveSpeedScale(entityid e)
+{
+    try {
+        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+        if (!entity.isValid()) throw ex_ent_invalid_name;
+        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
+        return entity.getComponent<NPCComponent>().moveSpeedScale;
+    }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetMoveSpeedScale", ex.what(), e); }
+    return 1.0f;
+}
+
+static void AS_NPC_SetMoveSpeedScale(entityid e, float scale)
+{
+    try {
+        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+        if (!entity.isValid()) throw ex_ent_invalid_name;
+        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
+        entity.getComponent<NPCComponent>().moveSpeedScale = scale;
+    }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetMoveSpeedScale", ex.what(), e); }
+}
+
 // NPC state enum constants (match NPC_AI_STATE order)
 static const int NPC_STATE_INACTIVE = 0;
 static const int NPC_STATE_IDLE     = 1;
@@ -1485,6 +1560,12 @@ void ScriptBindings::RegisterGame(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("vector3d navWaypoint(int entityId, int index)",          asFUNCTION(AS_NPC_GetNavWaypoint),      asCALL_CDECL);
 		engine->RegisterGlobalFunction("void advanceNavPath(int entityId)",                      asFUNCTION(AS_NPC_AdvanceNavPath),      asCALL_CDECL);
 		engine->RegisterGlobalFunction("void clearNavPath(int entityId)",                        asFUNCTION(AS_NPC_ClearNavPath),        asCALL_CDECL);
+
+		engine->RegisterGlobalFunction("bool hasWaypoint(int entityId)",                         asFUNCTION(AS_NPC_HasWaypoint),         asCALL_CDECL);
+		engine->RegisterGlobalFunction("vector3d currentWaypointPos(int entityId)",              asFUNCTION(AS_NPC_CurrentWaypointPos),  asCALL_CDECL);
+		engine->RegisterGlobalFunction("void advanceWaypoint(int entityId)",                     asFUNCTION(AS_NPC_AdvanceWaypoint),     asCALL_CDECL);
+		engine->RegisterGlobalFunction("float moveSpeedScale(int entityId)",                     asFUNCTION(AS_NPC_GetMoveSpeedScale),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("void moveSpeedScale(int entityId, float scale)",         asFUNCTION(AS_NPC_SetMoveSpeedScale),   asCALL_CDECL);
 
 		engine->RegisterGlobalProperty("const int STATE_INACTIVE", const_cast<int*>(&NPC_STATE_INACTIVE));
 		engine->RegisterGlobalProperty("const int STATE_IDLE",     const_cast<int*>(&NPC_STATE_IDLE));

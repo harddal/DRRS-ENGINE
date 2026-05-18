@@ -10,6 +10,31 @@
 using namespace SPK;
 using namespace SPK::IRR;
 
+// MaterialTypeParam carries burnTime (0..1). Read directly in OnSetConstants — it is
+// set by the callback's own OnSetMaterial every time the material is applied, and by
+// updateBurnDecals every frame, so it is always current when the shader runs.
+class BurnDecalShaderCallback : public irr::video::IShaderConstantSetCallBack
+{
+	float m_burnTime = 0.0f;
+public:
+	void OnSetMaterial(const irr::video::SMaterial& mat) override
+	{
+		m_burnTime = mat.MaterialTypeParam;
+	}
+	void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override
+	{
+		services->setPixelShaderConstant("uBurnTime", &m_burnTime, 1);
+		irr::s32 tex0 = 0;
+		services->setPixelShaderConstant("texture1", &tex0, 1);
+		irr::scene::ICameraSceneNode* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
+		if (cam)
+		{
+			irr::f32 farDist = cam->getFarValue();
+			services->setVertexShaderConstant("CamFar", &farDist, 1);
+		}
+	}
+};
+
 void Weapon_PulseRifle::precache()
 {
 
@@ -48,13 +73,18 @@ void Weapon_PulseRifle::init()
 
 	//RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(m_mesh.node);
 
-	m_mesh.fps = 20;
-	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
+	m_mesh.fps = 30;
+	m_mesh.node->setAnimationSpeed(30.0f);
 	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(23, 49);
-	
-	// EJUOR_READ: animation plays automatically; bones are still accessible for lookup.
-	// (EJUOR_CONTROL would freeze the animation until animateJoints() is called manually.)
+	m_mesh.node->setFrameLoop(20, 50);
+
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
 	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
@@ -129,10 +159,39 @@ void Weapon_PulseRifle::init()
 	}
 
 	initImpactSparkSystem();
+
+	// Register impact_burn shader with a shared per-decal callback
+	auto* gpu = RenderManager::Get()->driver()->getGPUProgrammingServices();
+	if (gpu)
+	{
+		auto* burnCb = new BurnDecalShaderCallback();
+		irr::s32 burnMat = gpu->addHighLevelShaderMaterialFromFiles(
+			"content/shader/impact_burn.vert", "main", irr::video::EVST_VS_2_0,
+			"content/shader/impact_burn.frag", "main", irr::video::EPST_PS_2_0,
+			burnCb,
+			irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL,
+			0, irr::video::EGSL_DEFAULT
+		);
+		burnCb->drop();
+		m_burnDecalMat = static_cast<irr::video::E_MATERIAL_TYPE>(burnMat);
+	}
+	m_burnTexture = RenderManager::Get()->driver()->getTexture("content/texture/particle/smoke_04.png");
 }
 
 void Weapon_PulseRifle::destroy()
 {
+	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
+
+	for (auto& d : m_burnDecals)
+	{
+		if (d.node)
+		{
+			RenderManager::Get()->unregisterLDREffectNode(d.node);
+			d.node->remove();
+		}
+	}
+	m_burnDecals.clear();
+
 	// Clean up laser beam node
 	if (m_laserNode)
 	{
@@ -163,38 +222,60 @@ void Weapon_PulseRifle::update()
 		return;
 
 	float currentTime = Engine::Get()->getCurrentTime();
-	float dt = Engine::Get()->getDeltaTime();
-	m_isFiring = false;  // reset each frame; set true below if fire() is called
+
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
+
+	if (m_isUnequipping)
+	{
+		if (animEnded) { m_isUnequipping = false; m_mesh.node->setVisible(false); }
+		return;
+	}
+
+	if (m_isEquipping)
+	{
+		if (animEnded)
+		{
+			m_isEquipping = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		return;
+	}
+
+	if (m_isReloadingAnim)
+	{
+		if (animEnded)
+		{
+			m_isReloadingAnim = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		return;
+	}
 
 	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
-
-	const float fireRate = 100.0f; // ms between shots
-	if (fireButtonPressed &&  (currentTime - m_lastFireTime) >= fireRate)
+	const float fireRate = 100.0f;
+	if (fireButtonPressed && (currentTime - m_lastFireTime) >= fireRate)
 	{
 		m_lastFireTime = currentTime;
-		m_isFiring = true;
 		fire();
 	}
 
-	//RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
+	if (fireButtonPressed && !m_fireLoopHandle)
+		m_fireLoopHandle = SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", true);
 
-	static bool r = false;
-	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
+	if (!fireButtonPressed && m_fireLoopHandle)
 	{
-		m_mesh.node->setLoopMode(false);
-		m_mesh.node->setFrameLoop(96, 179);
-	}
-
-	if (m_mesh.animation_call_back->hasAnimationEnded())
-	{
-		m_mesh.node->setLoopMode(true);
-		m_mesh.node->setFrameLoop(20, 50);
+		m_fireLoopHandle->stop();
+		m_fireLoopHandle->drop();
+		m_fireLoopHandle = nullptr;
 	}
 }
 
 void Weapon_PulseRifle::persist()
 {
 	float dt = Engine::Get()->getDeltaTime();
+	float currentTime = Engine::Get()->getCurrentTime();
 
 	bool fireHeld = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
 
@@ -227,6 +308,12 @@ void Weapon_PulseRifle::persist()
 
 			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(muzzlePos, rayEnd, true);
 			createLaserBeam(muzzlePos, hit.hit ? hit.point : rayEnd);
+
+			if (hit.hit && (currentTime - m_lastBurnDecalTime) >= m_burnDecalInterval)
+			{
+				createBurnDecal(hit.point, hit.normal);
+				m_lastBurnDecalTime = currentTime;
+			}
 		}
 	}
 	else
@@ -247,16 +334,42 @@ void Weapon_PulseRifle::persist()
 			++it;
 		}
 	}
+
+	updateBurnDecals(currentTime);
 }
 
 void Weapon_PulseRifle::equip()
 {
 	m_mesh.node->setVisible(true);
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(1, 20);
+	m_isEquipping = true;
+	m_isUnequipping = false;
+
+	m_isReloadingAnim = false;
 }
 
 void Weapon_PulseRifle::unequip()
 {
+	m_isEquipping = false;
+	m_isUnequipping = false;
+	m_isReloadingAnim = false;
+	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
+	if (m_laserNode) m_laserNode->setVisible(false);
 	m_mesh.node->setVisible(false);
+}
+
+void Weapon_PulseRifle::startUnequip()
+{
+	m_isUnequipping = true;
+	m_isEquipping = false;
+	m_isReloadingAnim = false;
+	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
+	if (m_laserNode) m_laserNode->setVisible(false);
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(179, 190);
 }
 
 void Weapon_PulseRifle::idle()
@@ -278,13 +391,9 @@ void Weapon_PulseRifle::fire()
 
 	auto& camera = player.getComponent<CameraComponent>();
 
-	// Get the Muzzle bone scene node from the weapon
-	if (!m_mesh.node)
-		return;
-
-	if (!m_muzzleNode)
+	if (!m_mesh.node || !m_muzzleNode)
 	{
-		spdlog::warn("Weapon_PulseRifle: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_PulseRifle: muzzle node not found - cannot fire");
 		return;
 	}
 
@@ -338,13 +447,17 @@ void Weapon_PulseRifle::fire()
 
 	// Create muzzle flash effect
 	createMuzzleFlash();
-
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", false);
 }
 
 void Weapon_PulseRifle::reload()
 {
-
+	if (!m_isReloadingAnim)
+	{
+		m_mesh.node->setLoopMode(false);
+		m_mesh.node->setFrameLoop(81, 95);
+		m_isReloadingAnim = true;
+	
+	}
 }
 
 
@@ -647,4 +760,86 @@ void Weapon_PulseRifle::createImpactEffect(const irr::core::vector3df& pos)
 	}
 
 	m_impactSystems.push_back(system);
+}
+
+void Weapon_PulseRifle::createBurnDecal(const irr::core::vector3df& pos, const irr::core::vector3df& normal)
+{
+	// Drop oldest decal when pool is full
+	if (static_cast<int>(m_burnDecals.size()) >= BURN_DECAL_MAX)
+	{
+		if (m_burnDecals.front().node)
+		{
+			RenderManager::Get()->unregisterLDREffectNode(m_burnDecals.front().node);
+			m_burnDecals.front().node->remove();
+		}
+		m_burnDecals.pop_front();
+	}
+
+	auto* geo = RenderManager::Get()->sceneManager()->getGeometryCreator();
+	irr::scene::IMesh* planeMesh = geo->createPlaneMesh(
+		irr::core::dimension2df(0.25f, 0.25f), irr::core::dimension2du(1, 1));
+	auto* node = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
+	planeMesh->drop();
+	if (!node) return;
+
+	// Normalize and orient toward the camera — a backface ray hit (muzzle inside/near geometry)
+	// returns a normal pointing into the surface, which would push the decal behind the mesh.
+	irr::core::vector3df n = normal;
+	n.normalize();
+	auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
+	if (cam && n.dotProduct(cam->getAbsolutePosition() - pos) < 0.0f)
+		n = -n;
+
+	node->setPosition(pos + n * 0.02f);
+
+	// Map the plane's +Y axis to the surface normal.
+	// With Irrlicht setRotationDegrees(X,Y,Z), the Y row of the rotation matrix is
+	// (sin(X)*sin(Y), cos(X), sin(X)*cos(Y)) — so X=acos(nY), Y=atan2(nX,nZ) is exact.
+	// Z is left at 0: adding any roll to euler.Z distorts the surface normal direction.
+	float alpha = acosf(irr::core::clamp(n.Y, -1.0f, 1.0f)) * irr::core::RADTODEG;
+	float beta  = atan2f(n.X, n.Z) * irr::core::RADTODEG;
+	node->setRotation(irr::core::vector3df(alpha, beta, 0.0f));
+
+	// The plane mesh has zero local Y extent (all verts lie on Y=0). After rotation
+	// onto a wall the world AABB collapses in one axis, failing Irrlicht's frustum
+	// test — all decals on the same surface blink out simultaneously. Disable culling.
+	node->setAutomaticCulling(irr::scene::EAC_OFF);
+
+	auto& mat = node->getMaterial(0);
+	mat.MaterialType          = m_burnDecalMat;
+	mat.MaterialTypeParam     = 0.0f;
+	mat.setTexture(0, m_burnTexture);
+	mat.Lighting        = false;
+	mat.ZWriteEnable    = false;
+	mat.ZBuffer         = irr::video::ECFN_LESSEQUAL;
+	mat.BackfaceCulling = false;
+
+	BurnDecal decal;
+	decal.node        = node;
+	decal.spawnTime   = Engine::Get()->getCurrentTime();
+	decal.maxLifetime = 8000.0f;
+	m_burnDecals.push_back(decal);
+	RenderManager::Get()->registerLDREffectNode(node);
+}
+
+void Weapon_PulseRifle::updateBurnDecals(float currentTime)
+{
+	for (auto it = m_burnDecals.begin(); it != m_burnDecals.end(); )
+	{
+		float burnTime = (currentTime - it->spawnTime) / it->maxLifetime;
+		if (burnTime >= 1.0f)
+		{
+			if (it->node)
+			{
+				RenderManager::Get()->unregisterLDREffectNode(it->node);
+				it->node->remove();
+			}
+			it = m_burnDecals.erase(it);
+		}
+		else
+		{
+			it->node->getMaterial(0).MaterialTypeParam = burnTime;
+			++it;
+		}
+	}
 }

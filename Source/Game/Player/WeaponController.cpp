@@ -87,6 +87,14 @@ void WeaponController::update()
 			switchWeapon(static_cast<PLAYER_WEAPON>(i));
 	}
 
+	// Complete a pending weapon switch once the current weapon's unequip anim is done
+	if (m_pendingWeapon >= 0 && !current_weapon->isUnequipping())
+	{
+		m_current_weapon = static_cast<unsigned int>(m_pendingWeapon);
+		m_pendingWeapon = -1;
+		current_weapon->equip();
+	}
+
 	current_weapon->update();
 
 	for (auto i = 0U; i < WEAP_COUNT; i++)
@@ -127,52 +135,31 @@ void WeaponController::setAmmo(AMMO_TYPE type, unsigned int amount)
 
 void WeaponController::switchNextWeapon()
 {
-	current_weapon->unequip();
+	unsigned int target = (m_current_weapon == WEAP_COUNT - 1) ? WEAP_NONE : m_current_weapon + 1;
+	if (target == m_current_weapon) return;
 
-	if (m_current_weapon == WEAP_COUNT - 1)
-	{
-		m_current_weapon = WEAP_NONE;
-	}
-	else
-	{
-		m_current_weapon++;
-	}
-
-	current_weapon->equip();
-
-	//spdlog::debug("CURRENT WEAPON: {0}", m_current_weapon);
+	m_pendingWeapon = static_cast<int>(target);
+	if (!current_weapon->isUnequipping())
+		current_weapon->startUnequip();
 }
 
 void WeaponController::switchPreviousWeapon()
 {
-	current_weapon->unequip();
+	unsigned int target = (m_current_weapon == WEAP_NONE) ? WEAP_COUNT - 1 : m_current_weapon - 1;
+	if (target == m_current_weapon) return;
 
-	if (m_current_weapon == WEAP_NONE)
-	{
-		m_current_weapon = WEAP_COUNT - 1;
-	}
-	else
-	{
-		m_current_weapon--;
-	}
-
-	current_weapon->equip();
-
-	//spdlog::debug("CURRENT WEAPON: {0}", m_current_weapon);
+	m_pendingWeapon = static_cast<int>(target);
+	if (!current_weapon->isUnequipping())
+		current_weapon->startUnequip();
 }
 
 void WeaponController::switchWeapon(PLAYER_WEAPON weapon)
 {
-	current_weapon->unequip();
+	if (weapon == WEAP_COUNT || static_cast<unsigned int>(weapon) == m_current_weapon) return;
 
-	if (weapon == WEAP_COUNT)
-	{
-		return;
-	}
-
-	m_current_weapon = weapon;
-
-	current_weapon->equip();
+	m_pendingWeapon = static_cast<int>(weapon);
+	if (!current_weapon->isUnequipping())
+		current_weapon->startUnequip();
 }
 
 void WeaponController::unequipWeapon()

@@ -26,7 +26,7 @@ void Weapon_Pistol::init()
 	m_descriptor.name = "Player_Weapon_Pistol";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.3f, 0.0f, 0.7f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
@@ -54,13 +54,18 @@ void Weapon_Pistol::init()
 	m_mesh.node->setMaterialFlag(irr::video::EMF_ANTI_ALIASING, true);
 	m_mesh.node->setMaterialFlag(irr::video::EMF_USE_MIP_MAPS, true);
 
-	m_mesh.fps = 20;
-	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
+	m_mesh.fps = 30;
+	m_mesh.node->setAnimationSpeed(30.0f);
 	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(277, 302);
+	m_mesh.node->setFrameLoop(20, 50); // idle loop as safe default
 
-	// EJUOR_READ: animation plays automatically; bones are still accessible for lookup.
-	// (EJUOR_CONTROL would freeze the animation until animateJoints() is called manually.)
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,   false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  89,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
 	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
@@ -182,32 +187,86 @@ void Weapon_Pistol::update()
 
 	float currentTime = Engine::Get()->getCurrentTime();
 	float dt = Engine::Get()->getDeltaTime();
-	m_isFiring = false;  // reset each frame; set true below if fire() is called
+	float dt_s = dt / 1000.0f;
 
-	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
+	// Consume animation-end signal once per frame to avoid double-reads
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
 
-	const float fireRate = 100.0f; // ms between shots
-	if (fireButtonPressed && (currentTime - m_lastFireTime) >= fireRate)
+	// State: unequip animation → hide (WeaponController completes switch next frame)
+	if (m_isUnequipping)
+	{
+		if (animEnded)
+		{
+			m_isUnequipping = false;
+			m_mesh.node->setVisible(false);
+		}
+		// Apply spring recovery but skip all input processing
+		m_kickPos -= m_kickPos * (15.0f * dt_s);
+		m_kickRot -= m_kickRot * (10.0f * dt_s);
+		m_mesh.node->setPosition(m_viewPositionOffset + m_kickPos);
+		m_mesh.node->setRotation(m_viewRotationOffset + m_kickRot);
+		return;
+	}
+
+	// State: equip animation → idle
+	if (m_isEquipping)
+	{
+		if (animEnded)
+		{
+			m_isEquipping = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+	}
+	// State: fire/reload animation → idle
+	else if (m_isAnimating)
+	{
+		if (animEnded)
+		{
+			m_isAnimating = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+	}
+
+	// Semi-auto: clear fire lock when mouse is released
+	bool lmbPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
+	if (!lmbPressed)
+		m_firedThisPress = false;
+
+	bool canFire = lmbPressed
+		&& !m_firedThisPress
+		&& !m_isAnimating
+		&& !m_isEquipping
+		&& (currentTime - m_lastFireTime) >= m_minFireInterval;
+
+	if (canFire)
 	{
 		m_lastFireTime = currentTime;
-		m_isFiring = true;
+		m_firedThisPress = true;
 		fire();
 	}
 
-	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
-
+	// Reload
 	static bool r = false;
 	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
 	{
-		m_mesh.node->setLoopMode(false);
-		m_mesh.node->setFrameLoop(81, 150);
+		if (!m_isAnimating && !m_isEquipping)
+		{
+			m_mesh.node->setLoopMode(false);
+			m_mesh.node->setFrameLoop(96, 179);
+			m_isAnimating = true;
+		}
 	}
 
-	if (m_mesh.animation_call_back->hasAnimationEnded())
-	{
-		m_mesh.node->setLoopMode(true);
-		m_mesh.node->setFrameLoop(277, 302);
-	}
+	// Exponential spring recovery for programmatic kick (k=15 pos, k=10 rot, per second)
+	m_kickPos -= m_kickPos * (15.0f * dt_s);
+	m_kickRot -= m_kickRot * (10.0f * dt_s);
+
+	m_mesh.node->setPosition(m_viewPositionOffset + m_kickPos);
+	m_mesh.node->setRotation(m_viewRotationOffset + m_kickRot);
+
+	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
 void Weapon_Pistol::persist()
@@ -241,11 +300,37 @@ void Weapon_Pistol::persist()
 void Weapon_Pistol::equip()
 {
 	m_mesh.node->setVisible(true);
+
+	// Consume any stale animation-end flag from before the weapon was hidden
+	m_mesh.animation_call_back->hasAnimationEnded();
+
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(1, 20);
+	m_isEquipping = true;
+	m_isAnimating = false;
+	m_firedThisPress = false;
+	m_kickPos = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_kickRot = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 }
 
 void Weapon_Pistol::unequip()
 {
+	m_isUnequipping = false;
+	m_isAnimating = false;
+	m_isEquipping = false;
 	m_mesh.node->setVisible(false);
+}
+
+void Weapon_Pistol::startUnequip()
+{
+	m_isUnequipping = true;
+	m_isAnimating = false;
+	m_isEquipping = false;
+	m_firedThisPress = true; // block fire input during unequip
+
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(179, 190);
 }
 
 void Weapon_Pistol::idle()
@@ -260,24 +345,27 @@ void Weapon_Pistol::move()
 
 void Weapon_Pistol::fire()
 {
-	// Raycast-based instant hit
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (!player.isValid() || !player.hasComponent<CameraComponent>())
-		return;
-
-	auto& camera = player.getComponent<CameraComponent>();
-
-	// Get the Muzzle bone scene node from the weapon
-	if (!m_mesh.node)
-		return;
-
-	if (!m_muzzleNode)
+	if (!player.isValid() || !player.hasComponent<CameraComponent>() || !m_mesh.node || !m_muzzleNode)
 	{
-		spdlog::warn("Weapon_Pistol: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_Pistol: muzzle node not found - cannot fire");
 		return;
 	}
 
-	// Force full hierarchy update: camera → weapon → bones
+	// Trigger skeletal fire animation (5 frames, ~167ms at 30fps)
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(81, 89);
+	m_isAnimating = true;
+
+	// Programmatic kick layered on top — instant snap, spring recovers in update()
+	m_kickPos.Z -= 0.05f;                                             // push back into screen
+	m_kickPos.Y += 0.02f;                                             // subtle rise
+	m_kickRot.X += 5.0f;                                              // muzzle pitches up
+	m_kickRot.Z += Engine::Get()->rng()->getFloat(-0.8f, 0.8f);       // micro roll variation
+
+	auto& camera = player.getComponent<CameraComponent>();
+
+	// Force full hierarchy update so bone world positions are current
 	camera.camera->updateAbsolutePosition();
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
@@ -298,8 +386,8 @@ void Weapon_Pistol::fire()
 	irr::core::vector3df direction = forward;
 
 	// Apply random offset in right and down directions
-	float spreadRight = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
-	float spreadDown = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
+	float spreadRight = Engine::Get()->rng()->getFloat(-m_spread, m_spread);
+	float spreadDown = Engine::Get()->rng()->getFloat(-m_spread, m_spread);
 	direction = (direction + right * spreadRight + down * spreadDown).normalize();
 
 	// Perform raycast from muzzle position in spread direction
@@ -329,7 +417,7 @@ void Weapon_Pistol::fire()
 				if (hitEntity.hasComponent<DamageReceiverComponent>())
 				{
 					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += 25; // Minigun damage
+					damageComp.damageReceived += 60;
 				}
 
 				// Create impact spark particles at hit position with surface normal
@@ -358,11 +446,11 @@ void Weapon_Pistol::fire()
 	// Eject shell casing
 	ejectShell();
 
-	// Camera recoil kick � random yaw drift for a natural, unsteady feel
-	auto recoilYaw = Engine::Get()->rng()->getFloat(-0.1f, 0.1f);
-	g_CameraFX.addRecoil(-0.5f, recoilYaw);
+	// Hard camera kick -- conveys weight on each shot
+	float recoilYaw = Engine::Get()->rng()->getFloat(-0.12f, 0.12f);
+	g_CameraFX.addRecoil(-1.5f, recoilYaw);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", false);
+	SoundManager::Get()->sound()->play2D("content/sound/weapon/pistol/fire1.wav");
 }
 
 void Weapon_Pistol::reload()

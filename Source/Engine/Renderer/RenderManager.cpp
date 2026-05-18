@@ -1284,7 +1284,28 @@ void RenderManager::draw(f32 dt)
         auto* n = m_ldrEffectNodes[i];
         n->updateAbsolutePosition();
         m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
-        n->render();
+
+        // CMeshSceneNode::render() skips transparent buffers when called outside
+        // drawAll() because getSceneNodeRenderPass() returns a non-transparent pass.
+        // For mesh nodes, draw all buffers directly to bypass that filter.
+        const auto ntype = n->getType();
+        if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+        {
+            auto* mn = static_cast<irr::scene::IMeshSceneNode*>(n);
+            irr::scene::IMesh* mesh = mn->getMesh();
+            if (mesh)
+            {
+                for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+                {
+                    m_driver->setMaterial(mn->getMaterial(b));
+                    m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+                }
+            }
+        }
+        else
+        {
+            n->render();
+        }
     }
 
     for (auto line : m_lineRenderableList[readBuffer])

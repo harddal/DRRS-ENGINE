@@ -47,6 +47,7 @@ WorldManager::WorldManager()
     m_gameWorld.addSystem(m_soundSystem);
 	m_gameWorld.addSystem(m_navigationSystem);
 	m_gameWorld.addSystem(m_gameplaySystem);
+	m_gameWorld.addSystem(m_npcSystem);
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());
@@ -80,10 +81,10 @@ void WorldManager::update(irr::f32 dt)
 		m_navigationSystem.update(dt);
 		m_physicsSystem.update(dt);
 		m_cctSystem.update(dt);
+		m_npcSystem.update(dt);
 		m_gameplaySystem.update();
+		m_soundSystem.update();
 	}
-
-	m_soundSystem.update();
 #else
 	m_worldCurrent = Engine::Get()->GetCounter();
 
@@ -122,14 +123,18 @@ void WorldManager::update(irr::f32 dt)
 
         m_cctSystem.update(dt);
 
+		m_npcCurrent = Engine::Get()->GetCounter();
+		m_npcSystem.update(dt);
+		m_npcTime = Engine::Get()->GetCounter() - m_npcCurrent;
+
 		m_gameplayCurrent = Engine::Get()->GetCounter();
 		m_gameplaySystem.update();
 		m_gameplayTime = Engine::Get()->GetCounter() - m_gameplayCurrent;
-    }
 
-	m_soundCurrent = Engine::Get()->GetCounter();
-    m_soundSystem.update();
-	m_soundTime = Engine::Get()->GetCounter() - m_soundCurrent;
+		m_soundCurrent = Engine::Get()->GetCounter();
+		m_soundSystem.update();
+		m_soundTime = Engine::Get()->GetCounter() - m_soundCurrent;
+    }
 
 	m_worldTime = Engine::Get()->GetCounter() - m_worldCurrent;
 #endif
@@ -234,7 +239,9 @@ bool WorldManager::killEntityByID(int id)
 
 void WorldManager::killAllEntities()
 {
-    //_sound->soundEngine()->removeAllSoundSources();
+    if (SoundManager::Get())
+        SoundManager::Get()->sound()->stopAllVoices();
+
     for (auto entity : m_gameWorld.getEntities()) { m_gameWorld.killEntity(entity); }
 
     m_gameWorld.refresh();

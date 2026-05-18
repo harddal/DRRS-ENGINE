@@ -82,6 +82,11 @@ public:
 	virtual void fire()     = 0;
 	virtual void reload()   = 0;
 
+	// Animated unequip support — weapons that want a transition animation override these.
+	// Default: instant hide (same as unequip()).
+	virtual void startUnequip() { unequip(); }
+	virtual bool isUnequipping() const { return false; }
+
 	// Helper method for weapon sway - call this from derived class update()
 	virtual void updateWeaponSway(float dt);
 

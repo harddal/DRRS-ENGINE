@@ -13,6 +13,8 @@ public:
 	void destroy();
 	void equip();
 	void unequip();
+	void startUnequip() override;
+	bool isUnequipping() const override { return m_isUnequipping; }
 	void idle();
 	void move();
 	void fire();
@@ -23,6 +25,9 @@ private:
 	int m_lastFireTime = 0;
 	float m_fireRate = 900.0f; // ms between shots (pump-action cadence)
 	bool m_firedThisPress = false; // semi-auto: one shot per click
+	bool m_isEquipping = false;
+	bool m_isUnequipping = false;
+	bool m_isAnimating = false; // fire or reload anim in progress
 
 	// Pellet stats
 	int m_pelletCount = 8;
@@ -38,23 +43,6 @@ private:
 	float m_currentRecoilPosition = 0.0f;
 	float m_recoilPositionKick = 0.07f;
 	float m_recoilRecoverySpeed = 20.0f;
-
-	// Reload animation
-	bool m_isReloading = false;
-	int m_reloadStartTime = 0;
-	int m_reloadDuration = 4000;
-	int m_reloadDownDuration = 500;
-	int m_reloadPauseDuration = 3000;
-	int m_reloadUpDuration = 500;
-	float m_reloadPositionOffset = -0.5f;
-	float m_reloadRotationOffset = 45.0f;
-	float m_reloadWiggleAmount = 2.0f;
-
-	// Equip animation
-	bool m_isEquipping = false;
-	int m_equipStartTime = 0;
-	int m_equipDuration = 500;
-	float m_equipStartOffset = -1.0f;
 
 	irr::video::ITexture* m_crosshair = nullptr;
 

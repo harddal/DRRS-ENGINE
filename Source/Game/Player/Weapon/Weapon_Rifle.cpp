@@ -48,13 +48,18 @@ void Weapon_Rifle::init()
 
 	//RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(m_mesh.node);
 
-	m_mesh.fps = 20;
-	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
+	m_mesh.fps = 30;
+	m_mesh.node->setAnimationSpeed(30.0f);
 	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(23, 49);
+	m_mesh.node->setFrameLoop(20, 50);
 
-	// EJUOR_READ: animation plays automatically; bones are still accessible for lookup.
-	// (EJUOR_CONTROL would freeze the animation until animateJoints() is called manually.)
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
 	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
@@ -172,33 +177,55 @@ void Weapon_Rifle::update()
 		return;
 
 	float currentTime = Engine::Get()->getCurrentTime();
-	float dt = Engine::Get()->getDeltaTime();
-	m_isFiring = false;  // reset each frame; set true below if fire() is called
+
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
+
+	if (m_isUnequipping)
+	{
+		if (animEnded) { m_isUnequipping = false; m_mesh.node->setVisible(false); }
+		return;
+	}
+
+	if (m_isEquipping)
+	{
+		if (animEnded)
+		{
+			m_isEquipping = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		return;
+	}
+
+	if (m_isReloadingAnim)
+	{
+		if (animEnded)
+		{
+			m_isReloadingAnim = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
+		return;
+	}
 
 	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
-
-	const float fireRate = 100.0f; // ms between shots
+	const float fireRate = 250.0f;
 	if (fireButtonPressed && (currentTime - m_lastFireTime) >= fireRate)
 	{
 		m_lastFireTime = currentTime;
-		m_isFiring = true;
 		fire();
+		m_isPlayingFireAnim = true;
 	}
 
-	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
-
-	static bool r = false;
-	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
+	if (!fireButtonPressed && m_isPlayingFireAnim && animEnded)
 	{
-		m_mesh.node->setLoopMode(false);
-		m_mesh.node->setFrameLoop(96, 179);
-	}
-
-	if (m_mesh.animation_call_back->hasAnimationEnded())
-	{
+		m_isPlayingFireAnim = false;
 		m_mesh.node->setLoopMode(true);
 		m_mesh.node->setFrameLoop(20, 50);
 	}
+
+	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
 void Weapon_Rifle::persist()
@@ -232,11 +259,33 @@ void Weapon_Rifle::persist()
 void Weapon_Rifle::equip()
 {
 	m_mesh.node->setVisible(true);
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(1, 20);
+	m_isEquipping = true;
+	m_isUnequipping = false;
+	m_isPlayingFireAnim = false;
+	m_isReloadingAnim = false;
 }
 
 void Weapon_Rifle::unequip()
 {
+	m_isEquipping = false;
+	m_isUnequipping = false;
+	m_isPlayingFireAnim = false;
+	m_isReloadingAnim = false;
 	m_mesh.node->setVisible(false);
+}
+
+void Weapon_Rifle::startUnequip()
+{
+	m_isUnequipping = true;
+	m_isEquipping = false;
+	m_isPlayingFireAnim = false;
+	m_isReloadingAnim = false;
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(179, 190);
 }
 
 void Weapon_Rifle::idle()
@@ -251,6 +300,9 @@ void Weapon_Rifle::move()
 
 void Weapon_Rifle::fire()
 {
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(81, 95);
+
 	// Raycast-based instant hit
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 	if (!player.isValid() || !player.hasComponent<CameraComponent>())
@@ -258,13 +310,9 @@ void Weapon_Rifle::fire()
 
 	auto& camera = player.getComponent<CameraComponent>();
 
-	// Get the FIRESPOT bone scene node from the weapon
-	if (!m_mesh.node)
-		return;
-
-	if (!m_muzzleNode)
+	if (!m_mesh.node || !m_muzzleNode)
 	{
-		spdlog::warn("Weapon_Rifle: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_Rifle: muzzle node not found - cannot fire");
 		return;
 	}
 
@@ -353,12 +401,18 @@ void Weapon_Rifle::fire()
 	auto recoilYaw = Engine::Get()->rng()->getFloat(-0.1f, 0.1f);
 	g_CameraFX.addRecoil(-0.5f, recoilYaw);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/pulse_rifle/fire.wav", false);
+	SoundManager::Get()->sound()->play2D("content/sound/weapon/rifle/fire.wav", false);
 }
 
 void Weapon_Rifle::reload()
 {
-
+	if (!m_isReloadingAnim)
+	{
+		m_mesh.node->setLoopMode(false);
+		m_mesh.node->setFrameLoop(96, 179);
+		m_isReloadingAnim = true;
+		m_isPlayingFireAnim = false;
+	}
 }
 
 

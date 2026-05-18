@@ -36,6 +36,7 @@ private:
 	bool m_firstUpdate;
 
 	unsigned int m_current_weapon;
+	int m_pendingWeapon = -1; // >= 0 while waiting for unequip anim to finish
 
 	Weapon_None m_weapon_none;
 	Weapon_Melee m_weapon_melee;

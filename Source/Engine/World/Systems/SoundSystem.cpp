@@ -38,7 +38,7 @@ void SoundSystem::onEntityAdded(anax::Entity& entity)
 
 void SoundSystem::onEntityRemoved(anax::Entity& entity)
 {
-	for (auto s : entity.getComponent<SoundComponent>().sounds) {
+	for (auto& s : entity.getComponent<SoundComponent>().sounds) {
 		if (s.sound) {
 			s.sound->stop();
 			s.sound->drop();
@@ -49,6 +49,7 @@ void SoundSystem::onEntityRemoved(anax::Entity& entity)
 void SoundSystem::update()
 {
     auto& entities = getEntities();
+    std::vector<SoundHandle> toUnpause;
 
     for (auto& entity : entities) {
         auto& sounds = entity.getComponent<SoundComponent>().sounds;
@@ -60,7 +61,7 @@ void SoundSystem::update()
 					sounds[i].sound->setPosition(pos);
 				}
 			}
-            
+
             if (sounds[i].play && !sounds[i].loop) {
                 if (sounds[i].is3D && entity.hasComponent<TransformComponent>()) {
                     auto pos = entity.getComponent<TransformComponent>().getPosition();
@@ -69,10 +70,14 @@ void SoundSystem::update()
 						sounds[i].sound->drop();
                     }
 					sounds[i].sound = SoundManager::Get()->sound()->play3D(
-						sounds[i].source, pos, sounds[i].loop, false, true);
+						sounds[i].source, pos, sounds[i].loop, true, true);
+					toUnpause.push_back(sounds[i].sound);
                 }
                 else {
-                    SoundManager::Get()->sound()->play2D(sounds[i].source, sounds[i].loop);
+                    if (sounds[i].sound) {
+						sounds[i].sound->drop();
+                    }
+					sounds[i].sound = SoundManager::Get()->sound()->play2D(sounds[i].source, sounds[i].loop);
                 }
 
                 sounds[i].isPlaying = false;
@@ -86,15 +91,19 @@ void SoundSystem::update()
 						sounds[i].sound->stop();
 					}
 					sounds[i].sound = SoundManager::Get()->sound()->play3D(
-						sounds[i].source, pos, sounds[i].loop, false, true);
+						sounds[i].source, pos, sounds[i].loop, true, true);
+					toUnpause.push_back(sounds[i].sound);
                 }
                 else {
-                    SoundManager::Get()->sound()->play2D(sounds[i].source, sounds[i].loop);
+                    if (sounds[i].sound) {
+						sounds[i].sound->stop();
+                    }
+					sounds[i].sound = SoundManager::Get()->sound()->play2D(sounds[i].source, sounds[i].loop);
                 }
 
                 sounds[i].isPlaying = true;
             }
-            
+
 			if (!sounds[i].loop) {
 				sounds[i].play = false;
 			}
@@ -102,4 +111,7 @@ void SoundSystem::update()
     }
 
     SoundManager::Get()->sound()->update3dAudio();
+
+    for (auto& h : toUnpause)
+        h->setPaused(false);
 }

@@ -12,16 +12,28 @@ public:
 	void destroy();
 	void equip();
 	void unequip();
+	void startUnequip() override;
+	bool isUnequipping() const override { return m_isUnequipping; }
 	void idle();
 	void move();
 	void fire();
 	void reload();
 
 private:
-	// Automatic fire variables
-	float m_recoil = 0.01f;
+	// Semi-auto state
+	bool m_firedThisPress = false;
+	bool m_isAnimating = false;   // fire or reload animation in progress
+	bool m_isEquipping = false;
+	bool m_isUnequipping = false;
 	float m_lastFireTime = 0.0f;
-	bool m_isFiring = false;
+	const float m_minFireInterval = 150.0f; // ms — semi-auto cadence limiter
+
+	// Aim spread (tight for a precision sidearm)
+	float m_spread = 0.008f;
+
+	// Programmatic recoil spring (layered on top of skeletal animation)
+	irr::core::vector3df m_kickPos;
+	irr::core::vector3df m_kickRot;
 
 	// Cached bone/scene nodes
 	irr::scene::ISceneNode* m_muzzleNode = nullptr;

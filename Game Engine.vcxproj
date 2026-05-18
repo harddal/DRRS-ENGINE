@@ -216,6 +216,7 @@
     <ClCompile Include="Source\Game\IntroState.cpp" />
     <ClCompile Include="Source\Game\Item\ItemDatabase.cpp" />
     <ClCompile Include="Source\Game\MenuState.cpp" />
+    <ClCompile Include="Source\Game\NPC\NPCSystem.cpp" />
     <ClCompile Include="Source\Game\Player\FreeCameraController.cpp" />
     <ClCompile Include="Source\Game\Player\HUDController.cpp" />
     <ClCompile Include="Source\Game\Player\InteractionController.cpp" />
@@ -380,6 +381,7 @@
     <ClInclude Include="Source\Game\Components\DialogComponent.h" />
     <ClInclude Include="Source\Game\Components\WaterComponent.h" />
     <ClInclude Include="Source\Game\DialogManager.h" />
+    <ClInclude Include="Source\Game\NPC\NPCSystem.h" />
     <ClInclude Include="Source\Game\Player\CameraFX.h" />
     <ClInclude Include="Source\Game\Player\FreeCameraController.h" />
     <ClInclude Include="Source\Game\Player\WeaponController.h" />

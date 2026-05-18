@@ -37,8 +37,10 @@
 		</transform>
 		<mesh>
 			<value0>
-				<mesh>content\mesh\npc\gladiator\Meshy_AI_Hellforged_Gladiator_biped.glb</mesh>
-				<textures size="dynamic"/>
+				<mesh>content\mesh\npc\gladiator\gladiator.glb</mesh>
+				<textures size="dynamic">
+				<t0>content\mesh\npc\gladiator\gladiator.png</t0>
+				</textures>
 				<isVisible>true</isVisible>
 				<isAnimated>true</isAnimated>
 				<receiveShadows>false</receiveShadows>
@@ -55,7 +57,7 @@
 		</mesh>
 		<navagent>
 			<value0>
-				<moveSpeed>0.05000000074505806</moveSpeed>
+				<moveSpeed>3.0</moveSpeed>
 				<arrivalRadius>0.25</arrivalRadius>
 			</value0>
 		</navagent>

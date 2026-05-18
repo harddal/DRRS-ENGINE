@@ -62,7 +62,7 @@ SoundSource* SoundEngine::loadOrGetSource(const char* file)
 	// SoLoud defaults to NO_ATTENUATION and minDist=1. Set inverse distance rolloff
 	// with a larger min distance so sounds stay at full volume within a reasonable
 	// radius before falling off. Override per-source with setDefaultMinDistance().
-	src->wav.set3dAttenuation(SoLoud::AudioSource::INVERSE_DISTANCE, 1.0f);
+	src->wav.set3dAttenuation(SoLoud::AudioSource::INVERSE_DISTANCE, 2.0f);
 	src->wav.set3dMinMaxDistance(30.0f, 100000.0f);
 
 	SoundSource* ptr = src.get();
@@ -203,6 +203,11 @@ void SoundEngine::setListenerPosition(float px, float py, float pz,
 	// right-handed system. Applied consistently to listener and sources so relative
 	// positions are correct and the derived right vector (cross(at,up)) points +X.
 	m_soloud.set3dListenerParameters(px, py, -pz, lookX, lookY, -lookZ, upX, upY, -upZ);
+}
+
+void SoundEngine::stopAllVoices()
+{
+	m_soloud.stopAll();
 }
 
 void SoundEngine::removeAllSoundSources()

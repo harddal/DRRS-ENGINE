@@ -1299,40 +1299,94 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto& sound = entity.getComponent<SoundComponent>();
 
-			auto iter = 0U;
-			for (auto& s : sound.sounds)
+			int eraseIdx = -1;
+			for (auto iter = 0U; iter < sound.sounds.size(); iter++)
 			{
-				if (ImGui::TreeNode(s.name.c_str()))
+				auto& s = sound.sounds[iter];
+				ImGui::PushID(static_cast<int>(iter));
+
+				bool open = ImGui::TreeNode("##snd_tree", "%s", s.name.empty() ? "(unnamed)" : s.name.c_str());
+				ImGui::SameLine();
+				ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.45f, 0.10f, 0.10f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.60f, 0.15f, 0.15f, 1.0f));
+				if (ImGui::SmallButton("X"))
+					eraseIdx = static_cast<int>(iter);
+				ImGui::PopStyleColor(2);
+
+				if (open)
 				{
-					char buf2[256];
-					memset(buf2, 0, 256);
-					for (auto i = 0U; i < s.name.size(); i++) buf2[i] = s.name[i];
-					if (ImGui::InputText(std::string("Name    [" + std::to_string(iter) + "]").c_str(), buf2, 256,
-					                     ImGuiInputTextFlags_EnterReturnsTrue))
+					char nameBuf[256] = {};
+					for (auto i = 0U; i < s.name.size() && i < 255; i++) nameBuf[i] = s.name[i];
+					char fileBuf[256] = {};
+					for (auto i = 0U; i < s.file.size() && i < 255; i++) fileBuf[i] = s.file[i];
+
+					const float btnW = ImGui::CalcTextSize("...").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+					if (ImGui::BeginTable("##snd_props", 2, ImGuiTableFlags_SizingFixedFit))
 					{
-						std::string t = buf2;
-						if (t.size() > 1) s.name = buf2;
+						ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+						ImGui::TableSetupColumn("##val", ImGuiTableColumnFlags_WidthStretch);
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Name");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						if (ImGui::InputText("##snd_name", nameBuf, sizeof(nameBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+							if (strlen(nameBuf) > 0) s.name = nameBuf;
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("File");
+						ImGui::TableSetColumnIndex(1);
+						ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - btnW - ImGui::GetStyle().ItemSpacing.x);
+						if (ImGui::InputText("##snd_file", fileBuf, sizeof(fileBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+							s.file = fileBuf;
+						ImGui::SameLine();
+						if (ImGui::Button("...##snd_browse"))
+						{
+							std::string chosen = Utility::RemoveAbsDir(
+								Utility::OpenFileDialog(dialog_filter_sound, "content\\sound"));
+							if (!chosen.empty()) s.file = chosen;
+						}
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Volume");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						ImGui::DragFloat("##snd_vol", &s.volume, 1.0f, 0.0f, 100.0f, "%.0f");
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Min Dist");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						ImGui::DragFloat("##snd_mindist", &s.minDist, 0.1f, 0.1f, 100.0f, "%.1f");
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("3D");
+						ImGui::TableSetColumnIndex(1);
+						ImGui::Checkbox("##snd_3d", &s.is3D);
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Loop");
+						ImGui::TableSetColumnIndex(1);
+						ImGui::Checkbox("##snd_loop", &s.loop);
+
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Start Paused");
+						ImGui::TableSetColumnIndex(1);
+						ImGui::Checkbox("##snd_paused", &s.startPaused);
+
+						ImGui::EndTable();
 					}
-
-					char buf1[256];
-					memset(buf1, 0, 256);
-					for (auto i = 0U; i < s.file.size(); i++) buf1[i] = s.file[i];
-					if (ImGui::InputText(std::string("File    [" + std::to_string(iter) + "]").c_str(), buf1, 256,
-					                     ImGuiInputTextFlags_EnterReturnsTrue))
-						s.file = buf1;
-
-					ImGui::DragFloat(std::string("Volume  [" + std::to_string(iter) + "]").c_str(), &s.volume, 1.0f,
-					                 0.0f, 100.0f, "%.0f");
-					ImGui::DragFloat(std::string("MinDist [" + std::to_string(iter) + "]").c_str(), &s.minDist, 1.0f,
-					                 0.1f, 100.0f, "%.0f");
-					ImGui::Checkbox(std::string("3D      [" + std::to_string(iter) + "]").c_str(), &s.is3D);
-					ImGui::Checkbox(std::string("Loop    [" + std::to_string(iter) + "]").c_str(), &s.loop);
 
 					ImGui::TreePop();
 				}
 
-				iter++;
+				ImGui::PopID();
 			}
+
+			if (eraseIdx >= 0)
+				sound.sounds.erase(sound.sounds.begin() + eraseIdx);
+
+			ImGui::Spacing();
+			if (ImGui::Button("+ Add Sound"))
+				sound.sounds.emplace_back();
 
 			break;
 		}

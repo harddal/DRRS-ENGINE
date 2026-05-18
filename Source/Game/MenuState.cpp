@@ -13,6 +13,8 @@ void MenuState::init(std::string args)
 
 	PhysicsManager::Get()->createScene();
 	WorldManager::Get()->importScene(_asset_scn_pak("mainmenu"));
+
+	SoundManager::Get()->sound()->play2D("content/sound/music/main_menu.wav", true);
 }
 
 void MenuState::update(float dt)
@@ -57,11 +59,13 @@ void MenuState::updateUI(float dt)
 void MenuState::destroy()
 {
 	PhysicsManager::Get()->destroyScene();
+
+	SoundManager::Get()->sound()->soloud().stopAll();
 }
 
 void MenuState::pause()
 {
-
+	SoundManager::Get()->sound()->soloud().stopAll();
 }
 
 void MenuState::resume()

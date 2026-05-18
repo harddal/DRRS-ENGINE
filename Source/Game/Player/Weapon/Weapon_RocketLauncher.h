@@ -18,6 +18,8 @@ public:
 	void destroy();
 	void equip();
 	void unequip();
+	void startUnequip() override;
+	bool isUnequipping() const override { return m_isUnequipping; }
 	void idle();
 	void move();
 	void fire();
@@ -30,7 +32,8 @@ private:
 	// Fire rate tracking
 	int m_lastFireTime = 0;
 	float m_fireRate = 1000.0f;
-	bool m_isFiring = false;
+	bool m_isEquipping = false;
+	bool m_isUnequipping = false;
 	float m_recoil = 0.0f;
 	float m_pointDamage = 100.0f;
 	float m_splashDamage = 80.0f;     // Maximum splash damage at the epicentre

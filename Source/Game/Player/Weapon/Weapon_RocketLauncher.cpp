@@ -21,11 +21,11 @@ void Weapon_RocketLauncher::init()
 	m_descriptor.name = "Player_Weapon_RocketLauncher";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.0f, 0.0f, -0.1f);
+	m_viewPositionOffset = irr::core::vector3df(0.3f, -0.1f, 0.4f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
-	m_mesh.mesh = "content/mesh/player/weapon/launcher/hud.b3d";
+	m_mesh.mesh = "content/mesh/player/weapon/rocket_launcher/hud.b3d";
 
 	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
 	if (!m_mesh.trimesh)
@@ -47,10 +47,19 @@ void Weapon_RocketLauncher::init()
 	m_mesh.node->setMaterialFlag(irr::video::EMF_ANTI_ALIASING, true);
 	m_mesh.node->setMaterialFlag(irr::video::EMF_USE_MIP_MAPS, true);
 
-	m_mesh.fps = 20;
-	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
+	m_mesh.fps = 30;
+	m_mesh.node->setAnimationSpeed(30.0f);
 	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(18, 58);
+	m_mesh.node->setFrameLoop(20, 50);
+
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
+	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
 	m_mesh.node->setAnimationEndCallback(m_mesh.animation_call_back.get());
@@ -146,6 +155,25 @@ void Weapon_RocketLauncher::update()
 	float currentTime = Engine::Get()->getCurrentTime();
 	float dt = Engine::Get()->getDeltaTime();
 
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
+
+	if (m_isUnequipping)
+	{
+		if (animEnded) { m_isUnequipping = false; m_mesh.node->setVisible(false); }
+		return;
+	}
+
+	if (m_isEquipping)
+	{
+		if (animEnded)
+		{
+			m_isEquipping = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+		return;
+	}
+
 	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
 	bool altFireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_RIGHT);
 
@@ -182,6 +210,7 @@ void Weapon_RocketLauncher::update()
 	
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair2x_center_position);
 	renderNPCLockIndicators(WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<CameraComponent>().camera);
+
 }
 
 void Weapon_RocketLauncher::persist()
@@ -215,11 +244,27 @@ void Weapon_RocketLauncher::persist()
 void Weapon_RocketLauncher::equip()
 {
 	m_mesh.node->setVisible(true);
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(1, 20);
+	m_isEquipping = true;
+	m_isUnequipping = false;
 }
 
 void Weapon_RocketLauncher::unequip()
 {
+	m_isEquipping = false;
+	m_isUnequipping = false;
 	m_mesh.node->setVisible(false);
+}
+
+void Weapon_RocketLauncher::startUnequip()
+{
+	m_isUnequipping = true;
+	m_isEquipping = false;
+	m_mesh.animation_call_back->hasAnimationEnded();
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(179, 190);
 }
 
 void Weapon_RocketLauncher::idle()
@@ -423,7 +468,7 @@ void Weapon_RocketLauncher::createMuzzleFlash()
 	m_mesh.node->updateAbsolutePosition();
 
 	// Get the Muzzle bone scene node from the weapon
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("firespot");
+	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("FIRESPOT");
 	if (!muzzleBone)
 	{
 		spdlog::warn("Muzzle bone not found on weapon model");
@@ -501,7 +546,7 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 	if (!m_mesh.node)
 		return;
 
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("firespot");
+	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("FIRESPOT");
 	if (!muzzleBone)
 	{
 		spdlog::warn("Muzzle bone not found on weapon model - cannot spawn projectile");
@@ -618,6 +663,10 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 
 	// Play fire sound
 	SoundManager::Get()->sound()->play2D("content/sound/weapon/rocket_launcher/fire.wav", false);
+
+	// Trigger fire animation
+	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(81, 95);
 
 	// Create muzzle flash effect
 	createMuzzleFlash();

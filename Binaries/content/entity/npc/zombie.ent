@@ -74,13 +74,13 @@
         </npc>
         <navagent>
             <value0>
-                <moveSpeed>0.05</moveSpeed>
+                <moveSpeed>3.0</moveSpeed>
                 <arrivalRadius>0.5</arrivalRadius>
             </value0>
         </navagent>
         <script>
             <value0>
-                <script>content/script/npc/basic_melee.asc</script>
+                <script>content/script/npc/zombie.asc</script>
                 <data/>
             </value0>
         </script>
