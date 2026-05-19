@@ -12,7 +12,7 @@ using namespace SPK::IRR;
 
 void Weapon_Rifle::precache()
 {
-
+	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
 }
 
 void Weapon_Rifle::init()
@@ -129,7 +129,6 @@ void Weapon_Rifle::init()
 		m_shellPool[i].active = false;
 	}
 
-	initImpactSparkSystem();
 }
 
 void Weapon_Rifle::destroy()
@@ -153,17 +152,6 @@ void Weapon_Rifle::destroy()
 		}
 	}
 	m_tracerBeams.clear();
-
-	// Destroy active impact systems
-	for (auto* sys : m_impactSystems)
-		SPK_Destroy(sys);
-	m_impactSystems.clear();
-
-	if (m_impactSparkBaseID != SPK::NO_ID)
-	{
-		SPK_Destroy(SPK_Get(SPK::System, m_impactSparkBaseID));
-		m_impactSparkBaseID = SPK::NO_ID;
-	}
 
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
 	m_mesh.node->remove();
@@ -241,19 +229,6 @@ void Weapon_Rifle::persist()
 	// Update shell casings
 	updateShells(dt);
 
-	// Tick impact particle systems, remove finished ones
-	for (auto it = m_impactSystems.begin(); it != m_impactSystems.end();)
-	{
-		if (!(*it)->update(dt / m_impactUpdateRate))
-		{
-			SPK_Destroy(*it);
-			it = m_impactSystems.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
 }
 
 void Weapon_Rifle::equip()
@@ -372,7 +347,7 @@ void Weapon_Rifle::fire()
 				}
 
 				// Create impact spark particles at hit position with surface normal
-				createImpactEffect(raycastResult.point);
+				ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
 			}
 		}
 	}
@@ -782,159 +757,8 @@ void Weapon_Rifle::updateShells(float dt)
 }
 
 // ---------------------------------------------------------------------------
-// initImpactSparkSystem
-// ---------------------------------------------------------------------------
 // Groups:
 //   1. Flash    – large, very short-lived white-blue billboard burst at impact
 //   2. Sparks   – thin blue sparks shooting outward, fade with gravity
 //   3. Glow     – soft expanding glow that lingers briefly
 // ---------------------------------------------------------------------------
-void Weapon_Rifle::initImpactSparkSystem()
-{
-	auto* driver = RenderManager::Get()->driver();
-	auto* smgr = RenderManager::Get()->sceneManager();
-
-	// -----------------------------------------------------------------------
-	// Renderers
-	// -----------------------------------------------------------------------
-
-	IRRQuadRenderer* flashRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	flashRenderer->setTexturingMode(TEXTURE_2D);
-	flashRenderer->setTexture(driver->getTexture("content/texture/particle/star_04.png"));
-	flashRenderer->setBlending(BLENDING_ADD);
-	flashRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	flashRenderer->setShared(true);
-
-	IRRQuadRenderer* sparkRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	sparkRenderer->setTexturingMode(TEXTURE_2D);
-	sparkRenderer->setTexture(driver->getTexture("content/texture/particle/spark1.bmp"));
-	sparkRenderer->setBlending(BLENDING_ADD);
-	sparkRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	sparkRenderer->setOrientation(DIRECTION_ALIGNED);
-	sparkRenderer->setScale(0.03f, 1.0f);
-	sparkRenderer->setShared(true);
-
-	IRRQuadRenderer* glowRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	glowRenderer->setTexturingMode(TEXTURE_2D);
-	glowRenderer->setTexture(driver->getTexture("content/texture/particle/flame_04.png"));
-	glowRenderer->setBlending(BLENDING_ADD);
-	glowRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	glowRenderer->setShared(true);
-
-	// -----------------------------------------------------------------------
-	// Models
-	// -----------------------------------------------------------------------
-
-	// Flash: white-blue, fades very fast, large
-	Model* flashModel = Model::create(
-		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA | FLAG_SIZE,
-		FLAG_NONE);
-	flashModel->setParam(PARAM_RED, 1.0f);
-	flashModel->setParam(PARAM_GREEN, 1.0f);
-	flashModel->setParam(PARAM_BLUE, 1.0f);
-	flashModel->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	flashModel->setParam(PARAM_SIZE, 0.6f, 0.05f);
-	flashModel->setLifeTime(0.08f, 0.14f);
-	flashModel->setShared(true);
-
-	// Sparks: bright blue-white streaks, fly out then fade
-	Model* sparkModel = Model::create(
-		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA | FLAG_RED | FLAG_GREEN | FLAG_BLUE,
-		FLAG_SIZE);
-	sparkModel->setParam(PARAM_RED, 1.0f, 0.3f);
-	sparkModel->setParam(PARAM_GREEN, 1.0f, 0.4f);
-	sparkModel->setParam(PARAM_BLUE, 1.0f, 1.0f);
-	sparkModel->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	sparkModel->setParam(PARAM_SIZE, 0.08f, 0.18f);
-	sparkModel->setLifeTime(0.25f, 0.6f);
-	sparkModel->setShared(true);
-
-	// Glow: soft yellow, expands and fades
-	Model* glowModel = Model::create(
-		FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA | FLAG_SIZE,
-		FLAG_NONE);
-	glowModel->setParam(PARAM_RED, 1.0f);
-	glowModel->setParam(PARAM_GREEN, 0.99f);
-	glowModel->setParam(PARAM_BLUE, 0.77f);
-	glowModel->setParam(PARAM_ALPHA, 0.6f, 0.0f);
-	glowModel->setParam(PARAM_SIZE, 0.1f, 0.55f);
-	glowModel->setLifeTime(0.15f, 0.3f);
-	glowModel->setShared(true);
-
-	// -----------------------------------------------------------------------
-	// Zones & Emitters  (all one-shot: flow = -1, tank = N)
-	// -----------------------------------------------------------------------
-
-	Sphere* impactSphere = Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.05f);
-
-	// Flash: single burst at centre
-	NormalEmitter* flashEmitter = NormalEmitter::create();
-	flashEmitter->setZone(Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.01f), false);
-	flashEmitter->setFlow(-1);
-	flashEmitter->setTank(1);
-	flashEmitter->setForce(0.0f, 0.1f);
-
-	// Sparks: burst outward from impact sphere
-	NormalEmitter* sparkEmitter = NormalEmitter::create();
-	sparkEmitter->setZone(impactSphere);
-	sparkEmitter->setFlow(-1);
-	sparkEmitter->setTank(18);
-	sparkEmitter->setForce(2.0f, 5.0f);
-
-	// Glow: small burst of soft billboards
-	NormalEmitter* glowEmitter = NormalEmitter::create();
-	glowEmitter->setZone(Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.04f), false);
-	glowEmitter->setFlow(-1);
-	glowEmitter->setTank(4);
-	glowEmitter->setForce(0.1f, 0.4f);
-
-	// -----------------------------------------------------------------------
-	// Groups
-	// -----------------------------------------------------------------------
-
-	Group* flashGroup = Group::create(flashModel, 1);
-	flashGroup->addEmitter(flashEmitter);
-	flashGroup->setRenderer(flashRenderer);
-
-	Group* sparkGroup = Group::create(sparkModel, 18);
-	sparkGroup->addEmitter(sparkEmitter);
-	sparkGroup->setRenderer(sparkRenderer);
-	sparkGroup->setGravity(Vector3D(0.0f, -4.0f, 0.0f));
-
-	Group* glowGroup = Group::create(glowModel, 4);
-	glowGroup->addEmitter(glowEmitter);
-	glowGroup->setRenderer(glowRenderer);
-
-	// -----------------------------------------------------------------------
-	// System
-	// -----------------------------------------------------------------------
-
-	IRRSystem* system = IRRSystem::create(smgr->getRootSceneNode(), smgr);
-	system->addGroup(flashGroup);
-	system->addGroup(sparkGroup);
-	system->addGroup(glowGroup);
-	system->setAutoUpdateEnabled(false, false);
-	static_cast<irr::scene::ISceneNode*>(system)->setVisible(false);
-
-	m_impactSparkBaseID = system->getSPKID();
-}
-
-void Weapon_Rifle::createImpactEffect(const irr::core::vector3df& pos)
-{
-	if (m_impactSparkBaseID == SPK::NO_ID)
-		return;
-
-	SPK::System* system = SPK_Copy(SPK::System, m_impactSparkBaseID);
-	IRRSystem* irrSys = static_cast<IRRSystem*>(system);
-	if (irrSys)
-	{
-		irrSys->setVisible(true);
-		irrSys->setPosition(pos);
-		irrSys->updateAbsolutePosition();
-	}
-
-	m_impactSystems.push_back(system);
-}

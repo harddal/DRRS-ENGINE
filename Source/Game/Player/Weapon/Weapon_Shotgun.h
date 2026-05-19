@@ -1,6 +1,5 @@
 #pragma once
 
-#include <list>
 #include "../WeaponData.h"
 
 class Weapon_Shotgun : public PlayerWeapon
@@ -45,15 +44,6 @@ private:
 	float m_recoilRecoverySpeed = 20.0f;
 
 	irr::video::ITexture* m_crosshair = nullptr;
-
-	// Impact particle effects (SPARK)
-	SPK::SPK_ID m_impactParticleBaseID = SPK::NO_ID;
-	std::list<SPK::System*> m_impactParticleSystems;
-	float m_impactUpdateRate = 500.0f;
-
-	void initImpactParticleSystem();
-	void createImpactParticleSystem(const SPK::Vector3D& pos);
-	void destroyImpactParticleSystem(SPK::System*& system);
 
 	// Shell ejection system - pooled fake physics, no ECS/PhysX
 	static constexpr int SHELL_POOL_SIZE = 32;

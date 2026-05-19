@@ -40,13 +40,6 @@ private:
 	void updateMuzzleFlash(float dt);
 	void createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end);
 	void updateLaserBeam(float dt);
-	void initImpactSparkSystem();
-	void createImpactEffect(const irr::core::vector3df& pos);
-
-	// SPARK plasma impact system
-	SPK::SPK_ID m_impactSparkBaseID = SPK::NO_ID;
-	std::list<SPK::System*> m_impactSystems;
-	float m_impactUpdateRate = 500.0f;
 
 	// Muzzle flash
 	irr::video::E_MATERIAL_TYPE m_muzzleFlashMaterialType;

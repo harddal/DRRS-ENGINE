@@ -11,7 +11,7 @@ using namespace SPK::IRR;
 
 void Weapon_Shotgun::precache()
 {
-
+	ParticleManager::Get()->precache("spark_smoke", _asset_psys("spark_smoke"));
 }
 
 void Weapon_Shotgun::init()
@@ -94,8 +94,6 @@ void Weapon_Shotgun::init()
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair001.png");
 
-	initImpactParticleSystem();
-
 	// Pre-build shell casing pool (no per-shot alloc)
 	auto* shellMesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/slug.obj");
 	auto* shellTex  = RenderManager::Get()->driver()->getTexture("content/mesh/prop/shells/shellsColor.png");
@@ -118,10 +116,6 @@ void Weapon_Shotgun::init()
 
 void Weapon_Shotgun::destroy()
 {
-	for (auto* sys : m_impactParticleSystems)
-		destroyImpactParticleSystem(sys);
-	m_impactParticleSystems.clear();
-
 	// Clean up shell casing pool
 	for (int i = 0; i < SHELL_POOL_SIZE; i++)
 	{
@@ -239,20 +233,6 @@ void Weapon_Shotgun::persist()
 
 	updateShells(dt);
 
-	// Tick impact particle systems
-	auto it = m_impactParticleSystems.begin();
-	while (it != m_impactParticleSystems.end())
-	{
-		if (!(*it)->update(dt / m_impactUpdateRate))
-		{
-			destroyImpactParticleSystem(*it);
-			it = m_impactParticleSystems.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
 }
 
 void Weapon_Shotgun::equip()
@@ -352,7 +332,7 @@ void Weapon_Shotgun::fire()
 			WorldManager::Get()->gameplaySystem()->damageEntity(hitID, static_cast<unsigned int>(m_damagePerPellet));
 
 			// Spark impact effect at hit point
-			createImpactParticleSystem(IRR::irr2spk(raycastResult.point));
+			ParticleManager::Get()->spawn("spark_smoke", IRR::irr2spk(raycastResult.point));
 		}
 	}
 
@@ -386,134 +366,6 @@ void Weapon_Shotgun::reload()
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(96, 179);
 	m_isAnimating = true;
-}
-
-void Weapon_Shotgun::initImpactParticleSystem()
-{
-	// --- Renderers ---
-
-	// Sparks: direction-aligned thin quads, additive
-	IRRQuadRenderer* sparkRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	sparkRenderer->setTexturingMode(TEXTURE_2D);
-	sparkRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/spark1.bmp"));
-	sparkRenderer->setBlending(BLENDING_ADD);
-	sparkRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	sparkRenderer->setOrientation(DIRECTION_ALIGNED);
-	sparkRenderer->setScale(0.04f, 1.0f); // thin streaks
-	sparkRenderer->setShared(true);
-
-	// Smoke puff: alpha-blended small billboards
-	IRRQuadRenderer* smokeRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	smokeRenderer->setTexturingMode(TEXTURE_2D);
-	smokeRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/smoke_04.png"));
-	smokeRenderer->setBlending(BLENDING_ALPHA);
-	smokeRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	smokeRenderer->setShared(true);
-
-	// --- Models ---
-
-	// Spark model: bright white-orange, fades fast, small
-	Model* sparkModel = Model::create(FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_ALPHA | FLAG_RED | FLAG_GREEN | FLAG_BLUE,
-		FLAG_SIZE);
-	sparkModel->setParam(PARAM_RED,   1.0f, 1.0f);
-	sparkModel->setParam(PARAM_GREEN, 0.9f, 0.3f);
-	sparkModel->setParam(PARAM_BLUE,  0.4f, 0.0f);
-	sparkModel->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	sparkModel->setParam(PARAM_SIZE,  0.1f, 0.25f);
-	sparkModel->setLifeTime(0.3f, 0.9f);
-	sparkModel->setShared(true);
-
-	// Smoke model: gray, puffs out then fades
-	Model* smokeModel = Model::create(FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE,
-		FLAG_SIZE,
-		FLAG_NONE,
-		FLAG_ALPHA);
-	smokeModel->setParam(PARAM_RED,   0.5f);
-	smokeModel->setParam(PARAM_GREEN, 0.45f);
-	smokeModel->setParam(PARAM_BLUE,  0.4f);
-	smokeModel->setParam(PARAM_SIZE,  0.08f, 0.15f, 0.22f, 0.4f);
-	smokeModel->setLifeTime(0.4f, 1.0f);
-	smokeModel->setShared(true);
-
-	Interpolator* smokeAlpha = smokeModel->getInterpolator(PARAM_ALPHA);
-	smokeAlpha->addEntry(0.0f,  0.0f);
-	smokeAlpha->addEntry(0.1f,  0.3f, 0.45f);
-	smokeAlpha->addEntry(0.55f, 0.2f, 0.35f);
-	smokeAlpha->addEntry(1.0f,  0.0f);
-
-	// --- Zones ---
-	Sphere* impactSphere = Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.08f);
-
-	// --- Emitters ---
-
-	// Sparks shoot outward with some force
-	NormalEmitter* sparkEmitter = NormalEmitter::create();
-	sparkEmitter->setZone(impactSphere);
-	sparkEmitter->setFlow(-1);
-	sparkEmitter->setTank(14);
-	sparkEmitter->setForce(2.5f, 5.5f);
-
-	// Smoke drifts softly upward
-	RandomEmitter* smokeEmitter = RandomEmitter::create();
-	smokeEmitter->setZone(Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.04f), false);
-	smokeEmitter->setFlow(-1);
-	smokeEmitter->setTank(5);
-	smokeEmitter->setForce(0.05f, 0.15f);
-
-	// --- Groups ---
-
-	Group* sparkGroup = Group::create(sparkModel, 14);
-	sparkGroup->addEmitter(sparkEmitter);
-	sparkGroup->setRenderer(sparkRenderer);
-	sparkGroup->setGravity(Vector3D(0.0f, -3.5f, 0.0f));
-
-	Group* smokeGroup = Group::create(smokeModel, 5);
-	smokeGroup->addEmitter(smokeEmitter);
-	smokeGroup->setRenderer(smokeRenderer);
-	smokeGroup->setGravity(Vector3D(0.0f, 0.1f, 0.0f));
-	smokeGroup->setFriction(0.4f);
-
-	// --- Build template system ---
-
-	auto* system = IRRSystem::create(
-		RenderManager::Get()->sceneManager()->getRootSceneNode(),
-		RenderManager::Get()->sceneManager());
-	system->addGroup(sparkGroup);
-	system->addGroup(smokeGroup);
-	system->setAutoUpdateEnabled(false, false);
-	static_cast<irr::scene::ISceneNode*>(system)->setVisible(false);
-
-	m_impactParticleBaseID = system->getSPKID();
-}
-
-void Weapon_Shotgun::createImpactParticleSystem(const SPK::Vector3D& pos)
-{
-	if (m_impactParticleBaseID == SPK::NO_ID)
-		return;
-
-	SPK::System* system = SPK_Copy(SPK::System, m_impactParticleBaseID);
-
-	IRRSystem* irrSystem = static_cast<IRRSystem*>(system);
-	if (irrSystem)
-	{
-		irrSystem->setVisible(true);
-		irrSystem->setPosition(SPK::IRR::spk2irr(pos));
-		irrSystem->updateAbsolutePosition();
-	}
-	else
-	{
-		system->setTransformPosition(pos);
-		system->updateTransform();
-	}
-
-	m_impactParticleSystems.push_back(system);
-}
-
-void Weapon_Shotgun::destroyImpactParticleSystem(SPK::System*& system)
-{
-	SPK_Destroy(system);
-	system = nullptr;
 }
 
 void Weapon_Shotgun::ejectShell()

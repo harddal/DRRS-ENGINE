@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+    <ParticleSystem>
+        <updateRate>1</updateRate>
+        <groups size="2">
+            <!-- spark -->
+            <item0>
+                <name>spark</name>
+                <capacity>14</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>-3.5</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.3</lifetimeMin>
+                    <lifetimeMax>0.9</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="4">
+                        <item0>ALPHA</item0>
+                        <item1>RED</item1>
+                        <item2>GREEN</item2>
+                        <item3>BLUE</item3>
+                    </mutableFlags>
+                    <randomFlags size="1">
+                        <item0>SIZE</item0>
+                    </randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="5">
+                        <item0>
+                            <!-- mutable: start, end -->
+                            <name>RED</name>
+                            <values size="2"><item0>1</item0><item1>1</item1></values>
+                        </item0>
+                        <item1>
+                            <!-- mutable: start, end -->
+                            <name>GREEN</name>
+                            <values size="2"><item0>0.9</item0><item1>0.3</item1></values>
+                        </item1>
+                        <item2>
+                            <!-- mutable: start, end -->
+                            <name>BLUE</name>
+                            <values size="2"><item0>0.4</item0><item1>0</item1></values>
+                        </item2>
+                        <item3>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>1</item0><item1>0</item1></values>
+                        </item3>
+                        <item4>
+                            <!-- random: min, max -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.1</item0><item1>0.25</item1></values>
+                        </item4>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/spark1.bmp</texturePath>
+                    <blending>add</blending>
+                    <orientation>direction_aligned</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>0.04</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>normal</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.08</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>14</tank>
+                        <flow>-1</flow>
+                        <forceMin>2.5</forceMin>
+                        <forceMax>5.5</forceMax>
+                    </item0>
+                </emitters>
+            </item0>
+            <!-- smoke -->
+            <item1>
+                <name>smoke</name>
+                <capacity>5</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>0.1</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0.4</friction>
+                <model>
+                    <lifetimeMin>0.4</lifetimeMin>
+                    <lifetimeMax>1</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="1">
+                        <item0>SIZE</item0>
+                    </mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="1">
+                        <item0>ALPHA</item0>
+                    </interpolatedFlags>
+                    <params size="4">
+                        <item0>
+                            <name>RED</name>
+                            <values size="1"><item0>0.5</item0></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="1"><item0>0.45</item0></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="1"><item0>0.4</item0></values>
+                        </item2>
+                        <item3>
+                            <!-- mutable+random (4 values): birthMin, birthMax, endMin, endMax -->
+                            <name>SIZE</name>
+                            <values size="4">
+                                <item0>0.08</item0>
+                                <item1>0.15</item1>
+                                <item2>0.22</item2>
+                                <item3>0.4</item3>
+                            </values>
+                        </item3>
+                    </params>
+                    <interpolators size="1">
+                        <item0>
+                            <param>ALPHA</param>
+                            <entries size="4">
+                                <item0><lifeRatio>0</lifeRatio><min>0</min><max>0</max></item0>
+                                <item1><lifeRatio>0.1</lifeRatio><min>0.3</min><max>0.45</max></item1>
+                                <item2><lifeRatio>0.55</lifeRatio><min>0.2</min><max>0.35</max></item2>
+                                <item3><lifeRatio>1</lifeRatio><min>0</min><max>0</max></item3>
+                            </entries>
+                        </item0>
+                    </interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/smoke_04.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>1</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>random</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.04</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>0</fullZone>
+                        <tank>5</tank>
+                        <flow>-1</flow>
+                        <forceMin>0.05</forceMin>
+                        <forceMax>0.15</forceMax>
+                    </item0>
+                </emitters>
+            </item1>
+        </groups>
+    </ParticleSystem>
+</cereal>
