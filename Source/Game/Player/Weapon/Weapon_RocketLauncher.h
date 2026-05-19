@@ -27,7 +27,7 @@ private:
 
 	// Fire rate tracking
 	int m_lastFireTime = 0;
-	float m_fireRate = 150.0f;
+	float m_fireRate = 350.0f;
 	bool m_isEquipping = false;
 	bool m_isUnequipping = false;
 	float m_recoil = 0.0f;

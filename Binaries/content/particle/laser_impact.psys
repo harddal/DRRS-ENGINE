@@ -1,0 +1,341 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+    <ParticleSystem>
+        <updateRate>500</updateRate>
+        <groups size="4">
+            <!-- contact: tight white-cyan flash at the exact hit point -->
+            <item0>
+                <name>contact</name>
+                <capacity>2</capacity>
+                <gravityX>0</gravityX><gravityY>0</gravityY><gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.1</lifetimeMin>
+                    <lifetimeMax>0.15</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="0"></mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </interpolatedFlags>
+                    <params size="3">
+                        <item0>
+                            <name>RED</name>
+                            <values size="1"><item0>1.0</item0></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="1"><item0>0.92</item0></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="1"><item0>0.7</item0></values>
+                        </item2>
+                    </params>
+                    <interpolators size="2">
+                        <item0>
+                            <param>SIZE</param>
+                            <entries size="3">
+                                <item0><lifeRatio>0</lifeRatio><min>0.15</min><max>0.15</max></item0>
+                                <item1><lifeRatio>0.2</lifeRatio><min>0.5</min><max>0.5</max></item1>
+                                <item2><lifeRatio>1.0</lifeRatio><min>0.05</min><max>0.05</max></item2>
+                            </entries>
+                        </item0>
+                        <item1>
+                            <param>ALPHA</param>
+                            <entries size="2">
+                                <item0><lifeRatio>0</lifeRatio><min>1.0</min><max>1.0</max></item0>
+                                <item1><lifeRatio>1.0</lifeRatio><min>0.0</min><max>0.0</max></item1>
+                            </entries>
+                        </item1>
+                    </interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/star_05.png</texturePath>
+                    <blending>add</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>1</scaleX><scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>static</type>
+                        <zone>
+                            <type>point</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0</radius><hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>2</tank>
+                        <flow>-1</flow>
+                        <forceMin>0</forceMin>
+                        <forceMax>0</forceMax>
+                    </item0>
+                </emitters>
+            </item0>
+
+            <!-- plasma_jet: fast cyan-to-blue streaks radiating from impact -->
+            <item1>
+                <name>plasma_jet</name>
+                <capacity>20</capacity>
+                <gravityX>0</gravityX><gravityY>-2.5</gravityY><gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.2</lifetimeMin>
+                    <lifetimeMax>0.5</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="4">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                    </mutableFlags>
+                    <randomFlags size="1">
+                        <item0>SIZE</item0>
+                    </randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="5">
+                        <item0>
+                            <!-- white-hot at birth, cools to dark orange -->
+                            <name>RED</name>
+                            <values size="2"><item0>1.0</item0><item1>0.85</item1></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="2"><item0>0.85</item0><item1>0.28</item1></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="2"><item0>0.45</item0><item1>0.0</item1></values>
+                        </item2>
+                        <item3>
+                            <name>ALPHA</name>
+                            <values size="2"><item0>1.0</item0><item1>0.0</item1></values>
+                        </item3>
+                        <item4>
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.07</item0><item1>0.2</item1></values>
+                        </item4>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/spark1.bmp</texturePath>
+                    <blending>add</blending>
+                    <orientation>direction_aligned</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>0.025</scaleX><scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>normal</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.08</radius><hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>0</fullZone>
+                        <tank>20</tank>
+                        <flow>-1</flow>
+                        <forceMin>3.0</forceMin>
+                        <forceMax>7.0</forceMax>
+                    </item0>
+                </emitters>
+            </item1>
+
+            <!-- core_glow: sustained hot contact glow that lingers -->
+            <item2>
+                <name>core_glow</name>
+                <capacity>4</capacity>
+                <gravityX>0</gravityX><gravityY>0</gravityY><gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.15</lifetimeMin>
+                    <lifetimeMax>0.3</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="0"></mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </interpolatedFlags>
+                    <params size="3">
+                        <item0>
+                            <name>RED</name>
+                            <values size="1"><item0>1.0</item0></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="1"><item0>0.65</item0></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="1"><item0>0.2</item0></values>
+                        </item2>
+                    </params>
+                    <interpolators size="2">
+                        <item0>
+                            <param>SIZE</param>
+                            <entries size="4">
+                                <item0><lifeRatio>0</lifeRatio><min>0.08</min><max>0.08</max></item0>
+                                <item1><lifeRatio>0.15</lifeRatio><min>0.28</min><max>0.28</max></item1>
+                                <item2><lifeRatio>0.5</lifeRatio><min>0.22</min><max>0.22</max></item2>
+                                <item3><lifeRatio>1.0</lifeRatio><min>0.05</min><max>0.05</max></item3>
+                            </entries>
+                        </item0>
+                        <item1>
+                            <param>ALPHA</param>
+                            <entries size="3">
+                                <item0><lifeRatio>0</lifeRatio><min>0.9</min><max>0.9</max></item0>
+                                <item1><lifeRatio>0.5</lifeRatio><min>0.7</min><max>0.7</max></item1>
+                                <item2><lifeRatio>1.0</lifeRatio><min>0.0</min><max>0.0</max></item2>
+                            </entries>
+                        </item1>
+                    </interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/flare.png</texturePath>
+                    <blending>add</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>1</scaleX><scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>static</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.02</radius><hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>4</tank>
+                        <flow>-1</flow>
+                        <forceMin>0</forceMin>
+                        <forceMax>0.05</forceMax>
+                    </item0>
+                </emitters>
+            </item2>
+
+            <!-- plasma_wisps: hot gas bleeding off the surface, electric blue -->
+            <item3>
+                <name>plasma_wisps</name>
+                <capacity>6</capacity>
+                <gravityX>0</gravityX><gravityY>0.3</gravityY><gravityZ>0</gravityZ>
+                <friction>0.3</friction>
+                <model>
+                    <lifetimeMin>0.3</lifetimeMin>
+                    <lifetimeMax>0.7</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="0"></mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </interpolatedFlags>
+                    <params size="3">
+                        <item0>
+                            <name>RED</name>
+                            <values size="1"><item0>0.25</item0></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="1"><item0>0.25</item0></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="1"><item0>0.25</item0></values>
+                        </item2>
+                    </params>
+                    <interpolators size="2">
+                        <item0>
+                            <param>SIZE</param>
+                            <entries size="4">
+                                <item0><lifeRatio>0</lifeRatio><min>0.03</min><max>0.03</max></item0>
+                                <item1><lifeRatio>0.12</lifeRatio><min>0.14</min><max>0.14</max></item1>
+                                <item2><lifeRatio>0.5</lifeRatio><min>0.22</min><max>0.22</max></item2>
+                                <item3><lifeRatio>1.0</lifeRatio><min>0.18</min><max>0.18</max></item3>
+                            </entries>
+                        </item0>
+                        <item1>
+                            <param>ALPHA</param>
+                            <entries size="4">
+                                <item0><lifeRatio>0</lifeRatio><min>0.0</min><max>0.0</max></item0>
+                                <item1><lifeRatio>0.1</lifeRatio><min>0.55</min><max>0.55</max></item1>
+                                <item2><lifeRatio>0.4</lifeRatio><min>0.4</min><max>0.4</max></item2>
+                                <item3><lifeRatio>1.0</lifeRatio><min>0.0</min><max>0.0</max></item3>
+                            </entries>
+                        </item1>
+                    </interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/smoke_01.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>1</scaleX><scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>random</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.06</radius><hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>6</tank>
+                        <flow>-1</flow>
+                        <forceMin>0.3</forceMin>
+                        <forceMax>1.0</forceMax>
+                    </item0>
+                </emitters>
+            </item3>
+        </groups>
+    </ParticleSystem>
+</cereal>

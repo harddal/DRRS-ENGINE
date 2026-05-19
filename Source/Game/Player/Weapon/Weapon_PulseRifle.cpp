@@ -37,7 +37,7 @@ public:
 
 void Weapon_PulseRifle::precache()
 {
-	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
+	ParticleManager::Get()->precache("laser_impact", _asset_psys("laser_impact"));
 }
 
 void Weapon_PulseRifle::init()
@@ -157,38 +157,11 @@ void Weapon_PulseRifle::init()
 			m_laserNode->setVisible(false);
 		}
 	}
-
-	// Register impact_burn shader with a shared per-decal callback
-	auto* gpu = RenderManager::Get()->driver()->getGPUProgrammingServices();
-	if (gpu)
-	{
-		auto* burnCb = new BurnDecalShaderCallback();
-		irr::s32 burnMat = gpu->addHighLevelShaderMaterialFromFiles(
-			"content/shader/impact_burn.vert", "main", irr::video::EVST_VS_2_0,
-			"content/shader/impact_burn.frag", "main", irr::video::EPST_PS_2_0,
-			burnCb,
-			irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL,
-			0, irr::video::EGSL_DEFAULT
-		);
-		burnCb->drop();
-		m_burnDecalMat = static_cast<irr::video::E_MATERIAL_TYPE>(burnMat);
-	}
-	m_burnTexture = RenderManager::Get()->driver()->getTexture("content/texture/particle/smoke_04.png");
 }
 
 void Weapon_PulseRifle::destroy()
 {
 	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
-
-	for (auto& d : m_burnDecals)
-	{
-		if (d.node)
-		{
-			RenderManager::Get()->unregisterLDREffectNode(d.node);
-			d.node->remove();
-		}
-	}
-	m_burnDecals.clear();
 
 	// Clean up laser beam node
 	if (m_laserNode)
@@ -241,7 +214,7 @@ void Weapon_PulseRifle::update()
 	}
 
 	bool fireButtonPressed = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
-	const float fireRate = 100.0f;
+	const float fireRate = 50.0f;
 	if (fireButtonPressed && (currentTime - m_lastFireTime) >= fireRate)
 	{
 		m_lastFireTime = currentTime;
@@ -295,21 +268,12 @@ void Weapon_PulseRifle::persist()
 
 			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(muzzlePos, rayEnd, true);
 			createLaserBeam(muzzlePos, hit.hit ? hit.point : rayEnd);
-
-			if (hit.hit && (currentTime - m_lastBurnDecalTime) >= m_burnDecalInterval)
-			{
-				createBurnDecal(hit.point, hit.normal);
-				m_lastBurnDecalTime = currentTime;
-			}
 		}
 	}
 	else
 	{
 		updateLaserBeam(dt);
 	}
-
-
-	updateBurnDecals(currentTime);
 }
 
 void Weapon_PulseRifle::equip()
@@ -410,11 +374,11 @@ void Weapon_PulseRifle::fire()
 				if (hitEntity.hasComponent<DamageReceiverComponent>())
 				{
 					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += 25; // Minigun damage
+					damageComp.damageReceived += 1;
 				}
 
 				// Create impact spark particles at hit position with surface normal
-				ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+				ParticleManager::Get()->spawn("laser_impact", SPK::IRR::irr2spk(raycastResult.point));
 			}
 		}
 	}
@@ -575,92 +539,4 @@ void Weapon_PulseRifle::updateLaserBeam(float dt)
 	irr::u32 alpha = static_cast<irr::u32>((1.0f - fadeProgress) * 255.0f);
 	m_laserNode->getMaterial(0).AmbientColor.setAlpha(alpha);
 	m_laserNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-}
-
-// ---------------------------------------------------------------------------
-// Groups:
-//   1. Flash    – large, very short-lived white-blue billboard burst at impact
-//   2. Sparks   – thin blue sparks shooting outward, fade with gravity
-//   3. Glow     – soft expanding glow that lingers briefly
-// ---------------------------------------------------------------------------
-void Weapon_PulseRifle::createBurnDecal(const irr::core::vector3df& pos, const irr::core::vector3df& normal)
-{
-	// Drop oldest decal when pool is full
-	if (static_cast<int>(m_burnDecals.size()) >= BURN_DECAL_MAX)
-	{
-		if (m_burnDecals.front().node)
-		{
-			RenderManager::Get()->unregisterLDREffectNode(m_burnDecals.front().node);
-			m_burnDecals.front().node->remove();
-		}
-		m_burnDecals.pop_front();
-	}
-
-	auto* geo = RenderManager::Get()->sceneManager()->getGeometryCreator();
-	irr::scene::IMesh* planeMesh = geo->createPlaneMesh(
-		irr::core::dimension2df(0.25f, 0.25f), irr::core::dimension2du(1, 1));
-	auto* node = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
-	planeMesh->drop();
-	if (!node) return;
-
-	// Normalize and orient toward the camera — a backface ray hit (muzzle inside/near geometry)
-	// returns a normal pointing into the surface, which would push the decal behind the mesh.
-	irr::core::vector3df n = normal;
-	n.normalize();
-	auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
-	if (cam && n.dotProduct(cam->getAbsolutePosition() - pos) < 0.0f)
-		n = -n;
-
-	node->setPosition(pos + n * 0.02f);
-
-	// Map the plane's +Y axis to the surface normal.
-	// With Irrlicht setRotationDegrees(X,Y,Z), the Y row of the rotation matrix is
-	// (sin(X)*sin(Y), cos(X), sin(X)*cos(Y)) — so X=acos(nY), Y=atan2(nX,nZ) is exact.
-	// Z is left at 0: adding any roll to euler.Z distorts the surface normal direction.
-	float alpha = acosf(irr::core::clamp(n.Y, -1.0f, 1.0f)) * irr::core::RADTODEG;
-	float beta  = atan2f(n.X, n.Z) * irr::core::RADTODEG;
-	node->setRotation(irr::core::vector3df(alpha, beta, 0.0f));
-
-	// The plane mesh has zero local Y extent (all verts lie on Y=0). After rotation
-	// onto a wall the world AABB collapses in one axis, failing Irrlicht's frustum
-	// test — all decals on the same surface blink out simultaneously. Disable culling.
-	node->setAutomaticCulling(irr::scene::EAC_OFF);
-
-	auto& mat = node->getMaterial(0);
-	mat.MaterialType          = m_burnDecalMat;
-	mat.MaterialTypeParam     = 0.0f;
-	mat.setTexture(0, m_burnTexture);
-	mat.Lighting        = false;
-	mat.ZWriteEnable    = false;
-	mat.ZBuffer         = irr::video::ECFN_LESSEQUAL;
-	mat.BackfaceCulling = false;
-
-	BurnDecal decal;
-	decal.node        = node;
-	decal.spawnTime   = Engine::Get()->getCurrentTime();
-	decal.maxLifetime = 8000.0f;
-	m_burnDecals.push_back(decal);
-	RenderManager::Get()->registerLDREffectNode(node);
-}
-
-void Weapon_PulseRifle::updateBurnDecals(float currentTime)
-{
-	for (auto it = m_burnDecals.begin(); it != m_burnDecals.end(); )
-	{
-		float burnTime = (currentTime - it->spawnTime) / it->maxLifetime;
-		if (burnTime >= 1.0f)
-		{
-			if (it->node)
-			{
-				RenderManager::Get()->unregisterLDREffectNode(it->node);
-				it->node->remove();
-			}
-			it = m_burnDecals.erase(it);
-		}
-		else
-		{
-			it->node->getMaterial(0).MaterialTypeParam = burnTime;
-			++it;
-		}
-	}
 }

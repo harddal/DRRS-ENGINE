@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <cereal>
     <ParticleSystem>
-        <updateRate>1</updateRate>
+        <updateRate>500</updateRate>
         <groups size="2">
             <!-- spark -->
             <item0>
