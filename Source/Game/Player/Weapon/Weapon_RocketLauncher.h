@@ -2,11 +2,7 @@
 
 #include "../WeaponData.h"
 
-#include <list>
 #include <vector>
-
-// Multiplies the scale of the explosion particle effect
-#define particle_size_mult 3.0f
 
 class Weapon_RocketLauncher : public PlayerWeapon
 {
@@ -31,7 +27,7 @@ private:
 
 	// Fire rate tracking
 	int m_lastFireTime = 0;
-	float m_fireRate = 1000.0f;
+	float m_fireRate = 150.0f;
 	bool m_isEquipping = false;
 	bool m_isUnequipping = false;
 	float m_recoil = 0.0f;
@@ -57,52 +53,16 @@ private:
 
 	irr::core::vector3df m_targetLockIndicatorOffset = irr::core::vector3df(0.0f, 2.0f, 0.0f);
 
-	irr::video::ITexture 
-		*m_crosshair    = nullptr, 
-		*m_trackIcon    = nullptr, 
-		*m_lockIcon     = nullptr, 
+	irr::video::ITexture
+		*m_crosshair    = nullptr,
+		*m_trackIcon    = nullptr,
+		*m_lockIcon     = nullptr,
 		*m_lockwaitIcon = nullptr;
-
-	SPK::SPK_ID m_particleSystemBaseID = SPK::NO_ID;
-	std::list<SPK::System*> m_particleSystems;
-	float m_particleExplosionUpdateRate = 500.0f; // Update rate divisor for explosions, smaller numbers are faster
 
 	void renderNPCLockIndicators(irr::scene::ICameraSceneNode* cam);
 	void spawnProjectile(bool useTracking = false);
 	void updateProjectiles(float dt);
 	void createMuzzleFlash();
 	void updateMuzzleFlash(float dt);
-	void initExplosionParticleSystem();
 	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID);
-
-	// Creates a particle system from the base system
-	void createParticleSystem(const SPK::Vector3D& pos)
-	{
-		SPK::System* system = SPK_Copy(SPK::System, m_particleSystemBaseID);
-		
-		SPK::IRR::IRRSystem* irrSystem = static_cast<SPK::IRR::IRRSystem*>(system);
-		if (irrSystem)
-		{
-			// Make the clone visible
-			irrSystem->setVisible(true);
-
-			// We also need to set the Irrlicht position, not just the SPARK transform
-			irrSystem->setPosition(SPK::IRR::spk2irr(pos));
-			irrSystem->updateAbsolutePosition();
-		}
-		else
-		{
-			system->setTransformPosition(pos);
-			system->updateTransform();
-		}
-
-		m_particleSystems.push_back(system);
-	}
-
-	// destroy a particle system
-	void destroyParticleSystem(SPK::System*& system)
-	{
-		SPK_Destroy(system);
-		system = NULL;
-	}
 };

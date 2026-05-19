@@ -5,6 +5,9 @@
 #include "Game/Components/NPCComponent.h"
 #include "../CameraFX.h"
 
+#include "Engine/Renderer/Particle/ParticleManager.h"
+#include "Engine/Resource/FilePaths.h"
+
 #undef MB_RIGHT
 
 using namespace irr;
@@ -13,7 +16,7 @@ using namespace SPK::IRR;
 
 void Weapon_RocketLauncher::precache()
 {
-
+	ParticleManager::Get()->precache("explosion", _asset_psys("explosion"));
 }
 
 void Weapon_RocketLauncher::init()
@@ -107,7 +110,6 @@ void Weapon_RocketLauncher::init()
 	m_lockwaitIcon = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/rocket_launcher/lockwaitpip.png");
 	m_lockIcon     = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/rocket_launcher/lockpip.png");
 
-	initExplosionParticleSystem();
 }
 
 void Weapon_RocketLauncher::destroy()
@@ -223,22 +225,6 @@ void Weapon_RocketLauncher::persist()
 	// Update muzzle flash effect
 	updateMuzzleFlash(dt);
 
-	// Update explosion particles
-	std::list<System*>::iterator it = m_particleSystems.begin();
-	while (it != m_particleSystems.end())
-	{
-		// Updates the particle systems (dt is in milliseconds, so divide by 1000)
-		if (!(*it)->update(dt / m_particleExplosionUpdateRate))
-		{
-			// If a system is sleeping, destroys it
-			destroyParticleSystem(*it);
-
-			// And erases its entry in the container
-			it = m_particleSystems.erase(it);
-		}
-		else
-			++it;
-	}
 }
 
 void Weapon_RocketLauncher::equip()
@@ -848,7 +834,7 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 
 				// Always spawn the explosion and apply splash damage at the impact point,
 				// regardless of whether the hit surface is a tracked entity or static geometry
-				createParticleSystem(SPK::IRR::irr2spk(hitPoint));
+				ParticleManager::Get()->spawn("explosion", SPK::IRR::irr2spk(hitPoint));
 				applySplashDamage(hitPoint, hitEntityID);
 
 				// Screen shake — scaled by proximity to the blast
@@ -1103,244 +1089,4 @@ void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicen
 			}
 		}
 	}
-}
-
-void Weapon_RocketLauncher::initExplosionParticleSystem()
-{
-	// smoke renderer
-	IRRQuadRenderer* smokeRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	smokeRenderer->setTexturingMode(TEXTURE_2D);
-	smokeRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/explosion.png"));
-	smokeRenderer->setAtlasDimensions(2, 2); // uses 4 different patterns in the texture
-	smokeRenderer->setBlending(BLENDING_ALPHA);
-	smokeRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	smokeRenderer->setShared(true);
-
-	// flame renderer
-	IRRQuadRenderer* flameRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	flameRenderer->setTexturingMode(TEXTURE_2D);
-	flameRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/explosion.png"));
-	flameRenderer->setAtlasDimensions(2, 2);
-	flameRenderer->setBlending(BLENDING_ADD);
-	flameRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	flameRenderer->setShared(true);
-
-	// flash renderer
-	IRRQuadRenderer* flashRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	flashRenderer->setTexturingMode(TEXTURE_2D);
-	flashRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/star_09.png"));
-	flashRenderer->setBlending(BLENDING_ADD);
-	flashRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	flashRenderer->setShared(true);
-
-	// spark 1 renderer
-	IRRQuadRenderer* spark1Renderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	spark1Renderer->setTexturingMode(TEXTURE_2D);
-	spark1Renderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/spark1.bmp"));
-	spark1Renderer->setBlending(BLENDING_ADD);
-	spark1Renderer->enableRenderingHint(DEPTH_WRITE, false);
-	spark1Renderer->setOrientation(DIRECTION_ALIGNED); // sparks are oriented function of their velocity
-	spark1Renderer->setScale(0.05f, 1.0f); // thin rectangles
-	spark1Renderer->setShared(true);
-
-	IRRQuadRenderer* spark2Renderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	spark2Renderer->setTexturingMode(TEXTURE_2D);
-	spark2Renderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/star_05.png"));
-	spark2Renderer->setScale(0.02f, 0.02f);
-	spark2Renderer->setBlending(BLENDING_ADD);
-	spark2Renderer->enableRenderingHint(DEPTH_WRITE, false);
-	spark2Renderer->setShared(true);
-
-	// wave renderer
-	IRRQuadRenderer* waveRenderer = IRRQuadRenderer::create(RenderManager::Get()->device());
-	waveRenderer->setTexturingMode(TEXTURE_2D);
-	waveRenderer->setTexture(RenderManager::Get()->driver()->getTexture("content/texture/particle/circle_03.png"));
-	waveRenderer->setBlending(BLENDING_ALPHA);
-	waveRenderer->enableRenderingHint(DEPTH_WRITE, false);
-	waveRenderer->enableRenderingHint(ALPHA_TEST, true); // uses the alpha test
-	waveRenderer->setAlphaTestThreshold(0.0f);
-	waveRenderer->setOrientation(FIXED_ORIENTATION); // the orientatin is fixed
-	waveRenderer->lookVector.set(0.0f, 1.0f, 0.0f);
-	waveRenderer->upVector.set(1.0f, 0.0f, 0.0f); // we dont really care about the up axis
-	waveRenderer->setShared(true);
-
-	Interpolator* interpolator = NULL; // pointer to an interpolator that is used to retrieve interpolators	
-
-	// smoke model
-	Model* smokeModel = Model::create(FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE | FLAG_ANGLE | FLAG_TEXTURE_INDEX,
-		FLAG_SIZE | FLAG_ANGLE,
-		FLAG_SIZE | FLAG_ANGLE | FLAG_TEXTURE_INDEX,
-		FLAG_ALPHA);
-	smokeModel->setParam(PARAM_RED, 0.2f);
-	smokeModel->setParam(PARAM_GREEN, 0.2f);
-	smokeModel->setParam(PARAM_BLUE, 0.2f);
-	smokeModel->setParam(PARAM_SIZE, 0.6f, 0.8f, 1.0f, 1.4f);
-	smokeModel->setParam(PARAM_TEXTURE_INDEX, 0.0f, 4.0f);
-	smokeModel->setParam(PARAM_ANGLE, 0.0f, _pi * 0.5f, 0.0f, _pi * 0.5f);
-	smokeModel->setLifeTime(2.5f, 3.0f);
-	smokeModel->setShared(true);
-
-	interpolator = smokeModel->getInterpolator(PARAM_ALPHA);
-	interpolator->addEntry(0.0f, 0.0f);
-	interpolator->addEntry(0.4f, 0.4f, 0.6f);
-	interpolator->addEntry(0.6f, 0.4f, 0.6f);
-	interpolator->addEntry(1.0f, 0.0f);
-
-	// flame model
-	Model* flameModel = Model::create(FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA | FLAG_SIZE | FLAG_ANGLE | FLAG_TEXTURE_INDEX,
-		FLAG_ANGLE | FLAG_RED | FLAG_GREEN | FLAG_BLUE,
-		FLAG_ANGLE | FLAG_TEXTURE_INDEX,
-		FLAG_SIZE | FLAG_ALPHA);
-	flameModel->setParam(PARAM_RED, 1.0f, 0.2f);
-	flameModel->setParam(PARAM_GREEN, 0.5f, 0.2f);
-	flameModel->setParam(PARAM_BLUE, 0.2f, 0.2f);
-	flameModel->setParam(PARAM_TEXTURE_INDEX, 0.0f, 4.0f);
-	flameModel->setParam(PARAM_ANGLE, 0.0f, _pi * 0.5f, 0.0f, _pi * 0.5f);
-	flameModel->setLifeTime(1.5f, 2.0f);
-	flameModel->setShared(true);
-
-	interpolator = flameModel->getInterpolator(PARAM_SIZE);
-	interpolator->addEntry(0.0f * particle_size_mult, 0.25f * particle_size_mult);
-	interpolator->addEntry(0.02f * particle_size_mult, 0.6f * particle_size_mult, 0.8f * particle_size_mult);
-	interpolator->addEntry(1.0f * particle_size_mult, 1.0f * particle_size_mult, 1.4f * particle_size_mult);
-
-	interpolator = flameModel->getInterpolator(PARAM_ALPHA);
-	interpolator->addEntry(0.5f, 1.0f);
-	interpolator->addEntry(1.0f, 0.0f);
-
-	// flash model
-	Model* flashModel = Model::create(FLAG_ALPHA | FLAG_SIZE | FLAG_ANGLE,
-		FLAG_NONE,
-		FLAG_ANGLE,
-		FLAG_ALPHA | FLAG_SIZE);
-	flashModel->setParam(PARAM_ANGLE, 0.0f, 2.0f * _pi);
-	flashModel->setLifeTime(0.5f, 0.5f);
-	flashModel->setShared(true);
-
-	interpolator = flashModel->getInterpolator(PARAM_SIZE);
-	interpolator->addEntry(0.0f * particle_size_mult, 0.25f * particle_size_mult);
-	interpolator->addEntry(0.1f * particle_size_mult, 1.0f * particle_size_mult, 2.0f * particle_size_mult);
-
-	interpolator = flashModel->getInterpolator(PARAM_ALPHA);
-	interpolator->addEntry(0.0f, 1.0f);
-	interpolator->addEntry(0.4f, 0.0f);
-
-	// spark 1 model
-	Model* spark1Model = Model::create(FLAG_SIZE | FLAG_ALPHA,
-		FLAG_ALPHA,
-		FLAG_SIZE);
-	spark1Model->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	spark1Model->setParam(PARAM_SIZE, 0.2f * particle_size_mult, 0.4f * particle_size_mult);
-	spark1Model->setLifeTime(0.2f, 1.0f);
-	spark1Model->setShared(true);
-
-	// spark 2 model
-	Model* spark2Model = Model::create(FLAG_RED | FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA,
-		FLAG_GREEN | FLAG_BLUE | FLAG_ALPHA,
-		FLAG_GREEN);
-	spark2Model->setParam(PARAM_ALPHA, 1.0f, 0.0f);
-	spark2Model->setParam(PARAM_RED, 1.0f);
-	spark2Model->setParam(PARAM_GREEN, 1.0f, 1.0f, 0.3f, 1.0f);
-	spark2Model->setParam(PARAM_BLUE, 0.7f, 0.3f);
-	spark2Model->setLifeTime(1.0f, 3.0f);
-	spark2Model->setShared(true);
-
-	// wave model
-	Model* waveModel = Model::create(FLAG_ALPHA | FLAG_SIZE,
-		FLAG_SIZE | FLAG_ALPHA);
-	waveModel->setParam(PARAM_SIZE, 0.0f * particle_size_mult, 4.0f * particle_size_mult);
-	waveModel->setParam(PARAM_ALPHA, 0.2f, 0.0f);
-	waveModel->setLifeTime(0.8f, 0.8f);
-	waveModel->setShared(true);
-
-	// This zone will be used by several emitters
-	Sphere* explosionSphere = Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.4f);
-
-	// smoke emitter
-	RandomEmitter* smokeEmitter = RandomEmitter::create();
-	smokeEmitter->setZone(Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.6f), false);
-	smokeEmitter->setFlow(-1);
-	smokeEmitter->setTank(15);
-	smokeEmitter->setForce(0.02f, 0.04f);
-
-	// flame emitter
-	NormalEmitter* flameEmitter = NormalEmitter::create();
-	flameEmitter->setZone(explosionSphere);
-	flameEmitter->setFlow(-1);
-	flameEmitter->setTank(15);
-	flameEmitter->setForce(0.06f, 0.1f);
-
-	// flash emitter
-	StaticEmitter* flashEmitter = StaticEmitter::create();
-	flashEmitter->setZone(Sphere::create(Vector3D(0.0f, 0.0f, 0.0f), 0.1f));
-	flashEmitter->setFlow(-1);
-	flashEmitter->setTank(3);
-
-	// spark 1 emitter
-	NormalEmitter* spark1Emitter = NormalEmitter::create();
-	spark1Emitter->setZone(explosionSphere);
-	spark1Emitter->setFlow(-1);
-	spark1Emitter->setTank(20);
-	spark1Emitter->setForce(2.0f, 3.0f);
-
-	// spark 2 emitter
-	NormalEmitter* spark2Emitter = NormalEmitter::create();
-	spark2Emitter->setZone(explosionSphere);
-	spark2Emitter->setFlow(-1);
-	spark2Emitter->setTank(400);
-	spark2Emitter->setForce(0.4f, 0.8f);
-
-	// wave emitter
-	StaticEmitter* waveEmitter = StaticEmitter::create();
-	waveEmitter->setZone(Point::create());
-	waveEmitter->setFlow(-1);
-	waveEmitter->setTank(1);
-
-	// smoke group
-	Group* smokeGroup = Group::create(smokeModel, 15);
-	smokeGroup->addEmitter(smokeEmitter);
-	smokeGroup->setRenderer(smokeRenderer);
-	smokeGroup->setGravity(Vector3D(0.0f, 0.05f, 0.0f));
-
-	// flame group
-	Group* flameGroup = Group::create(flameModel, 15);
-	flameGroup->addEmitter(flameEmitter);
-	flameGroup->setRenderer(flameRenderer);
-
-	// flash group
-	Group* flashGroup = Group::create(flashModel, 3);
-	flashGroup->addEmitter(flashEmitter);
-	flashGroup->setRenderer(flashRenderer);
-	
-	// spark 1 group
-	Group* spark1Group = Group::create(spark1Model, 20);
-	spark1Group->addEmitter(spark1Emitter);
-	spark1Group->setRenderer(spark1Renderer);
-	spark1Group->setGravity(Vector3D(0.0f, -1.5f, 0.0f));
-
-	// spark 2 group
-	Group* spark2Group = Group::create(spark2Model, 400);
-	spark2Group->addEmitter(spark2Emitter);
-	spark2Group->setRenderer(spark2Renderer);
-	spark2Group->setGravity(Vector3D(0.0f, -0.3f, 0.0f));
-	spark2Group->setFriction(0.4f);
-
-	// wave group
-	Group* waveGroup = Group::create(waveModel, 1);
-	waveGroup->addEmitter(waveEmitter);
-	waveGroup->setRenderer(waveRenderer);
-	
-	auto* particleSystem = IRRSystem::create(RenderManager::Get()->sceneManager()->getRootSceneNode(), RenderManager::Get()->sceneManager());
-	particleSystem->addGroup(waveGroup);
-	particleSystem->addGroup(smokeGroup);
-	particleSystem->addGroup(flameGroup);
-	particleSystem->addGroup(flashGroup);
-	particleSystem->addGroup(spark1Group);
-	particleSystem->addGroup(spark2Group);
-	
-	// Prevent base system from rendering or auto-updating, preserving it as a pristine template
-	particleSystem->setAutoUpdateEnabled(false, false);
-	particleSystem->setVisible(false);
-
-	m_particleSystemBaseID = particleSystem->getSPKID();
 }

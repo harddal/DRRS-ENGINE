@@ -12,9 +12,10 @@ const std::string g_music_path   = "content/sound/music/";
 const std::string g_script_path  = "content/script/";
 const std::string g_scene_path   = "content/scene/";
 const std::string g_item_path    = "content/item/";
-const std::string g_dialog_path = "content/dialog/";
+const std::string g_dialog_path   = "content/dialog/";
+const std::string g_particle_path = "content/particle/";
 
-#define _asset_asc(x) (g_script_path  + std::string(x) + std::string(".asc"))
+#define _asset_asc(x)  (g_script_path   + std::string(x) + std::string(".asc"))
 #define _asset_ent(x) (g_entity_path  + std::string(x) + std::string(".ent"))
 #define _asset_pre(x) (g_prefab_path  + std::string(x) + std::string(".pre"))
 #define _asset_scn(x)     (g_scene_path   + std::string(x) + std::string(".scn"))
@@ -23,6 +24,7 @@ const std::string g_dialog_path = "content/dialog/";
 #define _asset_tex(x) (g_texture_path + std::string(x) + std::string(".png"))
 #define _asset_snd(x) (g_sound_path   + std::string(x) + std::string(".wav"))
 #define _asset_b3d(x) (g_mesh_path    + std::string(x) + std::string(".b3d"))
-#define _asset_dlg(x) (g_dialog_path  + std::string(x) + std::string(".dlg"))
-#define _asset_itm(x) (g_item_path    + std::string(x) + std::string(".item"))
+#define _asset_dlg(x)  (g_dialog_path  + std::string(x) + std::string(".dlg"))
+#define _asset_itm(x)  (g_item_path    + std::string(x) + std::string(".item"))
+#define _asset_psys(x) (g_particle_path + std::string(x) + std::string(".psys"))
 

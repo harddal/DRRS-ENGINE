@@ -396,3 +396,15 @@ double Engine::GetCounter()
 	QueryPerformanceCounter(&li);
 	return double(li.QuadPart - CounterStart) / PCFreq;
 }
+
+void Engine::clearScene()
+{
+	ParticleManager::Get()->clear();
+
+	WorldManager::Get()->killAllEntities();
+	WorldManager::Get()->clearCVars();
+
+	SoundManager::Get()->sound()->soloud().stopAll();
+
+	PhysicsManager::Get()->destroyScene();
+}

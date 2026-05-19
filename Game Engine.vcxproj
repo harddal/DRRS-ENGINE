@@ -134,6 +134,8 @@
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.cpp" />
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.cpp" />
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpUtils.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Particle\ParticleManager.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\Particle\ParticleSystemLoader.cpp" />
     <ClCompile Include="Source\Engine\Renderer\RenderManager.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_BufferHandler.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_DEF.cpp" />
@@ -315,6 +317,9 @@
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.h" />
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.h" />
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpUtils.h" />
+    <ClInclude Include="Source\Engine\Renderer\Particle\ParticleManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\Particle\ParticleSystemDef.h" />
+    <ClInclude Include="Source\Engine\Renderer\Particle\ParticleSystemLoader.h" />
     <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_ArrayBuffer.h" />
     <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_Buffer.h" />
     <ClInclude Include="Source\Engine\Renderer\Spark\include\Core\SPK_BufferHandler.h" />

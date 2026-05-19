@@ -11,6 +11,7 @@
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Prop/PropManager.h"
 #include "Engine/Renderer/RenderManager.h"
+#include "Engine/Renderer/Particle/ParticleManager.h"
 #include "Engine/Script/ScriptManager.h"
 #include "Engine/Sound/SoundManager.h"
 #include "Engine/World/WorldManager.h"
@@ -157,6 +158,8 @@ public:
 	irr::f32 getPhysicsTime() { return m_physicsTime; }
 	irr::f32 getRenderTime() { return m_renderTime; }
 
+	void clearScene();
+
     static Engine* Get() { return s_Instance; }
 
 protected:
@@ -198,7 +201,8 @@ private:
     NavigationManager m_navigationManager;
     PhysicsManager m_physicsManager;
     RenderManager m_renderManager;
-    PropManager m_propManager;   // after RenderManager — destroyed before it (reverse order)
+    PropManager m_propManager;       // after RenderManager — destroyed before it (reverse order)
+    ParticleManager m_particleManager;
     ScriptManager m_scriptManager;
     SoundManager m_soundManager;
     WorldManager m_worldManager;

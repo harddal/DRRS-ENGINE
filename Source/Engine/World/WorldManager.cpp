@@ -4,6 +4,7 @@
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
 #include "Engine/Renderer/RenderManager.h"
+#include "Engine/Renderer/Particle/ParticleManager.h"
 #include "Engine/Prop/PropManager.h"
 
 #include <string>
@@ -82,6 +83,7 @@ void WorldManager::update(irr::f32 dt)
 		m_physicsSystem.update(dt);
 		m_cctSystem.update(dt);
 		m_npcSystem.update(dt);
+		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 		m_gameplaySystem.update();
 		m_soundSystem.update();
 	}
@@ -126,6 +128,8 @@ void WorldManager::update(irr::f32 dt)
 		m_npcCurrent = Engine::Get()->GetCounter();
 		m_npcSystem.update(dt);
 		m_npcTime = Engine::Get()->GetCounter() - m_npcCurrent;
+
+		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 
 		m_gameplayCurrent = Engine::Get()->GetCounter();
 		m_gameplaySystem.update();
