@@ -9,3 +9,4 @@
 #include "Engine/World/Systems/TransformSystem.h"
 #include "Engine/World/Systems/TweenSystem.h"
 #include "Engine/World/Systems/NavigationSystem.h"
+#include "Engine/World/Systems/ParticleSystem.h"

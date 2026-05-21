@@ -22,6 +22,8 @@ void GameState::updateUI(float dt)
 void GameState::destroy()
 {
 	GameManager::Get()->destroy();
+
+	Engine::Get()->clearScene();
 }
 
 void GameState::pause()

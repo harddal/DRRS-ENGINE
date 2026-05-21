@@ -58,9 +58,7 @@ void MenuState::updateUI(float dt)
 
 void MenuState::destroy()
 {
-	PhysicsManager::Get()->destroyScene();
-
-	SoundManager::Get()->sound()->soloud().stopAll();
+	Engine::Get()->clearScene();
 }
 
 void MenuState::pause()

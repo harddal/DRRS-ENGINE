@@ -136,7 +136,10 @@ static Emitter* buildEmitter(const ParticleEmitterDef& def)
     else if (def.type == "static")
         emitter = StaticEmitter::create();
     else if (def.type == "straight")
-        emitter = StraightEmitter::create();
+        emitter = StraightEmitter::create(Vector3D(def.dirX, def.dirY, def.dirZ));
+    else if (def.type == "spheric")
+        emitter = SphericEmitter::create(Vector3D(def.dirX, def.dirY, def.dirZ),
+                                         def.angleMin, def.angleMax);
     else
         emitter = RandomEmitter::create();  // default
 
@@ -203,6 +206,9 @@ static Group* buildGroup(const ParticleGroupDef& def,
     for (const auto& emitterDef : def.emitters)
         group->addEmitter(buildEmitter(emitterDef));
 
+    if (def.useRotator)
+        group->addModifier(Rotator::create());
+
     return group;
 }
 
@@ -245,6 +251,35 @@ ParticleLoadResult ParticleSystemLoader::load(const std::string& path)
 
     spdlog::info("[ParticleSystemLoader] Loaded '{}' ({} groups)", path, def.groups.size());
     return { system->getSPKID(), def.updateRate };
+}
+
+ParticleLoadResult ParticleSystemLoader::buildFromDef(const ParticleSystemDef& def)
+{
+    irr::IrrlichtDevice*       device = RenderManager::Get()->device();
+    irr::video::IVideoDriver*  driver = RenderManager::Get()->driver();
+    irr::scene::ISceneManager* smgr   = RenderManager::Get()->sceneManager();
+
+    IRRSystem* system = IRRSystem::create(smgr->getRootSceneNode(), smgr);
+    for (const auto& groupDef : def.groups)
+        system->addGroup(buildGroup(groupDef, driver, device));
+    system->setAutoUpdateEnabled(false, false);
+    system->setVisible(false);
+
+    spdlog::info("[ParticleSystemLoader] buildFromDef: {} group(s)", def.groups.size());
+    return { system->getSPKID(), def.updateRate };
+}
+
+SPK::System* ParticleSystemLoader::buildForPreview(const ParticleSystemDef& def,
+                                                    irr::scene::ISceneManager* smgr)
+{
+    irr::IrrlichtDevice*      device = RenderManager::Get()->device();
+    irr::video::IVideoDriver* driver = RenderManager::Get()->driver();
+
+    IRRSystem* system = IRRSystem::create(smgr->getRootSceneNode(), smgr);
+    for (const auto& groupDef : def.groups)
+        system->addGroup(buildGroup(groupDef, driver, device));
+    system->setAutoUpdateEnabled(false, false);
+    return system;
 }
 
 bool ParticleSystemLoader::save(const ParticleSystemDef& def, const std::string& path)

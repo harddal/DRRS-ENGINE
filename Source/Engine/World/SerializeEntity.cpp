@@ -196,6 +196,14 @@ void WorldManager::serializeEntity(Entity& entity, XMLOutputArchive& archive, bo
             archive.finishNode();
         }
 
+        if (entity.hasComponent<ParticleComponent>())
+        {
+            archive.setNextName("particle");
+            archive.startNode();
+            archive(entity.getComponent<ParticleComponent>());
+            archive.finishNode();
+        }
+
         GameState::serializeComponent(entity, archive);
 
         archive.finishNode();

@@ -572,6 +572,9 @@ public:
     void setPreviewScene(irr::scene::ISceneManager* sm, irr::video::ITexture* rtt);
     void clearPreviewScene();
 
+    void setPreviewParticle(irr::scene::ISceneNode* node) { m_previewParticle = node; }
+    void clearPreviewParticle()                           { m_previewParticle = nullptr; }
+
     irr::core::vector3df getBoneLocalPosition(irr::scene::IAnimatedMeshSceneNode *mesh, int bone);
     irr::core::vector3df getBoneWorldPosition(irr::scene::IAnimatedMeshSceneNode *mesh, int bone);
     irr::core::vector3df getBoneLocalPosition(irr::scene::IAnimatedMeshSceneNode *mesh, std::string bone);
@@ -823,8 +826,9 @@ private:
 	irr::video::ITexture* m_effectRenderTarget;
 
     // Entity Builder preview — independent scene manager rendered to RTT each frame
-    irr::scene::ISceneManager* m_previewSM  = nullptr;
-    irr::video::ITexture*      m_previewRTT = nullptr;
+    irr::scene::ISceneManager* m_previewSM       = nullptr;
+    irr::video::ITexture*      m_previewRTT      = nullptr;
+    irr::scene::ISceneNode*    m_previewParticle = nullptr;
 
 	AnimatedSpriteLoader m_AnimatedSpriteLoader;
 

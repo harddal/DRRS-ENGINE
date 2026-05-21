@@ -254,6 +254,8 @@ public:
 	NavigationSystem* navigationSystem() { return &m_navigationSystem; }
 	GameplaySystem*   gameplaySystem()   { return &m_gameplaySystem; }
 	NPCSystem*        npcSystem()        { return &m_npcSystem; }
+	ParticleSystem*   particleSystem()   { return &m_particleSystem; }
+	irr::f32 getParticleTime() { return m_particleTime; }
 
     static WorldManager* Get() { return s_Instance; }
 
@@ -302,6 +304,7 @@ private:
 	NavigationSystem m_navigationSystem;
 	GameplaySystem m_gameplaySystem;
 	NPCSystem      m_npcSystem;
+	ParticleSystem m_particleSystem;
 
 	irr::f32 m_worldCurrent, m_worldLast, m_worldTime;
 	irr::f32 m_cameraCurrent, m_cameraLast, m_cameraTime;
@@ -313,4 +316,5 @@ private:
 	irr::f32 m_transformCurrent, m_transformLast, m_transformTime;
 	irr::f32 m_gameplayCurrent, m_gameplayLast, m_gameplayTime;
 	irr::f32 m_npcCurrent, m_npcTime;
+	irr::f32 m_particleCurrent, m_particleTime;
 };

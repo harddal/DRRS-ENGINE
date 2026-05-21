@@ -18,7 +18,7 @@ using namespace SPK::IRR;
 
 void Weapon_Pistol::precache()
 {
-	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
+	ParticleManager::Get()->precache("spark", _asset_psys("fire"));
 }
 
 void Weapon_Pistol::init()

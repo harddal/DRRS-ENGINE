@@ -17,3 +17,4 @@
 #include "Engine/World/Components/TransformComponent.h"
 #include "Engine/World/Components/TweenComponent.h"
 #include "Engine/World/Components/NavAgentComponent.h"
+#include "Engine/World/Components/ParticleComponent.h"

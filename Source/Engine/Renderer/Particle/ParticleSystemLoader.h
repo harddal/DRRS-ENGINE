@@ -4,6 +4,8 @@
 
 #include "SPK.h"
 
+#include "irrlicht.h"
+
 struct ParticleSystemDef;
 
 struct ParticleLoadResult
@@ -24,4 +26,12 @@ public:
     // Serializes a ParticleSystemDef to a .psys XML file.
     // Useful for saving a system designed in the editor or generated in code.
     static bool save(const ParticleSystemDef& def, const std::string& path);
+
+    // Build a SPARK system template directly from an in-memory def (no file I/O).
+    static ParticleLoadResult buildFromDef(const ParticleSystemDef& def);
+
+    // Build a live SPARK system in an arbitrary scene manager and return the pointer.
+    // The caller owns the system — destroy with SPK_Destroy(system) when done.
+    static SPK::System* buildForPreview(const ParticleSystemDef& def,
+                                        irr::scene::ISceneManager* smgr);
 };

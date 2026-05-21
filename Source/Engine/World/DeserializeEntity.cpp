@@ -253,6 +253,9 @@ entityid WorldManager::deserializeEntity(const string& file, entityid id, bool u
             if (has("sound"))
                 loadComponent<XMLInputArchive, SoundComponent>(archive, "sound", entity, entityName);
 
+            if (has("particle"))
+                loadComponent<XMLInputArchive, ParticleComponent>(archive, "particle", entity, entityName);
+
             // --- Game-specific components ---
             GameState::deserializeComponent(entity, archive, info.components, entityName);
 

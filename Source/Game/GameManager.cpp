@@ -95,11 +95,6 @@ void GameManager::destroy()
 		g_PlayerController->destroy();
 		g_PlayerController.reset();
 	}
-
-	WorldManager::Get()->killAllEntities();
-	WorldManager::Get()->clearCVars();
-
-	PhysicsManager::Get()->destroyScene();
 }
 
 void GameManager::reset()

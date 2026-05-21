@@ -49,6 +49,7 @@ WorldManager::WorldManager()
 	m_gameWorld.addSystem(m_navigationSystem);
 	m_gameWorld.addSystem(m_gameplaySystem);
 	m_gameWorld.addSystem(m_npcSystem);
+	m_gameWorld.addSystem(m_particleSystem);
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());
@@ -83,6 +84,7 @@ void WorldManager::update(irr::f32 dt)
 		m_physicsSystem.update(dt);
 		m_cctSystem.update(dt);
 		m_npcSystem.update(dt);
+		m_particleSystem.update(dt);
 		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 		m_gameplaySystem.update();
 		m_soundSystem.update();
@@ -128,6 +130,10 @@ void WorldManager::update(irr::f32 dt)
 		m_npcCurrent = Engine::Get()->GetCounter();
 		m_npcSystem.update(dt);
 		m_npcTime = Engine::Get()->GetCounter() - m_npcCurrent;
+
+		m_particleCurrent = Engine::Get()->GetCounter();
+		m_particleSystem.update(dt);
+		m_particleTime = Engine::Get()->GetCounter() - m_particleCurrent;
 
 		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 

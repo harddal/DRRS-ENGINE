@@ -1031,11 +1031,19 @@ void RenderManager::draw(f32 dt)
 
     m_driver->beginScene(true, true, SColor(0xFF000000)/*m_backgroundColor*/);
 
-    // --- Entity Builder preview pass ---
+    // --- Entity Builder / Particle Designer preview pass ---
     if (m_previewSM && m_previewRTT)
     {
         m_driver->setRenderTarget(m_previewRTT, true, true, SColor(255, 40, 40, 40));
         m_previewSM->drawAll();
+        // Render the particle preview directly while the RTT is bound.
+        // SPARK particles bypass drawAll() entirely — they must be drawn manually.
+        if (m_previewParticle)
+        {
+            m_previewParticle->updateAbsolutePosition();
+            m_driver->setTransform(ETS_WORLD, m_previewParticle->getAbsoluteTransformation());
+            m_previewParticle->render();
+        }
         m_driver->setRenderTarget(nullptr, false, false);
     }
     // --- End preview pass ---

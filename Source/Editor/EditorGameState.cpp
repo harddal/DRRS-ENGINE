@@ -96,6 +96,8 @@ void EditorGameState::pause()
 	Engine::Get()->setEditorMode(true);
 
 	GameManager::Get()->destroy();
+
+	Engine::Get()->clearScene();
 }
 
 void EditorGameState::resume()

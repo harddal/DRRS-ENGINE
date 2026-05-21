@@ -131,6 +131,7 @@ void EditorInterface::draw()
 		draw_window_entity_debug_info();
 		draw_window_entity_builder();
 		draw_window_script_editor();
+		draw_window_particle_designer();
 
 		g_sceneInteractor.draw();
 

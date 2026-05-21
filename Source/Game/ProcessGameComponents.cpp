@@ -95,6 +95,7 @@ void GameState::serializeComponent(anax::Entity& entity, cereal::XMLOutputArchiv
 		archive(entity.getComponent<WaterComponent>());
 		archive.finishNode();
 	}
+
 }
 
 void GameState::deserializeComponent(anax::Entity& entity, cereal::XMLInputArchive& archive,
@@ -167,4 +168,5 @@ void GameState::deserializeComponent(anax::Entity& entity, cereal::XMLInputArchi
 		entity.addComponent<WaterComponent>();
 		archive(entity.getComponent<WaterComponent>());
 	});
+
 }

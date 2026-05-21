@@ -94,9 +94,10 @@ struct ParticleZoneDef
 };
 
 // Describes one emitter within a group.
-// type: "random", "normal", "static", "straight"
+// type: "random", "normal", "static", "straight", "spheric"
 // fullZone: true = spawn anywhere inside zone, false = spawn on zone surface
 // flow == -1 means use tank (one-shot burst)
+// dirX/Y/Z and angleMin/angleMax are only used when type == "spheric"
 struct ParticleEmitterDef
 {
     std::string type = "random";
@@ -106,12 +107,17 @@ struct ParticleEmitterDef
     float flow = -1.0f;
     float forceMin = 0.0f;
     float forceMax = 0.0f;
+    // SphericEmitter parameters — absent from old .psys files, loaded with fallback
+    float dirX = 0.0f, dirY = 1.0f, dirZ = 0.0f;
+    float angleMin = 0.0f, angleMax = 0.0f;
 
     template<class Archive>
     void serialize(Archive& ar)
     {
         ar(CEREAL_NVP(type), CEREAL_NVP(zone), CEREAL_NVP(fullZone),
            CEREAL_NVP(tank), CEREAL_NVP(flow), CEREAL_NVP(forceMin), CEREAL_NVP(forceMax));
+        try { ar(CEREAL_NVP(dirX), CEREAL_NVP(dirY), CEREAL_NVP(dirZ)); } catch (...) {}
+        try { ar(CEREAL_NVP(angleMin), CEREAL_NVP(angleMax)); }          catch (...) {}
     }
 };
 
@@ -145,6 +151,8 @@ struct ParticleRendererDef
 };
 
 // One particle group: model + renderer + one or more emitters + group physics.
+// useRotator: attaches a SPK::Rotator modifier; requires ANGLE (random) and ROTATION_SPEED
+//             enabled in the model. Absent from old .psys files, loaded with fallback.
 struct ParticleGroupDef
 {
     std::string name;
@@ -154,6 +162,7 @@ struct ParticleGroupDef
     ParticleModelDef model;
     ParticleRendererDef renderer;
     std::vector<ParticleEmitterDef> emitters;
+    bool useRotator = false;
 
     template<class Archive>
     void serialize(Archive& ar)
@@ -162,6 +171,7 @@ struct ParticleGroupDef
            CEREAL_NVP(gravityX), CEREAL_NVP(gravityY), CEREAL_NVP(gravityZ),
            CEREAL_NVP(friction),
            CEREAL_NVP(model), CEREAL_NVP(renderer), CEREAL_NVP(emitters));
+        try { ar(CEREAL_NVP(useRotator)); } catch (...) {}
     }
 };
 

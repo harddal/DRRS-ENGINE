@@ -1,11 +1,13 @@
 #pragma once
 
 #include <string>
-#include <list>
 #include <unordered_map>
 #include <cstdint>
 
+#include <irrlicht.h>
 #include "SPK.h"
+
+struct ParticleSystemDef;
 
 class ParticleManager
 {
@@ -19,6 +21,10 @@ public:
     // Safe to call multiple times with the same name — second call is a no-op.
     // Returns false if the file cannot be loaded.
     bool precache(const std::string& name, const std::string& path);
+
+    // Register an in-memory def directly, bypassing file I/O.
+    // Always overwrites any existing entry under 'name' (intended for "_preview").
+    void precacheFromDef(const std::string& name, const ParticleSystemDef& def);
 
     // Spawn a live clone of a precached effect at world position pos.
     // loop = true: when the system sleeps it is re-initialized instead of destroyed.
@@ -34,6 +40,9 @@ public:
     // Destroy all active instances AND all cached base systems.
     // Call on scene unload / game shutdown.
     void clear();
+
+    // Reposition an active looping effect. No-op if handle is 0 or not found. O(1) lookup.
+    void setPosition(uint32_t handle, const irr::core::vector3df& pos);
 
 private:
     struct BaseEffect
@@ -51,9 +60,9 @@ private:
         std::string  effectName;
     };
 
-    std::unordered_map<std::string, BaseEffect> m_effects;
-    std::list<ActiveInstance>                   m_instances;
-    uint32_t                                    m_nextHandle = 1;
+    std::unordered_map<std::string, BaseEffect>  m_effects;
+    std::unordered_map<uint32_t, ActiveInstance> m_instances;
+    uint32_t                                     m_nextHandle = 1;
 
     static ParticleManager* s_Instance;
 };

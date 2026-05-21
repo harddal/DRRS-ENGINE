@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <cereal>
     <ParticleSystem>
-        <updateRate>500</updateRate>
+        <updateRate>2</updateRate>
         <groups size="6">
             <!-- flash: bright initial burst -->
             <item0>

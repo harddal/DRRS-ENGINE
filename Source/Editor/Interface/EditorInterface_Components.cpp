@@ -9,6 +9,8 @@
 #include "Engine/Interface/ImGuiExtensions.h"
 
 #include "Engine/Engine.h"
+#include "Engine/Renderer/Particle/ParticleManager.h"
+#include "SPK.h"
 #include "Game/Components.h"
 #include "Engine/Script/ScriptManager.h"
 #include "Engine/Renderer/IrrAssimp/IrrAssimpImport.h"
@@ -92,9 +94,12 @@ void EditorInterface::draw_window_add_component()
 			"Transform\0"
 			"Trigger Zone\0"
 			"Dialog\0"
-			"Tween\0\0"; // 26
+			"Tween\0"
+			"Nav Agent\0"
+			"Water\0"
+			"Particle\0\0"; // 29
 
-		ImGui::Combo("Component", &current_selected_component, component_list, 26);
+		ImGui::Combo("Component", &current_selected_component, component_list, 29);
 		ImGui::SameLine();
 
 		{
@@ -209,6 +214,18 @@ void EditorInterface::draw_window_add_component()
 					case ENTITY_COMPONENT::TWEEN:
 						if (entity.hasComponent<TweenComponent>()) break;
 						entity.addComponent<TweenComponent>();
+						break;
+					case ENTITY_COMPONENT::NAVAGENT:
+						if (entity.hasComponent<NavAgentComponent>()) break;
+						entity.addComponent<NavAgentComponent>();
+						break;
+					case ENTITY_COMPONENT::WATER:
+						if (entity.hasComponent<WaterComponent>()) break;
+						entity.addComponent<WaterComponent>();
+						break;
+					case ENTITY_COMPONENT::PARTICLE:
+						if (entity.hasComponent<ParticleComponent>()) break;
+						entity.addComponent<ParticleComponent>();
 						break;
 					}
 
@@ -1777,6 +1794,109 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			break;
 		}
+	case ENTITY_COMPONENT::PARTICLE:
+		{
+			if (!entity.hasComponent<ParticleComponent>())
+				return false;
+
+			auto& pc = entity.getComponent<ParticleComponent>();
+
+			if (ImGui::BeginTable("##particle_props", 2, ImGuiTableFlags_SizingFixedFit))
+			{
+				ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+				ImGui::TableSetupColumn("##val", ImGuiTableColumnFlags_WidthStretch);
+
+				// Effect Path
+				char pathBuf[256] = {};
+				for (auto i = 0U; i < pc.effectPath.size() && i < 255; i++) pathBuf[i] = pc.effectPath[i];
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Effect Path");
+				ImGui::TableSetColumnIndex(1);
+				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x
+					- ImGui::CalcTextSize("...").x
+					- ImGui::GetStyle().FramePadding.x * 4.0f
+					- ImGui::GetStyle().ItemSpacing.x);
+				if (ImGui::InputText("##pc_path", pathBuf, sizeof(pathBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+					pc.effectPath = pathBuf;
+				ImGui::SameLine();
+				if (ImGui::Button("...##pc_browse"))
+				{
+					std::string chosen = Utility::RemoveAbsDir(
+						Utility::OpenFileDialog("PSYS Files (*.psys)\0*.psys\0All Files\0*.*\0", "content\\particle"));
+					if (!chosen.empty())
+						pc.effectPath = chosen;
+				}
+
+				// Effect Name
+				char nameBuf[256] = {};
+				for (auto i = 0U; i < pc.effectName.size() && i < 255; i++) nameBuf[i] = pc.effectName[i];
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Effect Name");
+				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+				if (ImGui::InputText("##pc_name", nameBuf, sizeof(nameBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+					pc.effectName = nameBuf;
+
+				// Loop
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Loop");
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Checkbox("##pc_loop", &pc.loop);
+
+				// Handle (read-only)
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Handle");
+				ImGui::TableSetColumnIndex(1); ImGui::TextDisabled("%u", pc.handle);
+
+				ImGui::EndTable();
+			}
+
+			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Spacing();
+
+			// Editor preview: Play / Stop
+			if (pc.handle != 0)
+			{
+				if (ImGui::Button("Stop##pc_stop") && ParticleManager::Get())
+				{
+					ParticleManager::Get()->destroy(pc.handle);
+					pc.handle = 0;
+				}
+			}
+			else
+			{
+				if (ImGui::Button("Play##pc_play") && ParticleManager::Get() && !pc.effectPath.empty())
+				{
+					const std::string& path = pc.effectPath;
+					std::string name = pc.effectName;
+					if (name.empty())
+					{
+						name = path;
+						const auto sl = name.find_last_of("/\\");
+						if (sl != std::string::npos) name = name.substr(sl + 1);
+						if (name.size() > 5 && name.substr(name.size() - 5) == ".psys")
+							name = name.substr(0, name.size() - 5);
+					}
+
+					ParticleManager::Get()->precache(name, path);
+
+					irr::core::vector3df spawnPos(0.0f, 0.0f, 0.0f);
+					if (entity.hasComponent<TransformComponent>())
+					{
+						auto& tc = entity.getComponent<TransformComponent>();
+						if (tc.node) spawnPos = tc.node->getAbsolutePosition();
+						else         spawnPos = tc.position;
+					}
+
+					pc.handle = ParticleManager::Get()->spawn(
+						name,
+						SPK::Vector3D(spawnPos.X, spawnPos.Y, spawnPos.Z),
+						pc.loop);
+				}
+			}
+
+			break;
+		}
 	default:
 		return false;
 	}
@@ -1816,6 +1936,7 @@ void EditorInterface::add_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::TWEEN:               entity.addComponent<TweenComponent>();             break;
 	case ENTITY_COMPONENT::NAVAGENT:            entity.addComponent<NavAgentComponent>();          break;
 	case ENTITY_COMPONENT::WATER:               entity.addComponent<WaterComponent>();             break;
+	case ENTITY_COMPONENT::PARTICLE:            entity.addComponent<ParticleComponent>();          break;
 	}
 }
 
@@ -1849,6 +1970,9 @@ bool EditorInterface::has_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::TRIGGERZONE:         return entity.hasComponent<TriggerZoneComponent>();
 	case ENTITY_COMPONENT::DIALOG:              return entity.hasComponent<DialogComponent>();
 	case ENTITY_COMPONENT::TWEEN:               return entity.hasComponent<TweenComponent>();
+	case ENTITY_COMPONENT::NAVAGENT:            return entity.hasComponent<NavAgentComponent>();
+	case ENTITY_COMPONENT::WATER:               return entity.hasComponent<WaterComponent>();
+	case ENTITY_COMPONENT::PARTICLE:            return entity.hasComponent<ParticleComponent>();
 	default:                                    return false;
 	}
 }

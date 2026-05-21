@@ -16,7 +16,7 @@ using namespace SPK::IRR;
 
 void Weapon_RocketLauncher::precache()
 {
-	ParticleManager::Get()->precache("explosion", _asset_psys("mushroom"));
+	ParticleManager::Get()->precache("explosion", _asset_psys("explosion"));
 }
 
 void Weapon_RocketLauncher::init()

@@ -1,5 +1,6 @@
 #include "Engine/Renderer/Particle/ParticleManager.h"
 #include "Engine/Renderer/Particle/ParticleSystemLoader.h"
+#include "Engine/Renderer/Particle/ParticleSystemDef.h"
 
 #include <spdlog/spdlog.h>
 
@@ -21,6 +22,26 @@ ParticleManager::~ParticleManager()
 {
     clear();
     s_Instance = nullptr;
+}
+
+void ParticleManager::precacheFromDef(const std::string& name, const ParticleSystemDef& def)
+{
+    auto it = m_effects.find(name);
+    if (it != m_effects.end())
+    {
+        if (it->second.baseID != NO_ID)
+            SPK_Destroy(it->second.baseID);
+        m_effects.erase(it);
+    }
+
+    ParticleLoadResult result = ParticleSystemLoader::buildFromDef(def);
+    if (result.baseID == NO_ID)
+    {
+        spdlog::error("[ParticleManager] precacheFromDef failed for '{}'", name);
+        return;
+    }
+    m_effects[name] = { result.baseID, result.updateRate };
+    spdlog::info("[ParticleManager] precacheFromDef registered '{}'", name);
 }
 
 bool ParticleManager::precache(const std::string& name, const std::string& path)
@@ -78,41 +99,39 @@ uint32_t ParticleManager::spawn(const std::string& name, const Vector3D& pos, bo
     inst.handle     = handle;
     inst.loop       = loop;
     inst.effectName = name;
-    m_instances.push_back(inst);
+    m_instances[handle] = inst;
     return handle;
 }
 
 void ParticleManager::destroy(uint32_t handle)
 {
-    for (auto it = m_instances.begin(); it != m_instances.end(); ++it)
+    auto it = m_instances.find(handle);
+    if (it != m_instances.end())
     {
-        if (it->handle == handle)
-        {
-            SPK_Destroy(it->system);
-            m_instances.erase(it);
-            return;
-        }
+        SPK_Destroy(it->second.system);
+        m_instances.erase(it);
     }
 }
 
 void ParticleManager::update(float dt)
 {
-    auto it = m_instances.begin();
-    while (it != m_instances.end())
+    const float dtS = dt * 0.001f;  // dt is in ms; SPARK lifetimes are in seconds
+    for (auto it = m_instances.begin(); it != m_instances.end(); )
     {
-        if (!it->system->update(dt / it->updateRate))
+        auto& inst = it->second;
+        if (!inst.system->update(dtS * inst.updateRate))
         {
-            if (it->loop)
+            if (inst.loop)
             {
                 // SPARK has no reset API — destroy and re-copy from the base template
-                std::string effName = it->effectName;
+                std::string effName = inst.effectName;
 
                 irr::core::vector3df pos(0.0f, 0.0f, 0.0f);
-                IRRSystem* dying = static_cast<IRRSystem*>(it->system);
+                IRRSystem* dying = static_cast<IRRSystem*>(inst.system);
                 if (dying) pos = dying->getAbsolutePosition();
 
-                SPK_Destroy(it->system);
-                it->system = nullptr;
+                SPK_Destroy(inst.system);
+                inst.system = nullptr;
 
                 auto effIt = m_effects.find(effName);
                 if (effIt == m_effects.end())
@@ -141,23 +160,26 @@ void ParticleManager::update(float dt)
                     fresh->updateTransform();
                 }
 
-                it->system = fresh;
+                inst.system = fresh;
+                ++it;
             }
             else
             {
-                SPK_Destroy(it->system);
+                SPK_Destroy(inst.system);
                 it = m_instances.erase(it);
-                continue;
             }
         }
-        ++it;
+        else
+        {
+            ++it;
+        }
     }
 }
 
 void ParticleManager::clear()
 {
-    for (auto& inst : m_instances)
-        SPK_Destroy(inst.system);
+    for (auto& pair : m_instances)
+        SPK_Destroy(pair.second.system);
     m_instances.clear();
 
     for (auto& pair : m_effects)
@@ -169,4 +191,24 @@ void ParticleManager::clear()
         }
     }
     m_effects.clear();
+}
+
+void ParticleManager::setPosition(uint32_t handle, const irr::core::vector3df& pos)
+{
+    if (handle == 0) return;
+    auto it = m_instances.find(handle);
+    if (it == m_instances.end()) return;
+
+    auto& inst = it->second;
+    IRRSystem* irrSystem = static_cast<IRRSystem*>(inst.system);
+    if (irrSystem)
+    {
+        irrSystem->setPosition(pos);
+        irrSystem->updateAbsolutePosition();
+    }
+    else
+    {
+        inst.system->setTransformPosition(Vector3D(pos.X, pos.Y, pos.Z));
+        inst.system->updateTransform();
+    }
 }

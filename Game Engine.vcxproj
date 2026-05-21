@@ -68,6 +68,7 @@
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_ParticleDesigner.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Toolbar.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Utilities.cpp" />
     <ClCompile Include="Source\Editor\Interface\TextEditor\TextDiff.cpp">
@@ -208,6 +209,7 @@
     <ClCompile Include="Source\Engine\World\Systems\SoundSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\TransformSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\TweenSystem.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\ParticleSystem.cpp" />
     <ClCompile Include="Source\Engine\World\WorldManager.cpp" />
     <ClCompile Include="Source\Game\DialogManager.cpp" />
     <ClCompile Include="Source\Game\EndGameState.cpp" />
@@ -381,12 +383,16 @@
     <ClInclude Include="Source\Engine\Sound\SoundEngine.h" />
     <ClInclude Include="Source\Engine\World\Components\NavAgentComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\TweenComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\ParticleComponent.h" />
     <ClInclude Include="Source\Engine\World\Systems\NavigationSystem.h" />
     <ClInclude Include="Source\Engine\World\Systems\TweenSystem.h" />
+    <ClInclude Include="Source\Engine\World\Systems\ParticleSystem.h" />
     <ClInclude Include="Source\Game\Components\DialogComponent.h" />
+    <ClInclude Include="Source\Game\Components\ParticleComponent.h" />
     <ClInclude Include="Source\Game\Components\WaterComponent.h" />
     <ClInclude Include="Source\Game\DialogManager.h" />
     <ClInclude Include="Source\Game\NPC\NPCSystem.h" />
+    <ClInclude Include="Source\Game\ParticleSystem.h" />
     <ClInclude Include="Source\Game\Player\CameraFX.h" />
     <ClInclude Include="Source\Game\Player\FreeCameraController.h" />
     <ClInclude Include="Source\Game\Player\WeaponController.h" />

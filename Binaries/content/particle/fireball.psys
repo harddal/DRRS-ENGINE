@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+	<ParticleSystem>
+		<updateRate>1</updateRate>
+		<groups size="dynamic">
+			<value0>
+				<name>fire</name>
+				<capacity>40</capacity>
+				<gravityX>0</gravityX>
+				<gravityY>-1</gravityY>
+				<gravityZ>0</gravityZ>
+				<friction>0.05000000074505806</friction>
+				<model>
+					<lifetimeMin>2</lifetimeMin>
+					<lifetimeMax>5</lifetimeMax>
+					<enabledFlags size="dynamic">
+						<value0>RED</value0>
+						<value1>GREEN</value1>
+						<value2>BLUE</value2>
+						<value3>ALPHA</value3>
+						<value4>ANGLE</value4>
+						<value5>TEXTURE_INDEX</value5>
+						<value6>SIZE</value6>
+					</enabledFlags>
+					<mutableFlags size="dynamic">
+						<value0>RED</value0>
+						<value1>GREEN</value1>
+						<value2>BLUE</value2>
+					</mutableFlags>
+					<randomFlags size="dynamic">
+						<value0>ANGLE</value0>
+						<value1>TEXTURE_INDEX</value1>
+					</randomFlags>
+					<interpolatedFlags size="dynamic">
+						<value0>ALPHA</value0>
+					</interpolatedFlags>
+					<params size="dynamic">
+						<value0>
+							<name>RED</name>
+							<values size="dynamic">
+								<value0>0.50199997425079346</value0>
+								<value1>0</value1>
+							</values>
+						</value0>
+						<value1>
+							<name>GREEN</name>
+							<values size="dynamic">
+								<value0>0.125</value0>
+								<value1>0</value1>
+							</values>
+						</value1>
+						<value2>
+							<name>BLUE</name>
+							<values size="dynamic">
+								<value0>0.50199997425079346</value0>
+								<value1>0</value1>
+							</values>
+						</value2>
+						<value3>
+							<name>ANGLE</name>
+							<values size="dynamic">
+								<value0>0</value0>
+								<value1>6.2831854820251465</value1>
+							</values>
+						</value3>
+						<value4>
+							<name>TEXTURE_INDEX</name>
+							<values size="dynamic">
+								<value0>0</value0>
+								<value1>4</value1>
+							</values>
+						</value4>
+						<value5>
+							<name>ALPHA</name>
+							<values size="dynamic">
+								<value0>0</value0>
+							</values>
+						</value5>
+						<value6>
+							<name>SIZE</name>
+							<values size="dynamic">
+								<value0>0</value0>
+							</values>
+						</value6>
+					</params>
+					<interpolators size="dynamic">
+						<value0>
+							<param>ALPHA</param>
+							<entries size="dynamic">
+								<value0>
+									<lifeRatio>0</lifeRatio>
+									<min>0.89999997615814209</min>
+									<max>0.89999997615814209</max>
+								</value0>
+								<value1>
+									<lifeRatio>0.5</lifeRatio>
+									<min>0.69999998807907104</min>
+									<max>0.69999998807907104</max>
+								</value1>
+								<value2>
+									<lifeRatio>1</lifeRatio>
+									<min>0</min>
+									<max>0</max>
+								</value2>
+							</entries>
+						</value0>
+					</interpolators>
+				</model>
+				<renderer>
+					<texturePath>content/texture/particle/explosion.png</texturePath>
+					<blending>add</blending>
+					<orientation>camera_plane</orientation>
+					<atlasW>2</atlasW>
+					<atlasH>2</atlasH>
+					<scaleX>1</scaleX>
+					<scaleY>1</scaleY>
+					<depthWrite>false</depthWrite>
+					<alphaTest>false</alphaTest>
+					<alphaTestThreshold>0</alphaTestThreshold>
+					<lookX>0</lookX>
+					<lookY>0</lookY>
+					<lookZ>-1</lookZ>
+					<upX>0</upX>
+					<upY>1</upY>
+					<upZ>0</upZ>
+				</renderer>
+				<emitters size="dynamic">
+					<value0>
+						<type>spheric</type>
+						<zone>
+							<type>point</type>
+							<cx>0</cx>
+							<cy>-1</cy>
+							<cz>0</cz>
+							<radius>0</radius>
+							<hx>0</hx>
+							<hy>0</hy>
+							<hz>0</hz>
+						</zone>
+						<fullZone>true</fullZone>
+						<tank>-1</tank>
+						<flow>2</flow>
+						<forceMin>1.2000000476837158</forceMin>
+						<forceMax>2</forceMax>
+						<dirX>0</dirX>
+						<dirY>1</dirY>
+						<dirZ>0</dirZ>
+						<angleMin>0</angleMin>
+						<angleMax>0.78539818525314331</angleMax>
+					</value0>
+				</emitters>
+				<useRotator>true</useRotator>
+			</value0>
+			<value1>
+				<name>sparks</name>
+				<capacity>400</capacity>
+				<gravityX>0</gravityX>
+				<gravityY>0</gravityY>
+				<gravityZ>0</gravityZ>
+				<friction>0</friction>
+				<model>
+					<lifetimeMin>0.5</lifetimeMin>
+					<lifetimeMax>1</lifetimeMax>
+					<enabledFlags size="dynamic">
+						<value0>RED</value0>
+						<value1>GREEN</value1>
+						<value2>BLUE</value2>
+						<value3>SIZE</value3>
+						<value4>ANGLE</value4>
+						<value5>TEXTURE_INDEX</value5>
+						<value6>ROTATION_SPEED</value6>
+					</enabledFlags>
+					<mutableFlags size="dynamic">
+						<value0>RED</value0>
+						<value1>GREEN</value1>
+						<value2>BLUE</value2>
+					</mutableFlags>
+					<randomFlags size="dynamic">
+						<value0>ANGLE</value0>
+						<value1>TEXTURE_INDEX</value1>
+						<value2>ROTATION_SPEED</value2>
+					</randomFlags>
+					<interpolatedFlags size="dynamic"/>
+					<params size="dynamic">
+						<value0>
+							<name>RED</name>
+							<values size="dynamic">
+								<value0>0.50199997425079346</value0>
+								<value1>0</value1>
+							</values>
+						</value0>
+						<value1>
+							<name>GREEN</name>
+							<values size="dynamic">
+								<value0>0.125</value0>
+								<value1>0</value1>
+							</values>
+						</value1>
+						<value2>
+							<name>BLUE</name>
+							<values size="dynamic">
+								<value0>0.50199997425079346</value0>
+								<value1>0</value1>
+							</values>
+						</value2>
+						<value3>
+							<name>SIZE</name>
+							<values size="dynamic">
+								<value0>0.039999999105930328</value0>
+								<value1>0.11999999731779099</value1>
+							</values>
+						</value3>
+						<value4>
+							<name>ANGLE</name>
+							<values size="dynamic">
+								<value0>0</value0>
+								<value1>6.2831854820251465</value1>
+							</values>
+						</value4>
+						<value5>
+							<name>TEXTURE_INDEX</name>
+							<values size="dynamic">
+								<value0>0</value0>
+								<value1>4</value1>
+							</values>
+						</value5>
+						<value6>
+							<name>ROTATION_SPEED</name>
+							<values size="dynamic">
+								<value0>-0.10000000149011612</value0>
+								<value1>1</value1>
+							</values>
+						</value6>
+					</params>
+					<interpolators size="dynamic"/>
+				</model>
+				<renderer>
+					<texturePath>content/texture/particle/explosion.png</texturePath>
+					<blending>add</blending>
+					<orientation>camera_plane</orientation>
+					<atlasW>2</atlasW>
+					<atlasH>2</atlasH>
+					<scaleX>1</scaleX>
+					<scaleY>1</scaleY>
+					<depthWrite>false</depthWrite>
+					<alphaTest>false</alphaTest>
+					<alphaTestThreshold>0</alphaTestThreshold>
+					<lookX>0</lookX>
+					<lookY>0</lookY>
+					<lookZ>-1</lookZ>
+					<upX>0</upX>
+					<upY>1</upY>
+					<upZ>0</upZ>
+				</renderer>
+				<emitters size="dynamic">
+					<value0>
+						<type>random</type>
+						<zone>
+							<type>point</type>
+							<cx>0</cx>
+							<cy>0</cy>
+							<cz>0</cz>
+							<radius>0</radius>
+							<hx>0</hx>
+							<hy>0</hy>
+							<hz>0</hz>
+						</zone>
+						<fullZone>true</fullZone>
+						<tank>-1</tank>
+						<flow>50</flow>
+						<forceMin>0.20000000298023224</forceMin>
+						<forceMax>0.5</forceMax>
+						<dirX>0</dirX>
+						<dirY>1</dirY>
+						<dirZ>0</dirZ>
+						<angleMin>0</angleMin>
+						<angleMax>0</angleMax>
+					</value0>
+				</emitters>
+				<useRotator>true</useRotator>
+			</value1>
+		</groups>
+	</ParticleSystem>
+</cereal>
+

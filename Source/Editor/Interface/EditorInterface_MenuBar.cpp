@@ -456,6 +456,9 @@ void EditorInterface::draw_menubar_main()
 				m_windowData.draw_window_script_editor = true;
 			}
 
+			if (ImGui::MenuItem("Particle Designer", ""))
+				m_windowData.draw_window_particle_designer = true;
+
 			if (ImGui::MenuItem("Export Script Functions"))
 			{
 				std::ofstream file(Utility::SaveFileDialog("Text Files\0*.txt\0Any File\0*.*\0"));

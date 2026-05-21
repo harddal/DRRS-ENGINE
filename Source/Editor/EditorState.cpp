@@ -47,13 +47,10 @@ void EditorState::updateUI(float dt)
 
 void EditorState::destroy()
 {
-    WorldManager::Get()->killAllEntities();
-	WorldManager::Get()->clearCVars();
-	
 	m_camera.destroy();
 	g_sceneInteractor.destroy();
 	
-	PhysicsManager::Get()->destroyScene();
+	Engine::Get()->clearScene();
 }
 
 void EditorState::pause()
@@ -67,10 +64,7 @@ void EditorState::pause()
 	scenedesc.name = g_currentScene;
 	WorldManager::Get()->exportScene(_asset_zip_scn(std::string("editor/") + g_currentScene));
 
-	WorldManager::Get()->killAllEntities();
-	WorldManager::Get()->clearCVars();
-	
-	PhysicsManager::Get()->destroyScene();
+	Engine::Get()->clearScene();
 }
 
 void EditorState::resume()
