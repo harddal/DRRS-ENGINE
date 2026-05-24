@@ -111,13 +111,28 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 
 	//RenderManager::Get()->driver()->addOcclusionQuery(meshComponent.node, meshComponent.trimesh);
 	
-    if (!meshComponent.textures.empty()) 
+    if (!meshComponent.textures.empty())
 	{
 		auto iter = 0U;
 		for (auto t : meshComponent.textures)
 		{
 			meshComponent.node->setMaterialTexture(iter++, RenderManager::Get()->driver()->getTexture(t.c_str()));
 		}
+    }
+
+    // PBR texture maps — fixed slots, independent of the textures[] vector.
+    {
+        auto* drv = RenderManager::Get()->driver();
+        auto loadPBR = [&](const std::string& path, int slot)
+        {
+            if (path.empty()) return;
+            if (auto* t = drv->getTexture(path.c_str()))
+                meshComponent.node->setMaterialTexture(slot, t);
+        };
+        loadPBR(meshComponent.texNormal,    SLOT_NORMAL);
+        loadPBR(meshComponent.texRoughness, SLOT_ROUGHNESS);
+        loadPBR(meshComponent.texMetallic,  SLOT_METALLIC);
+        loadPBR(meshComponent.texEmission,  SLOT_EMISSION);
     }
 
     meshComponent.node->setID(entity.getComponent<DescriptorComponent>().id);

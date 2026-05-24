@@ -180,19 +180,39 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
 
     services->setVertexShaderConstant("fCameraPos", reinterpret_cast<f32*>(&pos), 3);
 
-    auto textureLayerID = 0;
+    int textureLayerID = SLOT_DIFFUSE;
     services->setPixelShaderConstant("tDiffuse", &textureLayerID, 1);
 
     // Lightmap texture lives in material slot 1 (set by LightmapBaker::bakeScene).
     // Bind sampler and inform the shader whether a baked lightmap is present.
-    int  lightmapLayerID = 1;
-    float hasLightmap = (m_currentMaterial.TextureLayer[1].Texture != nullptr) ? 1.0f : 0.0f;
+    int  lightmapLayerID = SLOT_LIGHT;
+    float hasLightmap = (m_currentMaterial.TextureLayer[SLOT_LIGHT].Texture != nullptr) ? 1.0f : 0.0f;
     services->setPixelShaderConstant("tLightmap",    &lightmapLayerID, 1);
     services->setPixelShaderConstant("uHasLightmap", &hasLightmap,     1);
 
+    // PBR texture maps — slots 4-7 (user-set via node->setMaterialTexture).
+    {
+        int normalSlot    = SLOT_NORMAL;
+        int roughnessSlot = SLOT_ROUGHNESS;
+        int metallicSlot  = SLOT_METALLIC;
+        int emissionSlot  = SLOT_EMISSION;
+        float hasNormal    = (m_currentMaterial.TextureLayer[SLOT_NORMAL].Texture    != nullptr) ? 1.0f : 0.0f;
+        float hasRoughness = (m_currentMaterial.TextureLayer[SLOT_ROUGHNESS].Texture != nullptr) ? 1.0f : 0.0f;
+        float hasMetallic  = (m_currentMaterial.TextureLayer[SLOT_METALLIC].Texture  != nullptr) ? 1.0f : 0.0f;
+        float hasEmission  = (m_currentMaterial.TextureLayer[SLOT_EMISSION].Texture  != nullptr) ? 1.0f : 0.0f;
+        services->setPixelShaderConstant("tNormalMap",       &normalSlot,    1);
+        services->setPixelShaderConstant("uHasNormalMap",    &hasNormal,     1);
+        services->setPixelShaderConstant("tRoughnessMap",    &roughnessSlot, 1);
+        services->setPixelShaderConstant("uHasRoughnessMap", &hasRoughness,  1);
+        services->setPixelShaderConstant("tMetallicMap",     &metallicSlot,  1);
+        services->setPixelShaderConstant("uHasMetallicMap",  &hasMetallic,   1);
+        services->setPixelShaderConstant("tEmissionMap",     &emissionSlot,  1);
+        services->setPixelShaderConstant("uHasEmissionMap",  &hasEmission,   1);
+    }
+
     // Shadow map — slot 3.  Bind the RTT and inform the shader whether it is active.
     {
-        int shadowSlot = 3;
+        int shadowSlot = SLOT_SHADOW;
         services->setPixelShaderConstant("tShadowMap", &shadowSlot, 1);
 
         auto* rmShadow = RenderManager::Get();
@@ -207,7 +227,7 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
         if (hasShadow > 0.5f)
         {
             irr::video::SMaterial mat = m_currentMaterial;
-            mat.TextureLayer[3].Texture = rmShadow->getShadowMapRTT();
+            mat.TextureLayer[SLOT_SHADOW].Texture = rmShadow->getShadowMapRTT();
             driver->setMaterial(mat);
         }
     }
@@ -291,7 +311,7 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
 
     // --- Environment map ---
     // Bind the equirectangular env map to slot 2 and tell the shader whether it's present.
-    int   envMapSlot = 2;
+    int   envMapSlot = SLOT_ENV;
     float hasEnvMap  = (m_envMap != nullptr) ? 1.0f : 0.0f;
     services->setPixelShaderConstant("tEnvMap",    &envMapSlot, 1);
     services->setPixelShaderConstant("uHasEnvMap", &hasEnvMap,  1);
@@ -303,7 +323,7 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
         // We copy the current material so nothing else changes; the next node's draw call
         // will replace it with its own material as normal.
         irr::video::SMaterial mat = m_currentMaterial;
-        mat.TextureLayer[2].Texture = m_envMap;
+        mat.TextureLayer[SLOT_ENV].Texture = m_envMap;
         driver->setMaterial(mat);
     }
 

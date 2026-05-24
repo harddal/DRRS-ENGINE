@@ -869,6 +869,47 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			}
 
 			ImGui::Spacing();
+			ImGui::Separator();
+			ImGui::Text("PBR Maps");
+
+			{
+				auto pbrRow = [&](const char* label, const char* id, std::string& path, int slot)
+				{
+					char pbr_buf[256] = {};
+					auto n = path.size() < 255 ? path.size() : 255u;
+					memcpy(pbr_buf, path.c_str(), n);
+
+					ImGui::Text("%-9s", label);
+					ImGui::SameLine();
+					ImGui::PushID(id);
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 36);
+					if (ImGui::InputText("##path", pbr_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+					{
+						path = pbr_buf;
+						if (mesh.node && !path.empty())
+							mesh.node->setMaterialTexture(slot, RenderManager::Get()->driver()->getTexture(path.c_str()));
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("..."))
+					{
+						std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
+						if (!chosen.empty())
+						{
+							path = chosen;
+							if (mesh.node)
+								mesh.node->setMaterialTexture(slot, RenderManager::Get()->driver()->getTexture(path.c_str()));
+						}
+					}
+					ImGui::PopID();
+				};
+
+				pbrRow("Normal",    "pbr_n", mesh.texNormal,    SLOT_NORMAL);
+				pbrRow("Roughness", "pbr_r", mesh.texRoughness, SLOT_ROUGHNESS);
+				pbrRow("Metallic",  "pbr_m", mesh.texMetallic,  SLOT_METALLIC);
+				pbrRow("Emission",  "pbr_e", mesh.texEmission,  SLOT_EMISSION);
+			}
+
+			ImGui::Separator();
 
 			{
 				const auto& allShaders = ShaderMaterialManager::getAll();

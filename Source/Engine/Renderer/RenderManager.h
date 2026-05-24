@@ -17,6 +17,19 @@
 
 #define DPI_SCALED_IMVEC2(x, y) ImVec2(x * RenderManager::Get()->getConfiguration().dpi_scale, y * RenderManager::Get()->getConfiguration().dpi_scale)
 
+enum PBR_TEXTURE_SLOTS
+{
+	SLOT_DIFFUSE,
+	SLOT_LIGHT,
+	SLOT_ENV,
+	SLOT_SHADOW,
+	SLOT_NORMAL,
+	SLOT_ROUGHNESS,
+	SLOT_METALLIC,
+	SLOT_EMISSION,
+	SLOT_COUNT
+};
+
 struct RenderConfiguration
 {
     bool

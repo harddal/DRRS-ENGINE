@@ -65,6 +65,16 @@ uniform vec3 uCamRight;    // world-space direction for view-space X+
 uniform vec3 uCamUp;       // world-space direction for view-space Y+
 uniform vec3 uCamForward;  // world-space direction camera is pointing (into screen)
 
+// PBR texture maps — slots 4-7 (each optional; uHas* gates the sample)
+uniform sampler2D tNormalMap;
+uniform float     uHasNormalMap;
+uniform sampler2D tRoughnessMap;
+uniform float     uHasRoughnessMap;
+uniform sampler2D tMetallicMap;
+uniform float     uHasMetallicMap;
+uniform sampler2D tEmissionMap;
+uniform float     uHasEmissionMap;
+
 // ---------------------------------------------------------------------------
 // GGX / Cook-Torrance helpers
 // ---------------------------------------------------------------------------
@@ -106,10 +116,32 @@ void main()
     vec3 N = normalize(vViewNormal);
     vec3 V = normalize(-vViewPos);
 
+    // Normal map — derivative-based TBN so no tangent vertex attribute is needed.
+    // Works with EVT_STANDARD and EVT_2TCOORDS (lightmapped meshes).
+    if (uHasNormalMap > 0.5)
+    {
+        vec3  dp1 = dFdx(vViewPos);
+        vec3  dp2 = dFdy(vViewPos);
+        vec2 duv1 = dFdx(animUV);
+        vec2 duv2 = dFdy(animUV);
+        float det = duv1.x * duv2.y - duv1.y * duv2.x;
+        if (abs(det) > 1e-6)
+        {
+            float inv = 1.0 / det;
+            vec3 T = normalize((dp1 * duv2.y - dp2 * duv1.y) * inv);
+            vec3 B = normalize((dp2 * duv1.x - dp1 * duv2.x) * inv);
+            N = normalize(mat3(T, B, N) * (texture2D(tNormalMap, animUV).rgb * 2.0 - 1.0));
+        }
+    }
+
     float NdotV = max(dot(N, V), 0.0001);
 
+    // Per-pixel roughness/metallic — fall back to material uniforms when no map is bound.
+    float roughness = (uHasRoughnessMap > 0.5) ? texture2D(tRoughnessMap, animUV).r : uRoughness;
+    float metallic  = (uHasMetallicMap  > 0.5) ? texture2D(tMetallicMap,  animUV).r : uMetallic;
+
     // F0: base reflectance — dielectrics use 0.04, metals tint with albedo
-    vec3 F0 = mix(vec3(0.04), albedo, uMetallic);
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
     // Separate accumulators for shadow-casting spotlight vs. all other lights.
     // shadowFactor must only attenuate the spotlight's contribution — applying it
@@ -150,13 +182,13 @@ void main()
         vec3 thisSpecular = vec3(0.0);
 
         // --- Specular (GGX Cook-Torrance) ---
-        if (uRoughness < 0.99 && NdotL > 0.0)
+        if (roughness < 0.99 && NdotL > 0.0)
         {
             vec3  H     = normalize(L + V);
             float NdotH = max(dot(N, H), 0.0);
             float VdotH = max(dot(V, H), 0.0);
 
-            float r   = max(uRoughness, 0.025); // prevent singularity at r=0
+            float r   = max(roughness, 0.025); // prevent singularity at r=0
             float D   = D_GGX(NdotH, r);
             float G   = G_SmithSchlick(NdotV, max(NdotL, 0.0001), r);
             vec3  F   = F_Schlick(VdotH, F0);
@@ -179,7 +211,7 @@ void main()
     }
 
     // Metallic surfaces have no diffuse — suppress it proportionally
-    float diffuseFactor = 1.0 - uMetallic;
+    float diffuseFactor = 1.0 - metallic;
 
     // Baked lightmap replaces the ambient floor when present.
     // Dynamic lights still add on top, so explosions / flashlights remain visible
@@ -191,7 +223,7 @@ void main()
     // --- Environment map reflection (ambient specular) ---
     // Samples the equirectangular env map using the world-space reflection vector.
     // Only runs when an env map is bound and the surface has any glossiness.
-    if (uHasEnvMap > 0.5 && uRoughness < 0.99)
+    if (uHasEnvMap > 0.5 && roughness < 0.99)
     {
         // Reflect in view space — N and V are already view-space and correct for
         // any object transform (gl_NormalMatrix handles rotation + scale properly).
@@ -215,8 +247,11 @@ void main()
         // Fresnel at current view angle — naturally handles metallic tinting via F0
         // (metals have F0=albedo, dielectrics have F0=0.04)
         vec3  envF        = F_Schlick(NdotV, F0);
-        float roughFade   = (1.0 - uRoughness) * (1.0 - uRoughness);
-        specularAccum += envSample * envF * roughFade;
+        float roughFade   = (1.0 - roughness) * (1.0 - roughness);
+        // Gate env map by scene ambient — fully off at true black, fully on above ~#0D0D0D.
+        // Linear scale was too aggressive (12% at #1E1E1E); smoothstep gives a clean on/off.
+        float ambientLum = dot(uAmbientColor, vec3(0.2126, 0.7152, 0.0722));
+        specularAccum += envSample * envF * roughFade * smoothstep(0.0, 0.05, ambientLum);
     }
 
     // 3x3 PCF shadow — only applied to direct diffuse, not ambient/baked floor.
@@ -265,6 +300,10 @@ void main()
     // When uFresnelStrength == 0 (default) this adds vec3(0) and costs nothing.
     float fresnel = pow(clamp(1.0 - NdotV, 0.0, 1.0), max(uFresnelPower, 0.001));
     color += vec3(fresnel * uFresnelStrength);
+
+    // Emission — adds self-illumination after all lighting, before fog.
+    if (uHasEmissionMap > 0.5)
+        color += pow(texture2D(tEmissionMap, animUV).rgb, vec3(2.2));
 
     float fogDist   = length(vViewPos) - uFogStart;
     float fogFactor = 1.0 - exp(-uFogDensity * max(fogDist, 0.0));

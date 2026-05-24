@@ -69,6 +69,13 @@ struct MeshComponent : anax::Component
 
 	std::vector<std::string> textures;
 
+    // PBR texture maps — bound to their fixed slots at load time.
+    // Leave empty to fall back to uniform-based roughness/metallic (fully backward compatible).
+    std::string texNormal;
+    std::string texRoughness;
+    std::string texMetallic;
+    std::string texEmission;
+
     irr::scene::IAnimatedMesh* trimesh;
 	irr::scene::IAnimatedMeshSceneNode* node;
 
@@ -101,6 +108,9 @@ struct MeshComponent : anax::Component
                       cereal::make_nvp("mtp5", materialTypeParams[5]),
                       cereal::make_nvp("mtp6", materialTypeParams[6]),
                       cereal::make_nvp("mtp7", materialTypeParams[7])); }
+        catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(texNormal), CEREAL_NVP(texRoughness),
+                      CEREAL_NVP(texMetallic), CEREAL_NVP(texEmission)); }
         catch (cereal::Exception&) {}
 	}
 
