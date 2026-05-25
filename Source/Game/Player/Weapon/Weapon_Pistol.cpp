@@ -4,8 +4,6 @@
 
 #undef MB_RIGHT
 
-#include "Weapon_PulseRifle.h"
-
 #include "Engine/Engine.h"
 #include "Utility/Utility.h"
 

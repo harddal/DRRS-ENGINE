@@ -868,7 +868,11 @@ void PlayerController::update(float dt)
 
 	// CRITICAL: Update weapon AFTER all camera/CCT updates complete
 	// This ensures effects spawn with current frame's camera/player position
-	m_weaponController.update();
+
+	if (!m_isDead)
+	{
+		m_weaponController.update();
+	}
 
 	if (damage.didReceiveDamage() && !m_isDead)
 	{

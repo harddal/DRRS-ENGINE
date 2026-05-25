@@ -1,4 +1,4 @@
-#include "Weapon_PulseRifle.h"
+#include "Weapon_MiningLaser.h"
 
 #include "Engine/Engine.h"
 #include "Utility/Utility.h"
@@ -35,14 +35,14 @@ public:
 	}
 };
 
-void Weapon_PulseRifle::precache()
+void Weapon_MiningLaser::precache()
 {
 	ParticleManager::Get()->precache("laser_impact", _asset_psys("laser_impact"));
 }
 
-void Weapon_PulseRifle::init()
+void Weapon_MiningLaser::init()
 {
-	m_descriptor.name = "Player_Weapon_PulseRifle";
+	m_descriptor.name = "Player_Weapon_MiningLaser";
 	m_descriptor.id = _entity_null_value;
 
 	m_viewPositionOffset = irr::core::vector3df(0.25f, -0.1f, 0.3f);
@@ -129,7 +129,7 @@ void Weapon_PulseRifle::init()
 
 	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
 	if (!m_muzzleNode)
-		spdlog::warn("Weapon_PulseRifle: 'FIRESPOT' joint not found");
+		spdlog::warn("Weapon_MiningLaser: 'FIRESPOT' joint not found");
 
 	m_muzzleFlashMaterialType = ShaderMaterialManager::get("additive_color");
 
@@ -159,7 +159,7 @@ void Weapon_PulseRifle::init()
 	}
 }
 
-void Weapon_PulseRifle::destroy()
+void Weapon_MiningLaser::destroy()
 {
 	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
 
@@ -176,7 +176,7 @@ void Weapon_PulseRifle::destroy()
 	WorldManager::Get()->freeEntityID(m_descriptor.id);
 }
 
-void Weapon_PulseRifle::update()
+void Weapon_MiningLaser::update()
 {
 	if (!m_mesh.node || !m_mesh.node->isVisible())
 		return;
@@ -232,7 +232,7 @@ void Weapon_PulseRifle::update()
 	}
 }
 
-void Weapon_PulseRifle::persist()
+void Weapon_MiningLaser::persist()
 {
 	float dt = Engine::Get()->getDeltaTime();
 	float currentTime = Engine::Get()->getCurrentTime();
@@ -276,7 +276,7 @@ void Weapon_PulseRifle::persist()
 	}
 }
 
-void Weapon_PulseRifle::equip()
+void Weapon_MiningLaser::equip()
 {
 	m_mesh.node->setVisible(true);
 	m_mesh.animation_call_back->hasAnimationEnded();
@@ -288,7 +288,7 @@ void Weapon_PulseRifle::equip()
 	m_isReloadingAnim = false;
 }
 
-void Weapon_PulseRifle::unequip()
+void Weapon_MiningLaser::unequip()
 {
 	m_isEquipping = false;
 	m_isUnequipping = false;
@@ -298,7 +298,7 @@ void Weapon_PulseRifle::unequip()
 	m_mesh.node->setVisible(false);
 }
 
-void Weapon_PulseRifle::startUnequip()
+void Weapon_MiningLaser::startUnequip()
 {
 	m_isUnequipping = true;
 	m_isEquipping = false;
@@ -310,17 +310,17 @@ void Weapon_PulseRifle::startUnequip()
 	m_mesh.node->setFrameLoop(179, 190);
 }
 
-void Weapon_PulseRifle::idle()
+void Weapon_MiningLaser::idle()
 {
 
 }
 
-void Weapon_PulseRifle::move()
+void Weapon_MiningLaser::move()
 {
 
 }
 
-void Weapon_PulseRifle::fire()
+void Weapon_MiningLaser::fire()
 {
 	// Raycast-based instant hit
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
@@ -331,7 +331,7 @@ void Weapon_PulseRifle::fire()
 
 	if (!m_mesh.node || !m_muzzleNode)
 	{
-		if (!m_muzzleNode) spdlog::warn("Weapon_PulseRifle: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_MiningLaser: muzzle node not found - cannot fire");
 		return;
 	}
 
@@ -387,7 +387,7 @@ void Weapon_PulseRifle::fire()
 	createMuzzleFlash();
 }
 
-void Weapon_PulseRifle::reload()
+void Weapon_MiningLaser::reload()
 {
 	if (!m_isReloadingAnim)
 	{
@@ -399,7 +399,7 @@ void Weapon_PulseRifle::reload()
 }
 
 
-void Weapon_PulseRifle::createMuzzleFlash()
+void Weapon_MiningLaser::createMuzzleFlash()
 {
 	if (!m_mesh.node)
 		return;
@@ -463,7 +463,7 @@ void Weapon_PulseRifle::createMuzzleFlash()
 	m_muzzleFlashTime = 0.0f;
 }
 
-void Weapon_PulseRifle::updateMuzzleFlash(float dt)
+void Weapon_MiningLaser::updateMuzzleFlash(float dt)
 {
 	if (!m_muzzleStarNode)
 		return;
@@ -491,7 +491,7 @@ void Weapon_PulseRifle::updateMuzzleFlash(float dt)
 	}
 }
 
-void Weapon_PulseRifle::createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
+void Weapon_MiningLaser::createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
 {
 	if (!m_laserNode)
 		return;
@@ -523,7 +523,7 @@ void Weapon_PulseRifle::createLaserBeam(const irr::core::vector3df& start, const
 	m_laserNode->setVisible(true);
 }
 
-void Weapon_PulseRifle::updateLaserBeam(float dt)
+void Weapon_MiningLaser::updateLaserBeam(float dt)
 {
 	if (!m_laserNode || !m_laserNode->isVisible())
 		return;

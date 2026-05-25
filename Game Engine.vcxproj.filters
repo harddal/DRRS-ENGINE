@@ -249,9 +249,6 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Minigun.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Rifle.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -528,9 +525,6 @@
     <ClCompile Include="Source\Engine\Prop\PropManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Game\Player\Weapon\Weapon_PulseRifle.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Editor\VegetationPainter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -616,6 +610,21 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Sound\GeigerEffect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_BioRifle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_BoltDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_MiningLaser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -953,9 +962,6 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Minigun.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Rifle.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1262,9 +1268,6 @@
     <ClInclude Include="Source\Engine\Prop\PropManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Game\Player\Weapon\Weapon_PulseRifle.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Editor\VegetationPainter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1341,6 +1344,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Sound\GeigerEffect.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_BioRifle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_BoltDriver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_MiningLaser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

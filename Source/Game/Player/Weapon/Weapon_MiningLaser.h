@@ -9,7 +9,7 @@
 #include "Engine/Engine.h"
 #include "Engine/Renderer/RenderManager.h"
 
-class Weapon_PulseRifle : public PlayerWeapon
+class Weapon_MiningLaser : public PlayerWeapon
 {
 public:
 	void precache();

@@ -31,10 +31,13 @@ void WeaponController::init()
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Melee>(m_weapon_melee));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Pistol>(m_weapon_pistol));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Shotgun>(m_weapon_shotgun));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_PulseRifle>(m_weapon_pulserifle));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_Rifle>(m_weapon_rifle));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_MiningLaser>(m_weapon_mininglaser));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_BoltDriver>(m_weapon_boltdriver));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Minigun>(m_weapon_minigun));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_RocketLauncher>(m_weapon_rocketlauncher));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_BioRifle>(m_weapon_biorifle));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_GrenadeLauncher>(m_weapon_grenadelauncher));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_FuelRodCannon>(m_weapon_fuelrodcannon));
 }
 
 void WeaponController::update()

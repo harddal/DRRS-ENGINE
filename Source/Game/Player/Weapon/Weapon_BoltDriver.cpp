@@ -1,4 +1,4 @@
-#include "Weapon_Rifle.h"
+#include "Weapon_BoltDriver.h"
 
 #include "Engine/Engine.h"
 #include "Utility/Utility.h"
@@ -10,15 +10,15 @@
 using namespace SPK;
 using namespace SPK::IRR;
 
-void Weapon_Rifle::precache()
+void Weapon_BoltDriver::precache()
 {
 	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/rifle/fire.wav", true);
 }
 
-void Weapon_Rifle::init()
+void Weapon_BoltDriver::init()
 {
-	m_descriptor.name = "Player_Weapon_Rifle";
+	m_descriptor.name = "Player_Weapon_BoltDriver";
 	m_descriptor.id = _entity_null_value;
 
 	m_viewPositionOffset = irr::core::vector3df(0.25f, 0.0f, 0.4f);
@@ -105,7 +105,7 @@ void Weapon_Rifle::init()
 
 	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
 	if (!m_muzzleNode)
-		spdlog::warn("Weapon_Rifle: 'FIRESPOT' joint not found");
+		spdlog::warn("Weapon_BoltDriver: 'FIRESPOT' joint not found");
 
 	m_muzzleFlashMaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
 
@@ -132,7 +132,7 @@ void Weapon_Rifle::init()
 
 }
 
-void Weapon_Rifle::destroy()
+void Weapon_BoltDriver::destroy()
 {
 	// Clean up shell casing pool
 	for (int i = 0; i < SHELL_POOL_SIZE; i++)
@@ -160,7 +160,7 @@ void Weapon_Rifle::destroy()
 	WorldManager::Get()->freeEntityID(m_descriptor.id);
 }
 
-void Weapon_Rifle::update()
+void Weapon_BoltDriver::update()
 {
 	if (!m_mesh.node || !m_mesh.node->isVisible())
 		return;
@@ -217,7 +217,7 @@ void Weapon_Rifle::update()
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
-void Weapon_Rifle::persist()
+void Weapon_BoltDriver::persist()
 {
 	float dt = Engine::Get()->getDeltaTime();
 
@@ -232,7 +232,7 @@ void Weapon_Rifle::persist()
 
 }
 
-void Weapon_Rifle::equip()
+void Weapon_BoltDriver::equip()
 {
 	m_mesh.node->setVisible(true);
 	m_mesh.animation_call_back->hasAnimationEnded();
@@ -244,7 +244,7 @@ void Weapon_Rifle::equip()
 	m_isReloadingAnim = false;
 }
 
-void Weapon_Rifle::unequip()
+void Weapon_BoltDriver::unequip()
 {
 	m_isEquipping = false;
 	m_isUnequipping = false;
@@ -253,7 +253,7 @@ void Weapon_Rifle::unequip()
 	m_mesh.node->setVisible(false);
 }
 
-void Weapon_Rifle::startUnequip()
+void Weapon_BoltDriver::startUnequip()
 {
 	m_isUnequipping = true;
 	m_isEquipping = false;
@@ -264,17 +264,17 @@ void Weapon_Rifle::startUnequip()
 	m_mesh.node->setFrameLoop(179, 190);
 }
 
-void Weapon_Rifle::idle()
+void Weapon_BoltDriver::idle()
 {
 
 }
 
-void Weapon_Rifle::move()
+void Weapon_BoltDriver::move()
 {
 
 }
 
-void Weapon_Rifle::fire()
+void Weapon_BoltDriver::fire()
 {
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(81, 89);
@@ -288,7 +288,7 @@ void Weapon_Rifle::fire()
 
 	if (!m_mesh.node || !m_muzzleNode)
 	{
-		if (!m_muzzleNode) spdlog::warn("Weapon_Rifle: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_BoltDriver: muzzle node not found - cannot fire");
 		return;
 	}
 
@@ -380,7 +380,7 @@ void Weapon_Rifle::fire()
 	SoundManager::Get()->sound()->play2D("content/sound/weapon/rifle/fire.wav", false, 3, 0.6f);
 }
 
-void Weapon_Rifle::reload()
+void Weapon_BoltDriver::reload()
 {
 	if (!m_isReloadingAnim)
 	{
@@ -392,7 +392,7 @@ void Weapon_Rifle::reload()
 }
 
 
-void Weapon_Rifle::createMuzzleFlash()
+void Weapon_BoltDriver::createMuzzleFlash()
 {
 	if (!m_mesh.node)
 		return;
@@ -456,7 +456,7 @@ void Weapon_Rifle::createMuzzleFlash()
 	m_muzzleFlashTime = 0.0f;
 }
 
-void Weapon_Rifle::updateMuzzleFlash(float dt)
+void Weapon_BoltDriver::updateMuzzleFlash(float dt)
 {
 	if (!m_muzzleStarNode)
 		return;
@@ -484,7 +484,7 @@ void Weapon_Rifle::updateMuzzleFlash(float dt)
 	}
 }
 
-void Weapon_Rifle::createTracerBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
+void Weapon_BoltDriver::createTracerBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
 {
 	// Calculate beam properties
 	irr::core::vector3df direction = (end - start);
@@ -563,7 +563,7 @@ void Weapon_Rifle::createTracerBeam(const irr::core::vector3df& start, const irr
 	m_tracerBeams.push_back(tracer);
 }
 
-void Weapon_Rifle::ejectShell()
+void Weapon_BoltDriver::ejectShell()
 {
 	if (!m_mesh.node)
 		return;
@@ -644,7 +644,7 @@ void Weapon_Rifle::ejectShell()
 	shell->node->setVisible(true);
 }
 
-void Weapon_Rifle::updateTracers(float dt)
+void Weapon_BoltDriver::updateTracers(float dt)
 {
 	float currentTime = Engine::Get()->getCurrentTime();
 
@@ -679,7 +679,7 @@ void Weapon_Rifle::updateTracers(float dt)
 	}
 }
 
-void Weapon_Rifle::updateShells(float dt)
+void Weapon_BoltDriver::updateShells(float dt)
 {
 	const float dt_s = dt * 0.001f; // ms -> seconds
 	const float currentTime = static_cast<float>(Engine::Get()->getCurrentTime());
