@@ -40,6 +40,7 @@ public:
 	void stop();
 	void setPaused(bool paused);
 	void drop() { m_handle = 0; m_engine = nullptr; }
+	SoLoud::handle handle() const { return m_handle; }
 
 private:
 	SoundHandle(SoLoud::handle h, SoundEngine* engine) : m_handle(h), m_engine(engine) {}
@@ -90,6 +91,7 @@ public:
 		setListenerPosition(pos.X, pos.Y, pos.Z, look.X, look.Y, look.Z, up.X, up.Y, up.Z);
 	}
 
+	void stopHandle(SoLoud::handle h) { if (h) m_soloud.stop(h); }
 	void stopAllVoices();   // stop all playing voices without unloading sources
 	void removeAllSoundSources();
 	void drop() {}  // compatibility shim — SoundManager::~SoundManager calls drop()

@@ -23,6 +23,21 @@ static void AS_PlaySoundAtPosition(irr::core::vector3df pos, std::string file)
 	SoundManager::Get()->sound()->play3D(file.c_str(), pos);
 }
 
+static int AS_Play2D(std::string file, float volume, bool loop)
+{
+	return (int)SoundManager::Get()->sound()->play2D(file.c_str(), loop, 0, volume).handle();
+}
+
+static int AS_Play3D(irr::core::vector3df pos, std::string file, float volume, bool loop)
+{
+	return (int)SoundManager::Get()->sound()->play3D(file.c_str(), pos, loop, false, true, 0, volume).handle();
+}
+
+static void AS_StopSound(int handle)
+{
+	SoundManager::Get()->sound()->stopHandle((SoLoud::handle)handle);
+}
+
 // Per-frame Geiger strength accumulator (max across all radiation sources).
 static float s_geigerAccum = 0.0f;
 
@@ -56,6 +71,9 @@ void ScriptBindings::RegisterSound(asIScriptEngine* engine)
 	{
 		engine->RegisterGlobalFunction("void play(int entityId, string sound)", asFUNCTION(AS_PlayEntitySound), asCALL_CDECL);
 		engine->RegisterGlobalFunction("void playAt(vector3d position, string sound)", asFUNCTION(AS_PlaySoundAtPosition), asCALL_CDECL);
+		engine->RegisterGlobalFunction("int play2d(string file, float volume = 1.0f, bool loop = false)", asFUNCTION(AS_Play2D), asCALL_CDECL);
+		engine->RegisterGlobalFunction("int play3d(vector3d position, string file, float volume = 1.0f, bool loop = false)", asFUNCTION(AS_Play3D), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void stop(int handle)", asFUNCTION(AS_StopSound), asCALL_CDECL);
 
 		engine->RegisterGlobalFunction("void setGeigerEnabled(bool enabled)", asFUNCTION(AS_GeigerSetEnabled), asCALL_CDECL);
 		engine->RegisterGlobalFunction("void setGeigerStrength(float strength)", asFUNCTION(AS_GeigerSetStrength), asCALL_CDECL);

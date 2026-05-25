@@ -121,13 +121,22 @@ void RenderSystem::setMeshComponentData(Entity& entity)
     }
 
     // PBR texture maps — fixed slots, independent of the textures[] vector.
+    // Normal maps are loaded without mipmaps: the derivative-based TBN uses dFdx/dFdy
+    // to reconstruct the tangent frame, and at distance (low mip levels) those gradients
+    // become large and ill-conditioned, producing incorrect normals. No mipmaps = always
+    // full-resolution sampling = stable TBN at any distance.
     {
         auto* drv = RenderManager::Get()->driver();
         auto loadPBR = [&](const std::string& path, int slot)
         {
             if (path.empty()) return;
+            bool noMip = (slot == SLOT_NORMAL);
+            if (noMip)
+                drv->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, false);
             if (auto* t = drv->getTexture(path.c_str()))
                 meshComponent.node->setMaterialTexture(slot, t);
+            if (noMip)
+                drv->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, true);
         };
         loadPBR(meshComponent.texNormal,    SLOT_NORMAL);
         loadPBR(meshComponent.texRoughness, SLOT_ROUGHNESS);

@@ -870,7 +870,7 @@ void PlayerController::update(float dt)
 	// This ensures effects spawn with current frame's camera/player position
 	m_weaponController.update();
 
-	if (damage.didReceiveDamage())
+	if (damage.didReceiveDamage() && !m_isDead)
 	{
 		sound.play("damage" + std::to_string(rand() % 2 + 1));
 	}
@@ -929,8 +929,15 @@ void PlayerController::playFootStepSound(anax::Entity& player, int _time, int _d
         Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
             RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition() + irr::core::vector3df(0.0f, 0.0f, 0.0f), transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f))));
 
+	// Play a default sound if the material is invalid
     if (material == "invalid")
     {
+		static int step = 2;
+
+		step == 2 ? step = 1 : step = 2;
+
+		SoundManager::Get()->sound()->play2D(std::string("content/sound/player/footstep/default" + std::to_string(step) + ".wav").c_str(), false, 0, 0.2f);
+
         return;
     }
 

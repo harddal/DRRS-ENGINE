@@ -4,9 +4,12 @@
 
 #undef MB_RIGHT
 
+using namespace SPK;
+using namespace SPK::IRR;
+
 void Weapon_Melee::precache()
 {
-
+	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
 }
 
 void Weapon_Melee::init()
@@ -14,9 +17,9 @@ void Weapon_Melee::init()
 	m_descriptor.name = "Player_Weapon_Melee";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.3f, 0.0f, 0.5f);
+	m_viewPositionOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-	m_viewScaleOffset    = irr::core::vector3df(0.25f, 0.25f, 0.25f);
+	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
 	m_mesh.mesh = _asset_b3d("player/weapon/sword/HUD");
 
@@ -134,7 +137,7 @@ void Weapon_Melee::fire()
 {
 	m_mesh.node->setLoopMode(false);
 
-	bool alt = false;
+	bool didAttack = false;
 	static bool ml = false, mr = false;
 	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_LEFT, &ml))
 	{
@@ -150,13 +153,31 @@ void Weapon_Melee::fire()
 			m_mesh.node->setFrameLoop(266, 273);
 			break;
 		}
+		didAttack = true;
 	}
 	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_RIGHT, &mr))
 	{
 		m_mesh.node->setFrameLoop(296, 308);
-
-		alt = true;
+		didAttack = true;
 	}
+
+	if (!didAttack)
+		return;
+
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+	if (!player.isValid() || !player.hasComponent<CameraComponent>())
+		return;
+
+	auto& camera = player.getComponent<CameraComponent>();
+	irr::core::vector3df cameraPos = camera.camera->getAbsolutePosition();
+	irr::core::vector3df forward = (camera.camera->getTarget() - cameraPos).normalize();
+
+	irr::core::vector3df rayEnd = cameraPos + forward * 2.0f;
+
+	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(cameraPos, rayEnd, true);
+
+	if (raycastResult.hit && raycastResult.node)
+		ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
 }
 
 void Weapon_Melee::reload()
