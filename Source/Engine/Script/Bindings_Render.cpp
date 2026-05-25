@@ -255,7 +255,41 @@ static std::string as_getMaterial(irr::core::vector3df s, irr::core::vector3df e
 	return Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(RenderManager::Get()->getMeshMaterialFromRay(s, e)));
 }
 
-// POST-PROCESS
+// POST-PROCESS — per-frame accumulators for multi-source radiation/filmgrain
+static float s_filmGrainAccum = 0.0f;
+static float s_radiationAccum = 0.0f;
+
+void ScriptBindings::ResetRenderAccumulators()
+{
+    s_filmGrainAccum = 0.0f;
+    s_radiationAccum = 0.0f;
+    auto* rm = RenderManager::Get();
+    rm->filmGrainCallback()->strength  = 0.0f;
+    rm->radiationCallback()->intensity = 0.0f;
+    rm->setFilmGrainEnabled(false);
+    rm->setRadiationEnabled(false);
+}
+
+static void AS_ContributeFilmGrainStrength(float v)
+{
+#undef max
+    s_filmGrainAccum = std::max(s_filmGrainAccum, v);
+    auto* rm = RenderManager::Get();
+    rm->filmGrainCallback()->strength = s_filmGrainAccum;
+    if (s_filmGrainAccum > 0.0f)
+        rm->setFilmGrainEnabled(true);
+}
+
+static void AS_ContributeRadiationIntensity(float v)
+{
+#undef max
+    s_radiationAccum = std::max(s_radiationAccum, v);
+    auto* rm = RenderManager::Get();
+    rm->radiationCallback()->intensity = s_radiationAccum;
+    if (s_radiationAccum > 0.0f)
+        rm->setRadiationEnabled(true);
+}
+
 static void  AS_SetBloomEnabled(bool b)       { RenderManager::Get()->setBloomEnabled(b); }
 static void  AS_SetBloomThreshold(float v)    { RenderManager::Get()->bloomBrightCallback()->threshold = v; }
 static void  AS_SetBloomStrength(float v)     { RenderManager::Get()->bloomCompositeCallback()->strength = v; }
@@ -267,6 +301,10 @@ static void  AS_SetSharpenStrength(float v)   { RenderManager::Get()->sharpenCal
 static void  AS_SetAutoExposure(bool b)       { RenderManager::Get()->setAutoExposure(b); }
 static void  AS_SetPixelateEnabled(bool b)    { RenderManager::Get()->setPixelateEnabled(b); }
 static void  AS_SetPixelateSize(float v)      { RenderManager::Get()->pixelateCallback()->pixelSize = v; }
+static void  AS_SetFilmGrainEnabled(bool b)   { RenderManager::Get()->setFilmGrainEnabled(b); }
+static void  AS_SetFilmGrainStrength(float v) { RenderManager::Get()->filmGrainCallback()->strength = v; }
+static void  AS_SetRadiationEnabled(bool b)   { RenderManager::Get()->setRadiationEnabled(b); }
+static void  AS_SetRadiationIntensity(float v){ RenderManager::Get()->radiationCallback()->intensity = v; }
 
 static bool  AS_GetBloomEnabled()       { return RenderManager::Get()->getPostProcessPassEnabled("bloom_bright"); }
 static float AS_GetBloomThreshold()     { return RenderManager::Get()->bloomBrightCallback()->threshold; }
@@ -279,6 +317,10 @@ static float AS_GetSharpenStrength()    { return RenderManager::Get()->sharpenCa
 static bool  AS_GetAutoExposure()       { return RenderManager::Get()->getAutoExposure(); }
 static bool  AS_GetPixelateEnabled()    { return RenderManager::Get()->getPostProcessPassEnabled("pixelate"); }
 static float AS_GetPixelateSize()       { return RenderManager::Get()->pixelateCallback()->pixelSize; }
+static bool  AS_GetFilmGrainEnabled()   { return RenderManager::Get()->getPostProcessPassEnabled("filmgrain"); }
+static float AS_GetFilmGrainStrength()  { return RenderManager::Get()->filmGrainCallback()->strength; }
+static bool  AS_GetRadiationEnabled()   { return RenderManager::Get()->getPostProcessPassEnabled("radiation"); }
+static float AS_GetRadiationIntensity() { return RenderManager::Get()->radiationCallback()->intensity; }
 
 struct PostProcessSnapshot
 {
@@ -286,7 +328,9 @@ struct PostProcessSnapshot
     bool  tonemapEnabled;  float tonemapExposure; float tonemapWhitePoint;
     bool  sharpenEnabled;  float sharpenStrength;
     bool  autoExposure;
-    bool  pixelateEnabled; float pixelateSize;
+    bool  pixelateEnabled;  float pixelateSize;
+    bool  filmGrainEnabled; float filmGrainStrength;
+    bool  radiationEnabled; float radiationIntensity;
 };
 static PostProcessSnapshot g_postProcessDefaults;
 
@@ -298,7 +342,9 @@ static void AS_SavePostProcessDefaults()
         rm->getPostProcessPassEnabled("tonemap"),      rm->tonemapCallback()->exposure,          rm->tonemapCallback()->whitePoint,
         rm->getPostProcessPassEnabled("sharpen"),      rm->sharpenCallback()->strength,
         rm->getAutoExposure(),
-        rm->getPostProcessPassEnabled("pixelate"),     rm->pixelateCallback()->pixelSize
+        rm->getPostProcessPassEnabled("pixelate"),     rm->pixelateCallback()->pixelSize,
+        rm->getPostProcessPassEnabled("filmgrain"),    rm->filmGrainCallback()->strength,
+        rm->getPostProcessPassEnabled("radiation"),    rm->radiationCallback()->intensity
     };
 }
 
@@ -312,7 +358,9 @@ static void AS_RestorePostProcessDefaults()
                                                rm->tonemapCallback()->whitePoint       = d.tonemapWhitePoint;
     rm->setSharpenEnabled(d.sharpenEnabled);   rm->sharpenCallback()->strength         = d.sharpenStrength;
     rm->setAutoExposure(d.autoExposure);
-    rm->setPixelateEnabled(d.pixelateEnabled); rm->pixelateCallback()->pixelSize       = d.pixelateSize;
+    rm->setPixelateEnabled(d.pixelateEnabled);   rm->pixelateCallback()->pixelSize        = d.pixelateSize;
+    rm->setFilmGrainEnabled(d.filmGrainEnabled); rm->filmGrainCallback()->strength       = d.filmGrainStrength;
+    rm->setRadiationEnabled(d.radiationEnabled); rm->radiationCallback()->intensity      = d.radiationIntensity;
 }
 
 void ScriptBindings::RegisterRender(asIScriptEngine* engine)
@@ -370,8 +418,15 @@ void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("void setSharpenEnabled(bool enabled)",    asFUNCTION(AS_SetSharpenEnabled),    asCALL_CDECL);
 		engine->RegisterGlobalFunction("void setSharpenStrength(float value)",    asFUNCTION(AS_SetSharpenStrength),   asCALL_CDECL);
 		engine->RegisterGlobalFunction("void setAutoExposure(bool enabled)",      asFUNCTION(AS_SetAutoExposure),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("void setPixelateEnabled(bool enabled)",   asFUNCTION(AS_SetPixelateEnabled),   asCALL_CDECL);
-		engine->RegisterGlobalFunction("void setPixelateSize(float value)",       asFUNCTION(AS_SetPixelateSize),      asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setPixelateEnabled(bool enabled)",    asFUNCTION(AS_SetPixelateEnabled),    asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setPixelateSize(float value)",        asFUNCTION(AS_SetPixelateSize),       asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setFilmGrainEnabled(bool enabled)",    asFUNCTION(AS_SetFilmGrainEnabled),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setFilmGrainStrength(float value)",   asFUNCTION(AS_SetFilmGrainStrength),  asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setRadiationEnabled(bool enabled)",   asFUNCTION(AS_SetRadiationEnabled),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setRadiationIntensity(float value)",  asFUNCTION(AS_SetRadiationIntensity), asCALL_CDECL);
+
+		engine->RegisterGlobalFunction("void contributeFilmGrainStrength(float value)",  asFUNCTION(AS_ContributeFilmGrainStrength),  asCALL_CDECL);
+		engine->RegisterGlobalFunction("void contributeRadiationIntensity(float value)", asFUNCTION(AS_ContributeRadiationIntensity), asCALL_CDECL);
 
 		engine->RegisterGlobalFunction("bool  getBloomEnabled()",      asFUNCTION(AS_GetBloomEnabled),      asCALL_CDECL);
 		engine->RegisterGlobalFunction("float getBloomThreshold()",    asFUNCTION(AS_GetBloomThreshold),    asCALL_CDECL);
@@ -382,8 +437,12 @@ void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("bool  getSharpenEnabled()",    asFUNCTION(AS_GetSharpenEnabled),    asCALL_CDECL);
 		engine->RegisterGlobalFunction("float getSharpenStrength()",   asFUNCTION(AS_GetSharpenStrength),   asCALL_CDECL);
 		engine->RegisterGlobalFunction("bool  getAutoExposure()",      asFUNCTION(AS_GetAutoExposure),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("bool  getPixelateEnabled()",   asFUNCTION(AS_GetPixelateEnabled),   asCALL_CDECL);
-		engine->RegisterGlobalFunction("float getPixelateSize()",      asFUNCTION(AS_GetPixelateSize),      asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool  getPixelateEnabled()",    asFUNCTION(AS_GetPixelateEnabled),    asCALL_CDECL);
+		engine->RegisterGlobalFunction("float getPixelateSize()",       asFUNCTION(AS_GetPixelateSize),       asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool  getFilmGrainEnabled()",    asFUNCTION(AS_GetFilmGrainEnabled),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("float getFilmGrainStrength()",  asFUNCTION(AS_GetFilmGrainStrength),  asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool  getRadiationEnabled()",   asFUNCTION(AS_GetRadiationEnabled),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("float getRadiationIntensity()", asFUNCTION(AS_GetRadiationIntensity), asCALL_CDECL);
 
 		engine->RegisterGlobalFunction("void saveDefaults()",    asFUNCTION(AS_SavePostProcessDefaults),    asCALL_CDECL);
 		engine->RegisterGlobalFunction("void restoreDefaults()", asFUNCTION(AS_RestorePostProcessDefaults), asCALL_CDECL);

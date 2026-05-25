@@ -1,5 +1,6 @@
 #include "Engine/World/WorldManager.h"
 
+#include "Engine/Script/Bindings.h"
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
@@ -251,6 +252,9 @@ void WorldManager::killAllEntities()
 {
     if (SoundManager::Get())
         SoundManager::Get()->sound()->stopAllVoices();
+
+    ScriptBindings::ResetRenderAccumulators();
+    ScriptBindings::BeginSoundSession();
 
     for (auto entity : m_gameWorld.getEntities()) { m_gameWorld.killEntity(entity); }
 

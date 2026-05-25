@@ -13,6 +13,7 @@ using namespace SPK::IRR;
 void Weapon_Rifle::precache()
 {
 	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/rifle/fire.wav", true);
 }
 
 void Weapon_Rifle::init()
@@ -56,7 +57,7 @@ void Weapon_Rifle::init()
 	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
 	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  89,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
 
@@ -276,7 +277,7 @@ void Weapon_Rifle::move()
 void Weapon_Rifle::fire()
 {
 	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(81, 95);
+	m_mesh.node->setFrameLoop(81, 89);
 
 	// Raycast-based instant hit
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
@@ -376,7 +377,7 @@ void Weapon_Rifle::fire()
 	auto recoilYaw = Engine::Get()->rng()->getFloat(-0.1f, 0.1f);
 	g_CameraFX.addRecoil(-0.5f, recoilYaw);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/rifle/fire.wav", false);
+	SoundManager::Get()->sound()->play2D("content/sound/weapon/rifle/fire.wav", false, 3, 0.6f);
 }
 
 void Weapon_Rifle::reload()

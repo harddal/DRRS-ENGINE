@@ -3,7 +3,7 @@
 #include <cassert>
 #include <string>
 
-//#include "Engine/Script/Bindings/ScriptBindings.h"
+#include "Engine/Script/Bindings.h"
 
 #include "Engine/Resource/FilePaths.h"
 
@@ -54,6 +54,9 @@ void ScriptSystem::onEntityRemoved(Entity& entity)
 
 void ScriptSystem::update()
 {
+	ScriptBindings::ResetRenderAccumulators();
+	ScriptBindings::ResetSoundAccumulators();
+
 	auto& entities = getEntities();
 
 	for (auto& entity : entities)

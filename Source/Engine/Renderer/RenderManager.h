@@ -473,6 +473,15 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
 };
 
+// Radiation exposure — yellow vignette + chromatic aberration + scanline flicker.
+class RadiationCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float intensity = 0.0f;
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
 // No-op callback for the shadow depth pass — the depth shader only uses GL built-in
 // matrices so no custom uniforms are needed.
 class ShadowDepthCallback : public irr::video::IShaderConstantSetCallBack
@@ -762,6 +771,7 @@ public:
     ColorGradeCallback*     colorGradeCallback()     const { return m_colorGradeCallback; }
     PosterizeCallback*      posterizeCallback()      const { return m_posterizeCallback; }
     FilmGrainCallback*      filmGrainCallback()      const { return m_filmGrainCallback; }
+    RadiationCallback*      radiationCallback()      const { return m_radiationCallback; }
 
     void setTonemapEnabled(bool enabled)     { setPostProcessPassEnabled("tonemap",     enabled); }
     void setSharpenEnabled(bool enabled)     { setPostProcessPassEnabled("sharpen",     enabled); }
@@ -769,6 +779,7 @@ public:
     void setColorGradeEnabled(bool enabled)  { setPostProcessPassEnabled("colorgrade",  enabled); }
     void setPosterizeEnabled(bool enabled)   { setPostProcessPassEnabled("posterize",   enabled); }
     void setFilmGrainEnabled(bool enabled)   { setPostProcessPassEnabled("filmgrain",   enabled); }
+    void setRadiationEnabled(bool enabled)   { setPostProcessPassEnabled("radiation",   enabled); }
 
     bool isPixelateEnabled()   const { return getPostProcessPassEnabled("pixelate");   }
     bool isColorGradeEnabled() const { return getPostProcessPassEnabled("colorgrade"); }
@@ -895,6 +906,7 @@ private:
     ColorGradeCallback*          m_colorGradeCallback      = nullptr;
     PosterizeCallback*           m_posterizeCallback       = nullptr;
     FilmGrainCallback*           m_filmGrainCallback       = nullptr;
+    RadiationCallback*           m_radiationCallback       = nullptr;
     LumMeasureCallback*          m_lumMeasureCallback      = nullptr;
 
     // Shadow mapping

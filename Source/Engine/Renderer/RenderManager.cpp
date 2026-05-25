@@ -475,6 +475,22 @@ void FilmGrainCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("tScene",         &slot,     1);
     services->setPixelShaderConstant("uGrainStrength", &strength, 1);
     services->setPixelShaderConstant("uTime",          &t,        1);
+
+    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    float res[2] = {
+        static_cast<float>(sz.Width),
+        static_cast<float>(sz.Height)
+    };
+    services->setPixelShaderConstant("uResolution", res, 2);
+}
+
+void RadiationCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int   slot = 0;
+    float t    = static_cast<float>(Engine::Get()->getCurrentTime()) / 1000.0f;
+    services->setPixelShaderConstant("tScene",     &slot,      1);
+    services->setPixelShaderConstant("uIntensity", &intensity, 1);
+    services->setPixelShaderConstant("uTime",      &t,         1);
 }
 
 void FXAAShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
@@ -1001,6 +1017,7 @@ RenderManager::~RenderManager()
     delete m_bloomCompositeCallback;
     delete m_tonemapCallback;
     delete m_sharpenCallback;
+    delete m_radiationCallback;
     delete m_lumMeasureCallback;
 
     ImGui_ImplOpenGL3_Shutdown();
@@ -1596,6 +1613,17 @@ void RenderManager::createDefaultShaders()
             m_filmGrainCallback, EMT_SOLID, 0, EGSL_DEFAULT);
         ShaderMaterialManager::add(ShaderMaterial("filmgrain", fgMat));
         registerPostProcessPass(PostProcessPass("filmgrain", fgMat, m_filmGrainCallback, false));
+    }
+
+    // Radiation exposure — yellow vignette + aberration + flicker (disabled by default).
+    {
+        m_radiationCallback = new RadiationCallback();
+        irr::s32 rMat = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",      "main", EVST_VS_2_0,
+            "content/shader/radiation.frag", "main", EPST_PS_2_0,
+            m_radiationCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(ShaderMaterial("radiation", rMat));
+        registerPostProcessPass(PostProcessPass("radiation", rMat, m_radiationCallback, false));
     }
 
     {

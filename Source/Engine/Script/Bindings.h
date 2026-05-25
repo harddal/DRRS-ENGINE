@@ -21,6 +21,15 @@ public:
 		RegisterNavigation(engine);
     }
 
+    // Called at the top of ScriptSystem::update() each frame to reset per-frame
+    // accumulators for multi-source effects (radiation, film grain, Geiger).
+    static void ResetRenderAccumulators();
+    static void ResetSoundAccumulators();
+
+    // Called from killAllEntities() on session boundaries to reset refcounts
+    // that track how many entities have enabled the Geiger voice.
+    static void BeginSoundSession();
+
 private:
     static void RegisterVector2d(asIScriptEngine* engine);
     static void RegisterVector3d(asIScriptEngine* engine);

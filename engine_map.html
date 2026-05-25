@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game Engine Architecture Map</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --bg2: #12151c;
+    --bg3: #1a1e29;
+    --border: #2a2f3e;
+    --text: #c9d1e0;
+    --muted: #5a6480;
+    --accent: #4f8ef7;
+    --accent2: #7c5af7;
+    --green: #3ecf8e;
+    --orange: #f7934f;
+    --red: #f75a5a;
+    --yellow: #f7d44f;
+    --pink: #f75af0;
+    --teal: #4ff7e8;
+
+    --col-engine: #4f8ef7;
+    --col-render: #f7934f;
+    --col-world: #3ecf8e;
+    --col-physics: #f75a5a;
+    --col-script: #f7d44f;
+    --col-audio: #a78bfa;
+    --col-nav: #4ff7e8;
+    --col-editor: #f75af0;
+    --col-game: #f7934f;
+    --col-input: #78c8f7;
+    --col-dep: #5a6480;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── Header ─────────────────────────────────── */
+  header {
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #e8edf8;
+  }
+  header p {
+    color: var(--muted);
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  /* ── Legend ────────────────────────────────── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 16px 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Layout ─────────────────────────────────── */
+  .page { padding: 32px 40px; display: flex; flex-direction: column; gap: 32px; }
+
+  /* ── Layer label ─────────────────────────────── */
+  .layer-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ── Row of cards ────────────────────────────── */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  /* ── Card ────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    flex: 1 1 220px;
+    min-width: 200px;
+    max-width: 380px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent)22, 0 4px 24px #0007;
+  }
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .card-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #e8edf8;
+  }
+  .card-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+
+  /* ── File list ───────────────────────────────── */
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .file-item {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 3px 6px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    color: var(--text);
+    transition: background 0.1s;
+    cursor: default;
+  }
+  .file-item:hover { background: var(--bg3); }
+  .file-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .file-name { font-family: 'Cascadia Code', 'Consolas', monospace; }
+  .file-desc { color: var(--muted); font-size: 11px; }
+
+  /* ── Section divider ─────────────────────────── */
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .section-divider::before, .section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Wide card (full-width spans) ─────────────── */
+  .card-wide { flex: 1 1 100%; max-width: 100%; }
+
+  /* ── Two-col inner ─────────────────────────────── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Shader pipeline ─────────────────────────── */
+  .pipeline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+  }
+  .pipeline-stage {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    color: var(--orange);
+  }
+  .pipeline-arrow {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* ── Tags ────────────────────────────────────── */
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── State machine ─────────────────────────── */
+  .states {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .state {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+  }
+  .state-active { border-color: var(--green); color: var(--green); }
+
+  /* ── Dependency grid ─────────────────────────── */
+  .dep-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .dep-chip {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: border-color 0.1s, color 0.1s;
+  }
+  .dep-chip:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Weapon grid ────────────────────────────── */
+  .weapon-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .weapon-chip {
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    background: var(--bg3);
+    border: 1px solid #f7934f44;
+    color: var(--orange);
+  }
+
+  /* ── Shader table ─────────────────────────────── */
+  .shader-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .shader-chip {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .shader-chip.frag { border-left: 3px solid var(--orange); }
+  .shader-chip.vert { border-left: 3px solid var(--accent); }
+  .shader-chip.post { border-left: 3px solid var(--pink); }
+
+  /* ── Graph tabs ─────────────────────────────── */
+  .gtab {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 16px;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    font-family: inherit;
+  }
+  .gtab:hover { color: var(--text); border-color: #4f8ef788; }
+  .gtab.active { background: #4f8ef722; border-color: var(--accent); color: var(--accent); }
+
+  /* ── Footer ────────────────────────────────── */
+  footer {
+    padding: 24px 40px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  /* ── Color helpers ─────────────────────────── */
+  .c-engine { color: var(--col-engine); }
+  .c-render  { color: var(--col-render); }
+  .c-world   { color: var(--col-world); }
+  .c-physics { color: var(--col-physics); }
+  .c-script  { color: var(--col-script); }
+  .c-audio   { color: var(--col-audio); }
+  .c-nav     { color: var(--col-nav); }
+  .c-editor  { color: var(--col-editor); }
+  .c-game    { color: var(--col-game); }
+  .c-input   { color: var(--col-input); }
+
+  .bg-engine { background: var(--col-engine)22; }
+  .bg-render  { background: var(--col-render)22; }
+  .bg-world   { background: var(--col-world)22; }
+  .bg-physics { background: var(--col-physics)22; }
+  .bg-script  { background: var(--col-script)22; }
+  .bg-audio   { background: var(--col-audio)22; }
+  .bg-nav     { background: var(--col-nav)22; }
+  .bg-editor  { background: var(--col-editor)22; }
+  .bg-game    { background: var(--col-game)22; }
+  .bg-input   { background: var(--col-input)22; }
+
+  .border-engine { border-top: 2px solid var(--col-engine); }
+  .border-render  { border-top: 2px solid var(--col-render); }
+  .border-world   { border-top: 2px solid var(--col-world); }
+  .border-physics { border-top: 2px solid var(--col-physics); }
+  .border-script  { border-top: 2px solid var(--col-script); }
+  .border-audio   { border-top: 2px solid var(--col-audio); }
+  .border-nav     { border-top: 2px solid var(--col-nav); }
+  .border-editor  { border-top: 2px solid var(--col-editor); }
+  .border-game    { border-top: 2px solid var(--col-game); }
+  .border-input   { border-top: 2px solid var(--col-input); }
+
+  h3.section-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 12px 0 6px;
+    color: var(--muted);
+  }
+
+  .inset {
+    background: var(--bg3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Game Engine &mdash; Architecture Map</h1>
+  <p>Irrlicht &middot; Anax ECS &middot; AngelScript &middot; PhysX &middot; Recast/Detour &middot; SoLoud &middot; ImGui &middot; SPARK &middot; xatlas</p>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-engine)"></div>Engine Core</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-render)"></div>Renderer</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-world)"></div>World / ECS</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-physics)"></div>Physics</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-script)"></div>Scripting</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-audio)"></div>Audio</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-nav)"></div>Navigation</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-editor)"></div>Editor</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-game)"></div>Game</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--col-input)"></div>Input</div>
+</div>
+
+<div class="page">
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 0 — ENTRY POINT
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Entry Point</div>
+    <div class="row">
+
+      <div class="card border-engine" style="flex: 1 1 100%; max-width:100%;">
+        <div class="card-header">
+          <div class="card-icon bg-engine c-engine">⚙</div>
+          <div>
+            <div class="card-title">Application</div>
+            <div class="card-subtitle">Source/Application.h/.cpp</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item">
+            <div class="file-dot" style="background:var(--col-engine)"></div>
+            <span class="file-name">Application.cpp</span>
+            <span class="file-desc">— WinMain / main(), creates Engine, drives the main loop</span>
+          </div>
+        </div>
+        <div class="states" style="margin-top:12px;">
+          <div style="font-size:11px;color:var(--muted);width:100%;margin-bottom:2px;">Engine States (EngineState.h)</div>
+          <div class="state">Debug</div>
+          <div class="state">Intro</div>
+          <div class="state">Menu</div>
+          <div class="state state-active">Game</div>
+          <div class="state state-active">EndGame</div>
+          <div class="state state-active">Editor</div>
+          <div class="state">EditorGame</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider">Engine Core</div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 1 — ENGINE CORE
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Engine Core — Source/Engine/</div>
+    <div class="row">
+
+      <!-- Engine orchestrator -->
+      <div class="card border-engine">
+        <div class="card-header">
+          <div class="card-icon bg-engine c-engine">◈</div>
+          <div>
+            <div class="card-title">Engine</div>
+            <div class="card-subtitle">Source/Engine/Engine.h/.cpp</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">Engine.h/.cpp</span><span class="file-desc">— bootstraps all managers, drives state machine</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">EngineState.h</span><span class="file-desc">— base class for all engine states</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">Types.h</span><span class="file-desc">— entity types (ET_STATIC, ET_DYNAMIC, ET_PLAYER…)</span></div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div class="card border-input">
+        <div class="card-header">
+          <div class="card-icon bg-input c-input">⌨</div>
+          <div>
+            <div class="card-title">Input</div>
+            <div class="card-subtitle">Source/Engine/Input/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-input)"></div><span class="file-name">InputManager.h/.cpp</span><span class="file-desc">— keyboard, mouse, gamepad</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-input)"></div><span class="file-name">InputMap.h</span><span class="file-desc">— action → key bindings</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-input)"></div><span class="file-name">IrrImGuiEventReceiver.h</span><span class="file-desc">— routes Irrlicht events to ImGui</span></div>
+        </div>
+      </div>
+
+      <!-- Utility -->
+      <div class="card border-engine">
+        <div class="card-header">
+          <div class="card-icon bg-engine c-engine">🛠</div>
+          <div>
+            <div class="card-title">Utility</div>
+            <div class="card-subtitle">Source/Utility/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">Utility.h/.cpp</span><span class="file-desc">— general helpers</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">INIFile.h/.cpp</span><span class="file-desc">— INI config file parser</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider">Subsystems</div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 2 — RENDERER
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Renderer — Source/Engine/Renderer/</div>
+    <div class="row">
+
+      <!-- RenderManager -->
+      <div class="card border-render" style="flex: 1 1 300px;">
+        <div class="card-header">
+          <div class="card-icon bg-render c-render">◉</div>
+          <div>
+            <div class="card-title">RenderManager</div>
+            <div class="card-subtitle">RenderManager.h/.cpp</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">driver()</span><span class="file-desc">— IVideoDriver*, Irrlicht render device</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">sceneManager()</span><span class="file-desc">— ISceneManager*, Irrlicht scene graph</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">drawShadowPass()</span><span class="file-desc">— depth-only render for shadow map</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">m_lightProjView</span><span class="file-desc">— spotlight shadow matrix</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">createShadowResources()</span><span class="file-desc">— 2048² ECF_R32F shadow RTT</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">OnSetConstants()</span><span class="file-desc">— pushes uniforms to all shaders</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">m_debugNodes</span><span class="file-desc">— hidden before shadow pass</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">SplatMap.h</span><span class="file-desc">— terrain texture splatting</span></div>
+        </div>
+
+        <h3 class="section-title">Shadow System</h3>
+        <div class="inset" style="font-size:11px;color:var(--muted);">
+          Single spot shadow · 2048×2048 · ECF_R32F RTT<br>
+          Front-face cull + slope-scale bias in shadow pass<br>
+          <span style="color:var(--red);">vShadowClip</span> passed as clip-space vec4 — divide by w in <em>fragment</em> shader only
+        </div>
+
+        <h3 class="section-title">Post-Processing Pipeline</h3>
+        <div class="pipeline">
+          <div class="pipeline-stage">Scene</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">Bloom</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">Tonemap</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">ColorGrade</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">FXAA</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">Film FX</div>
+        </div>
+      </div>
+
+      <!-- Lightmapper -->
+      <div class="card border-render" style="flex: 1 1 240px;">
+        <div class="card-header">
+          <div class="card-icon bg-render c-render">☀</div>
+          <div>
+            <div class="card-title">Lightmapper</div>
+            <div class="card-subtitle">Lightmapper/LightmapBaker.h/.cpp</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">LightmapBaker.h/.cpp</span><span class="file-desc">— main baker class</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">xatlas.h/.cpp</span><span class="file-desc">— UV atlas unwrapping</span></div>
+        </div>
+        <div class="inset" style="font-size:11px;color:var(--muted);margin-top:10px;">
+          <strong style="color:var(--text);">Pipeline</strong><br>
+          unwrapMesh → rasterizeTexels → bake → dilate → uploadLightmap → applyLightmapUVsToNode<br><br>
+          <strong style="color:var(--text);">UV2 Delivery</strong><br>
+          Rebuilds mesh as <code style="color:var(--col-render);">EVT_2TCOORDS</code> — UV2 via <code style="color:var(--col-render);">gl_MultiTexCoord1</code><br><br>
+          Only bakes <code>ET_STATIC</code> + <code>LM_STATIC</code> lights
+        </div>
+      </div>
+
+      <!-- Extensions & Particles -->
+      <div class="card border-render" style="flex: 1 1 220px;">
+        <div class="card-header">
+          <div class="card-icon bg-render c-render">✦</div>
+          <div>
+            <div class="card-title">Extensions &amp; FX</div>
+            <div class="card-subtitle">Extensions/ &amp; Spark/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">BoltSceneNode</span><span class="file-desc">— lightning bolt effect</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CBeamSceneNode</span><span class="file-desc">— continuous beam (pulse rifle)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CBloodEffect</span><span class="file-desc">— blood splatter particles</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CShieldManager</span><span class="file-desc">— shield visual system</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">DecalSceneNode</span><span class="file-desc">— projected decals</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">IQuadSceneNode</span><span class="file-desc">— quad billboard base</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">SPARK (Irrlicht)</span><span class="file-desc">— full particle system library</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CUnrealMeshFileLoader</span><span class="file-desc">— Unreal mesh importer</span></div>
+        </div>
+      </div>
+
+      <!-- Resource -->
+      <div class="card border-render" style="flex: 1 1 200px;">
+        <div class="card-header">
+          <div class="card-icon bg-render c-render">📦</div>
+          <div>
+            <div class="card-title">Resource</div>
+            <div class="card-subtitle">Renderer/Resource/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">MaterialBuilder.h/.cpp</span><span class="file-desc">— PBR material construction</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">FilePaths.h</span><span class="file-desc">— canonical asset path constants</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">AnimatedSpriteLoader</span><span class="file-desc">— sprite sheet loading</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">IrrAssimp/</span><span class="file-desc">— Assimp model import/export</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       SHADERS
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Shaders — Binaries/content/shader/</div>
+    <div class="card border-render card-wide">
+      <div class="card-header">
+        <div class="card-icon bg-render c-render">⬡</div>
+        <div>
+          <div class="card-title">GLSL Shaders</div>
+          <div class="card-subtitle">Vertex (.vert) · Fragment (.frag) · Post-process</div>
+        </div>
+      </div>
+      <div class="two-col">
+        <div>
+          <h3 class="section-title" style="color:var(--accent);">Vertex Shaders</h3>
+          <div class="shader-grid">
+            <div class="shader-chip vert">phong_perpixel.vert</div>
+            <div class="shader-chip vert">shadow_depth.vert</div>
+            <div class="shader-chip vert">water.vert</div>
+            <div class="shader-chip vert">grass.vert</div>
+            <div class="shader-chip vert">plasma.vert</div>
+            <div class="shader-chip vert">crystal.vert</div>
+            <div class="shader-chip vert">impact_burn.vert</div>
+            <div class="shader-chip vert">barrel_heat.vert</div>
+            <div class="shader-chip vert">additive_color.vert</div>
+            <div class="shader-chip vert">quad.vert</div>
+            <div class="shader-chip vert">fxaa.vert</div>
+          </div>
+        </div>
+        <div>
+          <h3 class="section-title" style="color:var(--orange);">Fragment Shaders</h3>
+          <div class="shader-grid">
+            <div class="shader-chip frag">phong_perpixel.frag</div>
+            <div class="shader-chip frag">shadow_depth.frag</div>
+            <div class="shader-chip frag">water.frag</div>
+            <div class="shader-chip frag">grass.frag</div>
+            <div class="shader-chip frag">foliage.frag</div>
+            <div class="shader-chip frag">terrain_blend.frag</div>
+            <div class="shader-chip frag">plasma.frag</div>
+            <div class="shader-chip frag">crystal.frag</div>
+            <div class="shader-chip frag">impact_burn.frag</div>
+            <div class="shader-chip frag">barrel_heat.frag</div>
+            <div class="shader-chip frag">additive_color.frag</div>
+            <div class="shader-chip frag">varicolor.frag</div>
+            <div class="shader-chip frag">blit.frag</div>
+          </div>
+          <h3 class="section-title" style="color:var(--pink);margin-top:14px;">Post-Process</h3>
+          <div class="shader-grid">
+            <div class="shader-chip post">bloom_bright.frag</div>
+            <div class="shader-chip post">bloom_blur.frag</div>
+            <div class="shader-chip post">bloom_composite.frag</div>
+            <div class="shader-chip post">tonemap.frag</div>
+            <div class="shader-chip post">colorgrade.frag</div>
+            <div class="shader-chip post">fxaa.frag</div>
+            <div class="shader-chip post">filmgrain.frag</div>
+            <div class="shader-chip post">sharpen.frag</div>
+            <div class="shader-chip post">pixelate.frag</div>
+            <div class="shader-chip post">posterize.frag</div>
+            <div class="shader-chip post">lum_measure.frag</div>
+          </div>
+        </div>
+      </div>
+      <div class="inset" style="margin-top:14px;font-size:11px;color:var(--muted);">
+        <strong style="color:var(--text);">phong_perpixel</strong> — main shader: GGX/Cook-Torrance PBR, shadow sampling, lightmap UV2 (<code style="color:var(--col-render);">uHasLightmap</code>), point + spot lights, baked AO blend<br>
+        <strong style="color:var(--text);">shadow_depth</strong> — writes linear depth to R32F RTT; front-face culled for Peter-Pan prevention
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 3 — WORLD / ECS
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">World / ECS — Source/Engine/World/</div>
+    <div class="row">
+
+      <!-- WorldManager -->
+      <div class="card border-world">
+        <div class="card-header">
+          <div class="card-icon bg-world c-world">⬡</div>
+          <div>
+            <div class="card-title">WorldManager</div>
+            <div class="card-subtitle">WorldManager.h/.cpp</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">Get()->world()</span><span class="file-desc">— anax World, call getEntities()</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">SerializeEntity.cpp</span><span class="file-desc">— Cereal entity serialization</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">DeserializeEntity.cpp</span><span class="file-desc">— Cereal entity deserialization</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">PropManager.h/.cpp</span><span class="file-desc">— static prop lifecycle</span></div>
+        </div>
+      </div>
+
+      <!-- ECS Components -->
+      <div class="card border-world">
+        <div class="card-header">
+          <div class="card-icon bg-world c-world">◧</div>
+          <div>
+            <div class="card-title">Components</div>
+            <div class="card-subtitle">World/Components/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">TransformComponent</span><span class="file-desc">— position, rotation, scale</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">MeshComponent</span><span class="file-desc">— IAnimatedMeshSceneNode*, lightmap*, trimesh</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">RenderComponent</span><span class="file-desc">— visibility, layer flags</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">LightComponent</span><span class="file-desc">— light type, LM_STATIC flag</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">PhysicsComponent</span><span class="file-desc">— PhysX actor handle</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">CameraComponent</span><span class="file-desc">— camera settings</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">SoundComponent</span><span class="file-desc">— SoLoud handle</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">ScriptComponent</span><span class="file-desc">— AngelScript object handle</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">NavAgentComponent</span><span class="file-desc">— DetourCrowd agent</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">TweenComponent</span><span class="file-desc">— interpolation tweens</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">DescriptorComponent</span><span class="file-desc">— name, type, flags</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">BillboardSpriteComponent</span><span class="file-desc">— screen-facing billboard</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">CCTComponent</span><span class="file-desc">— PhysX character controller</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">PrefabComponent</span><span class="file-desc">— prefab template reference</span></div>
+        </div>
+      </div>
+
+      <!-- ECS Systems -->
+      <div class="card border-world">
+        <div class="card-header">
+          <div class="card-icon bg-world c-world">⟳</div>
+          <div>
+            <div class="card-title">Systems</div>
+            <div class="card-subtitle">World/Systems/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">TransformSystem</span><span class="file-desc">— propagates dirty transforms</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">RenderSystem</span><span class="file-desc">— syncs ECS → Irrlicht scene nodes</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">PhysicsSystem</span><span class="file-desc">— writes PhysX results → transforms</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">SoundSystem</span><span class="file-desc">— 3D audio positioning</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">ScriptSystem</span><span class="file-desc">— calls Update() on scripts</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">NavigationSystem</span><span class="file-desc">— updates crowd agents</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">CameraSystem</span><span class="file-desc">— sets active camera</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">TweenSystem</span><span class="file-desc">— processes tween timelines</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-world)"></div><span class="file-name">ManagerSystem</span><span class="file-desc">— entity lifecycle management</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 4 — OTHER SUBSYSTEMS
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Subsystems</div>
+    <div class="row">
+
+      <!-- Physics -->
+      <div class="card border-physics">
+        <div class="card-header">
+          <div class="card-icon bg-physics c-physics">⬡</div>
+          <div>
+            <div class="card-title">Physics</div>
+            <div class="card-subtitle">Engine/Physics/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-physics)"></div><span class="file-name">PhysicsManager.h/.cpp</span><span class="file-desc">— NVIDIA PhysX scene, actors, CCT</span></div>
+        </div>
+        <div class="tags">
+          <span class="tag" style="color:var(--col-physics);border-color:var(--col-physics)44;">Rigid Bodies</span>
+          <span class="tag" style="color:var(--col-physics);border-color:var(--col-physics)44;">Character Controller</span>
+          <span class="tag" style="color:var(--col-physics);border-color:var(--col-physics)44;">Raycasting</span>
+        </div>
+      </div>
+
+      <!-- Audio -->
+      <div class="card border-audio">
+        <div class="card-header">
+          <div class="card-icon bg-audio c-audio">♫</div>
+          <div>
+            <div class="card-title">Audio</div>
+            <div class="card-subtitle">Engine/Sound/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">SoundEngine.h/.cpp</span><span class="file-desc">— SoLoud backend, low-level playback</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">SoundManager.h/.cpp</span><span class="file-desc">— high-level: play, stop, 3D position</span></div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="card border-nav">
+        <div class="card-header">
+          <div class="card-icon bg-nav c-nav">⬡</div>
+          <div>
+            <div class="card-title">Navigation</div>
+            <div class="card-subtitle">Engine/Navigation/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-nav)"></div><span class="file-name">NavigationManager.h/.cpp</span><span class="file-desc">— navmesh build, query, crowd</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-nav)"></div><span class="file-name">Recast/</span><span class="file-desc">— navmesh voxelization + generation</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-nav)"></div><span class="file-name">Detour/</span><span class="file-desc">— pathfinding queries, NavMesh runtime</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-nav)"></div><span class="file-name">DetourCrowd/</span><span class="file-desc">— local avoidance, crowd simulation</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-nav)"></div><span class="file-name">DetourTileCache/</span><span class="file-desc">— streaming navmesh tiles</span></div>
+        </div>
+      </div>
+
+      <!-- Scripting -->
+      <div class="card border-script">
+        <div class="card-header">
+          <div class="card-icon bg-script c-script">{ }</div>
+          <div>
+            <div class="card-title">Scripting</div>
+            <div class="card-subtitle">Engine/Script/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">ScriptManager.h/.cpp</span><span class="file-desc">— AngelScript VM lifecycle</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Core.cpp</span><span class="file-desc">— engine core API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Entity.cpp</span><span class="file-desc">— entity/component API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Input.cpp</span><span class="file-desc">— input queries</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_PhysX.cpp</span><span class="file-desc">— physics API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Sound.cpp</span><span class="file-desc">— audio API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Nav.cpp</span><span class="file-desc">— pathfinding API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Render.cpp</span><span class="file-desc">— render queries/control</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Tween.cpp</span><span class="file-desc">— tween API</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Vector2/3.cpp</span><span class="file-desc">— math types</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">ScriptExceptions.h/.cpp</span><span class="file-desc">— script error handling</span></div>
+        </div>
+      </div>
+
+      <!-- Debug -->
+      <div class="card border-engine">
+        <div class="card-header">
+          <div class="card-icon bg-engine c-engine">⬛</div>
+          <div>
+            <div class="card-title">Debug</div>
+            <div class="card-subtitle">Engine/Debug/ &amp; Engine/Interface/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugState.h/.cpp</span><span class="file-desc">— in-engine debug mode</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugInterface.h/.cpp</span><span class="file-desc">— debug overlay / visualizations</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugConsole.h/.cpp</span><span class="file-desc">— in-game console (spdlog sink)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">ImGuiExtensions.h/.cpp</span><span class="file-desc">— custom ImGui widgets</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">ImTransformControl.h/.cpp</span><span class="file-desc">— transform gizmo</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider">Editor</div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 5 — EDITOR
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Editor — Source/Editor/</div>
+    <div class="row">
+
+      <!-- Editor Core -->
+      <div class="card border-editor">
+        <div class="card-header">
+          <div class="card-icon bg-editor c-editor">⚏</div>
+          <div>
+            <div class="card-title">Editor Core</div>
+            <div class="card-subtitle">Source/Editor/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorState.h/.cpp</span><span class="file-desc">— editor engine state</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorGameState.h/.cpp</span><span class="file-desc">— play-in-editor mode</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorCamera.h/.cpp</span><span class="file-desc">— free-look camera</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">SceneInteractionManager</span><span class="file-desc">— picking, gizmos, transform edit</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">TexturePainter.h/.cpp</span><span class="file-desc">— terrain texture painting</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">VegetationPainter.h/.cpp</span><span class="file-desc">— vegetation placement</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">ImGuiLogSink.h</span><span class="file-desc">— routes spdlog → ImGui console</span></div>
+        </div>
+      </div>
+
+      <!-- Editor UI -->
+      <div class="card border-editor">
+        <div class="card-header">
+          <div class="card-icon bg-editor c-editor">⬕</div>
+          <div>
+            <div class="card-title">Editor UI (ImGui)</div>
+            <div class="card-subtitle">Editor/Interface/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface.h/.cpp</span><span class="file-desc">— main window manager</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Hierarchy</span><span class="file-desc">— scene hierarchy panel</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Properties</span><span class="file-desc">— selected entity inspector</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Components</span><span class="file-desc">— component add/remove/edit</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_EntityBuilder</span><span class="file-desc">— entity creation wizard</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Assets</span><span class="file-desc">— asset browser</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_ScriptEditor</span><span class="file-desc">— embedded script editor</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Painting</span><span class="file-desc">— texture/vegetation paint UI</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_Toolbar</span><span class="file-desc">— toolbar buttons</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">EditorInterface_MenuBar</span><span class="file-desc">— menu bar (File/Edit/View…)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-editor)"></div><span class="file-name">TextEditor.h/.cpp</span><span class="file-desc">— embedded code editor widget</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider">Game Layer</div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 6 — GAME
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">Game — Source/Game/</div>
+    <div class="row">
+
+      <!-- Game Core -->
+      <div class="card border-game">
+        <div class="card-header">
+          <div class="card-icon bg-game c-game">◈</div>
+          <div>
+            <div class="card-title">Game Core</div>
+            <div class="card-subtitle">Source/Game/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameManager.h/.cpp</span><span class="file-desc">— config, lifecycle</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameState.h/.cpp</span><span class="file-desc">— main gameplay state</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameplaySystem.h/.cpp</span><span class="file-desc">— game logic tick</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">DialogManager.h/.cpp</span><span class="file-desc">— conversation system</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">ProcessGameComponents.cpp</span><span class="file-desc">— game component processing</span></div>
+        </div>
+        <h3 class="section-title">Game States</h3>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">IntroState.h/.cpp</span><span class="file-desc">— splash / intro sequence</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">MenuState.h/.cpp</span><span class="file-desc">— main menu</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">EndGameState.h/.cpp</span><span class="file-desc">— end-game / credits</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">MainMenuGUI.h/.cpp</span><span class="file-desc">— main menu ImGui panels</span></div>
+        </div>
+      </div>
+
+      <!-- Player -->
+      <div class="card border-game">
+        <div class="card-header">
+          <div class="card-icon bg-game c-game">🧍</div>
+          <div>
+            <div class="card-title">Player</div>
+            <div class="card-subtitle">Game/Player/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">PlayerController.h/.cpp</span><span class="file-desc">— movement, look, main loop</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">PlayerData.h</span><span class="file-desc">— stats, health, state</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">FreeCameraController</span><span class="file-desc">— no-clip free cam</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">HUDController.h/.cpp</span><span class="file-desc">— heads-up display</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InteractionController</span><span class="file-desc">— world interaction / use</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InventoryController</span><span class="file-desc">— item inventory</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">CameraFX.h</span><span class="file-desc">— head bob, recoil</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponController.h/.cpp</span><span class="file-desc">— weapon switching, fire logic</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponData.h/.cpp</span><span class="file-desc">— weapon config, stats</span></div>
+        </div>
+      </div>
+
+      <!-- Weapons -->
+      <div class="card border-game">
+        <div class="card-header">
+          <div class="card-icon bg-game c-game">🔫</div>
+          <div>
+            <div class="card-title">Weapons</div>
+            <div class="card-subtitle">Game/Player/Weapon/</div>
+          </div>
+        </div>
+        <div class="weapon-grid">
+          <div class="weapon-chip">Weapon_None</div>
+          <div class="weapon-chip">Weapon_Pistol</div>
+          <div class="weapon-chip">Weapon_Rifle</div>
+          <div class="weapon-chip">Weapon_Shotgun</div>
+          <div class="weapon-chip">Weapon_Melee</div>
+          <div class="weapon-chip">Weapon_Minigun</div>
+          <div class="weapon-chip">Weapon_RocketLauncher</div>
+          <div class="weapon-chip">Weapon_PulseRifle</div>
+        </div>
+        <div class="inset" style="margin-top:12px;font-size:11px;color:var(--muted);">
+          PulseRifle uses <code style="color:var(--orange);">CBeamSceneNode</code> for continuous laser beam with <code style="color:var(--orange);">additive_color</code> shader
+        </div>
+      </div>
+
+      <!-- Game Components -->
+      <div class="card border-game">
+        <div class="card-header">
+          <div class="card-icon bg-game c-game">◧</div>
+          <div>
+            <div class="card-title">Game Components</div>
+            <div class="card-subtitle">Game/Components/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">DataComponent</span><span class="file-desc">— key/value data store</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">LogicComponent</span><span class="file-desc">— script-driven logic</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">DamageReceiverComponent</span><span class="file-desc">— health / damage</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">AutoKillComponent</span><span class="file-desc">— timed entity removal</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InteractionComponent</span><span class="file-desc">— interactable marker</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">DialogComponent</span><span class="file-desc">— NPC dialog data</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">NPCComponent</span><span class="file-desc">— NPC state machine</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">TriggerZoneComponent</span><span class="file-desc">— overlap trigger volumes</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">ItemComponent</span><span class="file-desc">— world item pickup</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">MarkerComponent</span><span class="file-desc">— world markers / waypoints</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WaterComponent</span><span class="file-desc">— water volume</span></div>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <div class="card border-game">
+        <div class="card-header">
+          <div class="card-icon bg-game c-game">⬡</div>
+          <div>
+            <div class="card-title">Items</div>
+            <div class="card-subtitle">Game/Item/</div>
+          </div>
+        </div>
+        <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">ItemData.h</span><span class="file-desc">— item type definitions</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">ItemDatabase.h/.cpp</span><span class="file-desc">— item storage &amp; lookup</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InventoryData.h</span><span class="file-desc">— inventory data model</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section-divider">Third-Party Dependencies</div>
+
+  <!-- ═══════════════════════════════════════════════
+       LAYER 7 — DEPENDENCIES
+  ═══════════════════════════════════════════════ -->
+  <div>
+    <div class="layer-label">External Libraries — Include/</div>
+    <div class="card card-wide" style="border-top: 2px solid var(--col-dep);">
+      <div class="dep-grid">
+        <div class="dep-chip" title="3D rendering engine (forward renderer, OpenGL)">irrlicht</div>
+        <div class="dep-chip" title="Entity Component System framework">anax</div>
+        <div class="dep-chip" title="AngelScript scripting language VM">angelscript</div>
+        <div class="dep-chip" title="NVIDIA PhysX physics SDK">physx</div>
+        <div class="dep-chip" title="Assimp 3D model importer">assimp</div>
+        <div class="dep-chip" title="OpenGL Mathematics (vectors, matrices)">glm</div>
+        <div class="dep-chip" title="Immediate-mode UI library">imgui</div>
+        <div class="dep-chip" title="SPARK particle system (Irrlicht backend)">spark</div>
+        <div class="dep-chip" title="UV atlas generation for lightmaps">xatlas</div>
+        <div class="dep-chip" title="SoLoud audio engine">soloud</div>
+        <div class="dep-chip" title="Recast navmesh generation">recastnavigation</div>
+        <div class="dep-chip" title="C++ serialization (entity save/load)">cereal</div>
+        <div class="dep-chip" title="Fast C++ logging">spdlog</div>
+        <div class="dep-chip" title="FreeType font rendering">freetype</div>
+        <div class="dep-chip" title="Boost C++ utilities">boost</div>
+        <div class="dep-chip" title="Lightweight XML parser">tinyxml2</div>
+        <div class="dep-chip" title="Miniz compression">miniz</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════
+       CONTENT / ASSETS
+  ═══════════════════════════════════════════════ -->
+  <div class="section-divider">Content</div>
+  <div>
+    <div class="layer-label">Runtime Content — Binaries/content/</div>
+    <div class="card card-wide" style="border-top: 2px solid var(--col-dep);">
+      <div class="dep-grid">
+        <div class="dep-chip">dialog/</div>
+        <div class="dep-chip">entity/</div>
+        <div class="dep-chip">font/</div>
+        <div class="dep-chip">item/</div>
+        <div class="dep-chip">mesh/</div>
+        <div class="dep-chip">scene/</div>
+        <div class="dep-chip">script/</div>
+        <div class="dep-chip">shader/</div>
+        <div class="dep-chip">sound/</div>
+        <div class="dep-chip">texture/</div>
+        <div class="dep-chip">config/</div>
+        <div class="dep-chip">saves/</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">
+        .pak scene files excluded from git · compiled shaders loaded at runtime · entity definitions serialized via Cereal
+      </div>
+    </div>
+  </div>
+
+
+  <div class="section-divider">Call Graph</div>
+
+  <div style="padding-top:8px;">
+    <div class="layer-label" style="margin-bottom:14px;">High-level function call relationships — hover any node to highlight its connections</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      <button class="gtab active">Frame Loop</button>
+      <button class="gtab">World Systems</button>
+      <button class="gtab">Render Pipeline</button>
+      <button class="gtab">Player Hierarchy</button>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:auto;max-height:780px;">
+      <svg id="cg" xmlns="http://www.w3.org/2000/svg" style="display:block;"></svg>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<footer>
+  Game Engine Architecture Map &mdash; generated 2026-05-17
+</footer>
+
+<script>
+(function () {
+  const PAD = 24;
+  const NW = 200, NH = 52;
+
+  const COL = {
+    engine:  '#4f8ef7',
+    render:  '#f7934f',
+    world:   '#3ecf8e',
+    physics: '#f75a5a',
+    script:  '#f7d44f',
+    audio:   '#a78bfa',
+    nav:     '#4ff7e8',
+    game:    '#f7b44f',
+    input:   '#78c8f7',
+    muted:   '#5a6480',
+  };
+
+  function h2r(h, a) {
+    const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  function svgEl(tag, attrs) {
+    const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    return e;
+  }
+
+  function edgePath(fn, tn) {
+    const fw = fn.w||NW, fh = fn.h||NH, tw = tn.w||NW, th = tn.h||NH;
+    const x1 = fn.x+fw, y1 = fn.y+fh/2;
+    const x2 = tn.x,    y2 = tn.y+th/2;
+    const t  = Math.max(40, Math.abs(x2-x1)*0.42);
+    return `M${x1},${y1} C${x1+t},${y1} ${x2-t},${y2} ${x2},${y2}`;
+  }
+
+  function render(view) {
+    const svg = document.getElementById('cg');
+    svg.innerHTML = '';
+    const { w, h, nodes, edges } = view;
+    const vw = w + PAD*2, vh = h + PAD*2;
+    svg.setAttribute('viewBox', `0 0 ${vw} ${vh}`);
+    svg.setAttribute('width',  vw);
+    svg.setAttribute('height', vh);
+
+    // Arrowhead markers
+    const defs = svgEl('defs', {});
+    const usedColors = [...new Set(nodes.map(n => n.c || 'muted'))];
+    usedColors.forEach(c => {
+      const m = svgEl('marker', { id:`arr-${c}`, markerWidth:7, markerHeight:7, refX:6, refY:3, orient:'auto' });
+      m.appendChild(svgEl('path', { d:'M0,0 L0,6 L7,3 z', fill: COL[c] || '#5a6480' }));
+      defs.appendChild(m);
+    });
+    svg.appendChild(defs);
+
+    const root = svgEl('g', { transform:`translate(${PAD},${PAD})` });
+
+    // Node lookup + adjacency for hover
+    const nm = {};
+    nodes.forEach(n => nm[n.id] = n);
+    const adj = {};
+    nodes.forEach(n => adj[n.id] = new Set());
+    edges.forEach(e => { adj[e.f].add(e.t); adj[e.t].add(e.f); });
+
+    // ── Edges ────────────────────────────────────
+    const edgeEls = [];
+    edges.forEach(e => {
+      const fn = nm[e.f], tn = nm[e.t];
+      if (!fn || !tn) return;
+      const col = COL[tn.c || 'muted'];
+
+      const path = svgEl('path', {
+        d: edgePath(fn, tn),
+        fill: 'none',
+        stroke: col,
+        'stroke-width': 1.5,
+        'stroke-opacity': 0.5,
+        'stroke-dasharray': e.dash ? '6 3' : 'none',
+        'marker-end': `url(#arr-${tn.c || 'muted'})`,
+        'data-f': e.f,
+        'data-t': e.t,
+      });
+      root.appendChild(path);
+      edgeEls.push(path);
+
+      if (e.lbl) {
+        const fw = fn.w||NW, fh = fn.h||NH, th = tn.h||NH;
+        const x1 = fn.x+fw, y1 = fn.y+fh/2;
+        const x2 = tn.x,    y2 = tn.y+th/2;
+        const lbl = svgEl('text', {
+          x: (x1+x2)/2, y: (y1+y2)/2 - 9,
+          'text-anchor': 'middle',
+          'font-size': 9.5,
+          fill: col,
+          opacity: 0.6,
+          'font-family': 'system-ui,sans-serif',
+          'data-f': e.f,
+          'data-t': e.t,
+        });
+        lbl.textContent = e.lbl;
+        root.appendChild(lbl);
+        edgeEls.push(lbl);
+      }
+    });
+
+    // ── Nodes ────────────────────────────────────
+    const nodeEls = [];
+    nodes.forEach(n => {
+      const col = COL[n.c || 'muted'];
+      const nw = n.w||NW, nh = n.h||NH;
+
+      const g = svgEl('g', { 'data-id': n.id });
+      g.style.cursor = 'default';
+
+      g.appendChild(svgEl('rect', {
+        x: n.x, y: n.y, width: nw, height: nh, rx: 8,
+        fill: h2r(col, 0.12),
+        stroke: col,
+        'stroke-width': 1.5,
+      }));
+
+      const hasSub = !!n.sub;
+      const lbl = svgEl('text', {
+        x: n.x + nw/2,
+        y: n.y + (hasSub ? 19 : nh/2 + 4.5),
+        'text-anchor': 'middle',
+        'font-size': 11.5,
+        'font-weight': 700,
+        fill: col,
+        'font-family': "'Cascadia Code',Consolas,monospace",
+      });
+      lbl.textContent = n.label;
+      g.appendChild(lbl);
+
+      if (hasSub) {
+        const sub = svgEl('text', {
+          x: n.x + nw/2, y: n.y + 36,
+          'text-anchor': 'middle',
+          'font-size': 9.5,
+          fill: '#5a6480',
+          'font-family': 'system-ui,sans-serif',
+        });
+        sub.textContent = n.sub;
+        g.appendChild(sub);
+      }
+
+      root.appendChild(g);
+      nodeEls.push(g);
+    });
+
+    svg.appendChild(root);
+
+    // ── Hover ────────────────────────────────────
+    nodeEls.forEach(ng => {
+      ng.addEventListener('mouseenter', () => {
+        const id = ng.dataset.id;
+        const conn = adj[id] || new Set();
+        nodeEls.forEach(x => {
+          x.style.opacity = (x.dataset.id === id || conn.has(x.dataset.id)) ? '1' : '0.12';
+        });
+        edgeEls.forEach(x => {
+          const hit = x.dataset.f === id || x.dataset.t === id;
+          x.style.opacity = hit ? '1' : '0.04';
+          if (hit && x.tagName === 'path') x.setAttribute('stroke-width', '2.5');
+        });
+      });
+      ng.addEventListener('mouseleave', () => {
+        nodeEls.forEach(x => x.style.opacity = '1');
+        edgeEls.forEach(x => {
+          x.style.opacity = '1';
+          if (x.tagName === 'path') x.setAttribute('stroke-width', '1.5');
+        });
+      });
+    });
+  }
+
+  // ════════════════════════════════════════════════
+  //  View data
+  // ════════════════════════════════════════════════
+
+  const views = [
+
+    // ── 0: Frame Loop ────────────────────────────
+    { w: 1540, h: 560,
+      nodes: [
+        { id:'n_main', label:'main()',                    sub:'Application.cpp',         x:30,   y:250, w:155, c:'engine' },
+        { id:'n_eng',  label:'Engine::update()',          sub:'Engine.cpp · main loop',  x:230,  y:250,         c:'engine' },
+        { id:'n_inp',  label:'InputManager::update()',    sub:'fixed 60 Hz',             x:500,  y:40,          c:'input'  },
+        { id:'n_wld',  label:'WorldManager::update()',    sub:'fixed 60 Hz',             x:500,  y:130,         c:'world'  },
+        { id:'n_sta',  label:'StateManager::update()',    sub:'fixed 60 Hz',             x:500,  y:220,         c:'engine' },
+        { id:'n_phy',  label:'PhysicsManager::update()',  sub:'fixed 60 Hz',             x:500,  y:310,         c:'physics'},
+        { id:'n_sui',  label:'StateManager::updateUI()',  sub:'variable rate',           x:500,  y:410,         c:'engine' },
+        { id:'n_ren',  label:'RenderManager::draw()',     sub:'variable rate',           x:500,  y:490,         c:'render' },
+        { id:'n_gst',  label:'GameState::update()',       sub:'GameState.cpp',           x:775,  y:220,         c:'game'   },
+        { id:'n_gmg',  label:'GameManager::update()',     sub:'GameManager.cpp',         x:1050, y:220,         c:'game'   },
+        { id:'n_plr',  label:'PlayerCtrl::update()',      sub:'PlayerController.cpp',    x:1325, y:220,         c:'game'   },
+      ],
+      edges: [
+        { f:'n_main', t:'n_eng' },
+        { f:'n_eng',  t:'n_inp', lbl:'fixed 60 Hz' },
+        { f:'n_eng',  t:'n_wld' },
+        { f:'n_eng',  t:'n_sta' },
+        { f:'n_eng',  t:'n_phy' },
+        { f:'n_eng',  t:'n_sui', dash:true, lbl:'variable rate' },
+        { f:'n_eng',  t:'n_ren', dash:true },
+        { f:'n_sta',  t:'n_gst' },
+        { f:'n_gst',  t:'n_gmg' },
+        { f:'n_gmg',  t:'n_plr' },
+      ],
+    },
+
+    // ── 1: World Systems ─────────────────────────
+    { w: 860, h: 850,
+      nodes: [
+        { id:'n_wm',  label:'WorldManager::update(dt)', sub:'WorldManager.cpp', x:30,  y:400, w:235, c:'world'  },
+        { id:'n_s0',  label:'updateEntityQueues()',      sub:'entity lifecycle', x:340, y:30,          c:'muted'  },
+        { id:'n_s1',  label:'ManagerSystem::update()',   sub:'',                 x:340, y:105,         c:'world'  },
+        { id:'n_s2',  label:'TransformSystem::update()', sub:'',                 x:340, y:180,         c:'world'  },
+        { id:'n_s3',  label:'RenderSystem::update()',    sub:'',                 x:340, y:255,         c:'render' },
+        { id:'n_s4',  label:'CameraSystem::update()',    sub:'',                 x:340, y:330,         c:'engine' },
+        { id:'n_s5',  label:'ScriptSystem::update()',    sub:'',                 x:340, y:405,         c:'script' },
+        { id:'n_s6',  label:'TweenSystem::update(dt)',   sub:'',                 x:340, y:480,         c:'muted'  },
+        { id:'n_s7',  label:'NavSystem::update(dt)',     sub:'DetourCrowd',      x:340, y:555,         c:'nav'    },
+        { id:'n_s8',  label:'PhysicsSystem::update(dt)', sub:'',                 x:340, y:630,         c:'physics'},
+        { id:'n_s9',  label:'SoundSystem::update()',     sub:'',                 x:340, y:705,         c:'audio'  },
+        { id:'n_s10', label:'GameplaySystem::update()',  sub:'',                 x:340, y:780,         c:'game'   },
+        { id:'n_scb', label:'Script::onUpdate()',        sub:'AngelScript CB',   x:625, y:405,         c:'script' },
+      ],
+      edges: [
+        { f:'n_wm', t:'n_s0',  lbl:'1'  },
+        { f:'n_wm', t:'n_s1',  lbl:'2'  },
+        { f:'n_wm', t:'n_s2',  lbl:'3'  },
+        { f:'n_wm', t:'n_s3',  lbl:'4'  },
+        { f:'n_wm', t:'n_s4',  lbl:'5'  },
+        { f:'n_wm', t:'n_s5',  lbl:'6'  },
+        { f:'n_wm', t:'n_s6',  lbl:'7'  },
+        { f:'n_wm', t:'n_s7',  lbl:'8'  },
+        { f:'n_wm', t:'n_s8',  lbl:'9'  },
+        { f:'n_wm', t:'n_s9',  lbl:'10' },
+        { f:'n_wm', t:'n_s10', lbl:'11' },
+        { f:'n_s5', t:'n_scb' },
+      ],
+    },
+
+    // ── 2: Render Pipeline ───────────────────────
+    { w: 1130, h: 580,
+      nodes: [
+        { id:'n_rd',  label:'RenderManager::draw(dt)',  sub:'RenderManager.cpp',          x:30,  y:265, w:215, c:'render' },
+        { id:'n_bs',  label:'driver->beginScene()',     sub:'Irrlicht',                   x:320, y:30,          c:'muted'  },
+        { id:'n_sp',  label:'drawShadowPass()',         sub:'2048² ECF_R32F RTT',         x:320, y:110,         c:'render' },
+        { id:'n_da',  label:'sceneManager->drawAll()',  sub:'PBR main pass',              x:320, y:190,         c:'render' },
+        { id:'n_tp',  label:'drawTransparentPass()',    sub:'water · particles · crystal', x:320, y:270,        c:'render' },
+        { id:'n_vm',  label:'viewmodel pass',           sub:'clear depth + render loop',  x:320, y:350,         c:'render' },
+        { id:'n_pp',  label:'Post-Process chain',       sub:'RTT ping-pong passes',       x:320, y:430,         c:'render' },
+        { id:'n_es',  label:'driver->endScene()',       sub:'Irrlicht',                   x:320, y:510,         c:'muted'  },
+        { id:'n_spd', label:'drawAll() [depth]',        sub:'shadow shader override',     x:615, y:110,         c:'render' },
+        { id:'n_osc', label:'OnSetConstants()',         sub:'ShaderConstantSetCallBack',  x:615, y:190,         c:'render' },
+        { id:'n_gcl', label:'gatherClosestLights()',    sub:'up to 8 lights',             x:910, y:190,         c:'render' },
+        { id:'n_pp1', label:'Bloom (3-pass)',           sub:'bright → blur → composite',  x:615, y:390,         c:'render' },
+        { id:'n_pp2', label:'Tonemap + exposure',       sub:'auto-exposure adapt',        x:615, y:460,         c:'render' },
+        { id:'n_pp3', label:'Sharpen / Pixelate / Post',sub:'optional color FX',         x:615, y:530,         c:'render' },
+        { id:'n_pp4', label:'ColorGrade + FilmGrain',  sub:'',                           x:910, y:390,         c:'render' },
+        { id:'n_pp5', label:'FXAA',                    sub:'screen-space AA',            x:910, y:460,         c:'render' },
+      ],
+      edges: [
+        { f:'n_rd',  t:'n_bs'  },
+        { f:'n_rd',  t:'n_sp'  },
+        { f:'n_rd',  t:'n_da'  },
+        { f:'n_rd',  t:'n_tp'  },
+        { f:'n_rd',  t:'n_vm'  },
+        { f:'n_rd',  t:'n_pp'  },
+        { f:'n_rd',  t:'n_es'  },
+        { f:'n_sp',  t:'n_spd' },
+        { f:'n_da',  t:'n_osc' },
+        { f:'n_osc', t:'n_gcl' },
+        { f:'n_pp',  t:'n_pp1' },
+        { f:'n_pp',  t:'n_pp2' },
+        { f:'n_pp',  t:'n_pp3' },
+        { f:'n_pp1', t:'n_pp4' },
+        { f:'n_pp2', t:'n_pp5' },
+      ],
+    },
+
+    // ── 3: Player Hierarchy ──────────────────────
+    { w: 1100, h: 580,
+      nodes: [
+        { id:'n_pc',   label:'PlayerCtrl::update(dt)',      sub:'PlayerController.cpp',    x:30,  y:255, w:215, c:'game'   },
+        { id:'n_in',   label:'InputManager queries',        sub:'move · look · action',    x:320, y:50,          c:'input'  },
+        { id:'n_mv',   label:'MoveGround()/MoveAir()',      sub:'GoldSrc-style movement',  x:320, y:140,         c:'game'   },
+        { id:'n_hud',  label:'HUDController::update()',     sub:'HUDController.cpp',       x:320, y:230,         c:'game'   },
+        { id:'n_ic',   label:'InteractionCtrl::update()',   sub:'',                        x:320, y:320,         c:'game'   },
+        { id:'n_inv',  label:'InventoryCtrl::update()',     sub:'',                        x:320, y:410,         c:'game'   },
+        { id:'n_wc',   label:'WeaponController::update()',  sub:'WeaponController.cpp',    x:320, y:500,         c:'game'   },
+        { id:'n_sw',   label:'switchWeapon()',              sub:'scroll / key input',      x:615, y:380,         c:'game'   },
+        { id:'n_wu',   label:'weapon->update()',            sub:'fire logic per-weapon',   x:615, y:460,         c:'game'   },
+        { id:'n_ws',   label:'weapon->updateWeaponSway()',  sub:'recoil + sway anim',     x:615, y:540,         c:'game'   },
+        { id:'n_ueq',  label:'current->unequip()',          sub:'hide viewmodel',          x:900, y:320,         c:'game'   },
+        { id:'n_eq',   label:'next->equip()',               sub:'show viewmodel',          x:900, y:400,         c:'game'   },
+        { id:'n_fire', label:'Fire() / Raycast',            sub:'PhysX hit detection',     x:900, y:460,         c:'physics'},
+      ],
+      edges: [
+        { f:'n_pc',  t:'n_in'  },
+        { f:'n_pc',  t:'n_mv'  },
+        { f:'n_pc',  t:'n_hud' },
+        { f:'n_pc',  t:'n_ic'  },
+        { f:'n_pc',  t:'n_inv' },
+        { f:'n_pc',  t:'n_wc'  },
+        { f:'n_wc',  t:'n_sw'  },
+        { f:'n_wc',  t:'n_wu'  },
+        { f:'n_wc',  t:'n_ws'  },
+        { f:'n_sw',  t:'n_ueq' },
+        { f:'n_sw',  t:'n_eq'  },
+        { f:'n_wu',  t:'n_fire'},
+      ],
+    },
+  ];
+
+  // ── Tab wiring ───────────────────────────────
+  let cur = 0;
+  const tabs = document.querySelectorAll('.gtab');
+  tabs.forEach((btn, i) => {
+    btn.addEventListener('click', () => {
+      cur = i;
+      tabs.forEach((b, j) => b.classList.toggle('active', j === i));
+      render(views[i]);
+    });
+  });
+
+  render(views[0]);
+})();
+</script>
+</body>
+</html>

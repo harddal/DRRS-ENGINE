@@ -42,7 +42,8 @@ static float AS_Float_To_String(std::string& in) { return static_cast<float>(ato
 
 // TIME
 static irr::u32 AS_Get_Time_Current() { return Engine::Get()->getCurrentTime(); }
-static irr::f32 AS_Get_Time_Delta() { return Engine::Get()->getDeltaTime(); }
+static irr::u32 AS_Get_Time_Delta() { return static_cast<irr::u32>(Engine::Get()->getDeltaTime()); }
+static irr::f32 AS_Get_Time_Delta_Seconds() { return Engine::Get()->getDeltaTime() * 0.001f; }
 
 void ScriptBindings::RegisterCore(asIScriptEngine* engine)
 {
@@ -93,6 +94,7 @@ void ScriptBindings::RegisterCore(asIScriptEngine* engine)
     {
         engine->RegisterGlobalFunction("int get()",      asFUNCTION(AS_Get_Time_Current), asCALL_CDECL);
         engine->RegisterGlobalFunction("int getDelta()", asFUNCTION(AS_Get_Time_Delta),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("float getDeltaSeconds()", asFUNCTION(AS_Get_Time_Delta_Seconds), asCALL_CDECL);
     }
 
     engine->SetDefaultNamespace("");

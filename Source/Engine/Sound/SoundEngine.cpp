@@ -28,16 +28,23 @@ void SoundHandle::setPaused(bool paused)
 
 SoundEngine::SoundEngine()
 {
-	SoLoud::result result = m_soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::XAUDIO2);
+	// 512-sample buffer (~11.6ms @ 44100Hz) keeps audio-onset jitter tight enough
+	// that rapid-fire sounds at 250ms intervals stay perceptually in sync.
+	// The default 2048-sample buffer (~46ms) produces audible timing drift at that rate.
+	SoLoud::result result = m_soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::XAUDIO2, 44100, 512);
 	if (result != SoLoud::SO_NO_ERROR)
 	{
 		spdlog::warn("SoLoud: XAudio2 init failed ({}), falling back to auto-detect", m_soloud.getErrorString(result));
-		result = m_soloud.init();
+		result = m_soloud.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::AUTO, 44100, 512);
 	}
 	if (result != SoLoud::SO_NO_ERROR)
 		spdlog::error("SoLoud: init failed: {}", m_soloud.getErrorString(result));
 	else
 		spdlog::info("SoLoud {}", SOLOUD_VERSION);
+
+	// Default ceiling is 16 — far too low for a scene with rapid-fire weapons,
+	// 3D shell bounces, and ambient sounds all stacking simultaneously.
+	m_soloud.setMaxActiveVoiceCount(64);
 }
 
 SoundEngine::~SoundEngine()

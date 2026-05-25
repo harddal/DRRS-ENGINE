@@ -1,6 +1,7 @@
 #include "Bindings.h"
 
 #include "Engine/Engine.h"
+#include "Engine/Sound/GeigerEffect.h"
 
 static void AS_PlayEntitySound(int e, std::string sound)
 {
@@ -22,12 +23,45 @@ static void AS_PlaySoundAtPosition(irr::core::vector3df pos, std::string file)
 	SoundManager::Get()->sound()->play3D(file.c_str(), pos);
 }
 
+// Per-frame Geiger strength accumulator (max across all radiation sources).
+static float s_geigerAccum = 0.0f;
+
+static void AS_GeigerSetEnabled(bool b)   { GeigerEffect::Get()->setEnabled(b); }
+static void AS_GeigerSetStrength(float s) { GeigerEffect::Get()->setStrength(s); }
+static void AS_GeigerSetGain(float g)     { GeigerEffect::Get()->setGain(g); }
+static void AS_GeigerUpdate(float dt)     { GeigerEffect::Get()->update(dt); }
+
+static void AS_ContributeGeigerStrength(float s)
+{
+#undef max
+    s_geigerAccum = std::max(s_geigerAccum, s);
+    GeigerEffect::Get()->setStrength(s_geigerAccum);
+}
+
+void ScriptBindings::ResetSoundAccumulators()
+{
+    s_geigerAccum = 0.0f;
+    GeigerEffect::Get()->setStrength(0.0f);
+}
+
+void ScriptBindings::BeginSoundSession()
+{
+    s_geigerAccum = 0.0f;
+    GeigerEffect::Get()->resetSession();
+}
+
 void ScriptBindings::RegisterSound(asIScriptEngine* engine)
 {
 	engine->SetDefaultNamespace("sound");
 	{
 		engine->RegisterGlobalFunction("void play(int entityId, string sound)", asFUNCTION(AS_PlayEntitySound), asCALL_CDECL);
 		engine->RegisterGlobalFunction("void playAt(vector3d position, string sound)", asFUNCTION(AS_PlaySoundAtPosition), asCALL_CDECL);
+
+		engine->RegisterGlobalFunction("void setGeigerEnabled(bool enabled)", asFUNCTION(AS_GeigerSetEnabled), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setGeigerStrength(float strength)", asFUNCTION(AS_GeigerSetStrength), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void setGeigerGain(float gain)", asFUNCTION(AS_GeigerSetGain), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void contributeGeigerStrength(float strength)", asFUNCTION(AS_ContributeGeigerStrength), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void updateGeiger(float dt)", asFUNCTION(AS_GeigerUpdate), asCALL_CDECL);
 	}
 
 	engine->SetDefaultNamespace("");

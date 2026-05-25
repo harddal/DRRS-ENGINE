@@ -196,6 +196,7 @@
     <ClCompile Include="Source\Engine\Script\Bindings_Vector3.cpp" />
     <ClCompile Include="Source\Engine\Script\ScriptExceptions.cpp" />
     <ClCompile Include="Source\Engine\Script\ScriptManager.cpp" />
+    <ClCompile Include="Source\Engine\Sound\GeigerEffect.cpp" />
     <ClCompile Include="Source\Engine\Sound\SoundEngine.cpp" />
     <ClCompile Include="Source\Engine\Sound\SoundManager.cpp" />
     <ClCompile Include="Source\Engine\World\DeserializeEntity.cpp" />
@@ -380,6 +381,7 @@
     <ClInclude Include="Source\Engine\Renderer\Spark\include\SPK_IRR.h" />
     <ClInclude Include="Source\Engine\Renderer\SplatMap.h" />
     <ClInclude Include="Source\Engine\Resource\AnimatedSpriteLoader.h" />
+    <ClInclude Include="Source\Engine\Sound\GeigerEffect.h" />
     <ClInclude Include="Source\Engine\Sound\SoundEngine.h" />
     <ClInclude Include="Source\Engine\World\Components\NavAgentComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\TweenComponent.h" />
