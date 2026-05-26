@@ -22,8 +22,8 @@ void Weapon_Minigun::init()
 	m_descriptor.name = "Player_Weapon_Minigun";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.1f, -0.2f, 0.4f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, -1.0, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.1450f, -0.1800f, 0.2650f);
+	m_viewRotationOffset = irr::core::vector3df(0.00f, 0.50f, 0.00f);
 	m_viewScaleOffset = irr::core::vector3df(0.3, 0.3, 0.3);
 
 	m_mesh.mesh = "content/mesh/player/weapon/minigun/HUD.b3d";

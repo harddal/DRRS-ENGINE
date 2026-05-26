@@ -5,47 +5,47 @@ void Weapon_FuelRodCannon::precache()
 
 }
 
-void Weapon_None::init()
+void Weapon_FuelRodCannon::init()
 {
 
 }
 
-void Weapon_None::destroy()
+void Weapon_FuelRodCannon::destroy()
 {
 
 }
 
-void Weapon_None::update()
+void Weapon_FuelRodCannon::update()
 {
 
 }
 
-void Weapon_None::equip()
+void Weapon_FuelRodCannon::equip()
 {
 
 }
 
-void Weapon_None::unequip()
+void Weapon_FuelRodCannon::unequip()
 {
 
 }
 
-void Weapon_None::idle()
+void Weapon_FuelRodCannon::idle()
 {
 
 }
 
-void Weapon_None::move()
+void Weapon_FuelRodCannon::move()
 {
 
 }
 
-void Weapon_None::fire()
+void Weapon_FuelRodCannon::fire()
 {
 
 }
 
-void Weapon_None::reload()
+void Weapon_FuelRodCannon::reload()
 {
 
 }

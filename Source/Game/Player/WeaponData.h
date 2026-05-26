@@ -24,8 +24,8 @@ enum PLAYER_WEAPON
 	WEAP_BOLTDRIVER,
 	WEAP_MINIGUN,
 	WEAP_ROCKETLAUNCHER,
-	WEAP_BIORIFLE,
 	WEAP_GRENADE,
+	WEAP_BIORIFLE,
 	WEAP_FUELROD,
 	WEAP_COUNT
 };
@@ -67,6 +67,8 @@ struct WeaponProjectile
 	irr::scene::IParticleSystemSceneNode* trailParticles = nullptr; // Trail effect (Irrlicht, legacy)
 	SPK::System* sparkSystem = nullptr; // Trail/bolt effect (SPARK)
 	SoundHandle flyingSound; // Looping 3D flight sound
+	bool isBouncing  = false; // If true, reflects off surfaces and detonates on timer instead of impact
+	int  bounceCount = 0;    // Number of times this projectile has bounced
 };
 
 class PlayerWeapon
@@ -92,6 +94,12 @@ public:
 
 	// Helper method for weapon sway - call this from derived class update()
 	virtual void updateWeaponSway(float dt);
+
+	// Debug accessors for the viewmodel positioning tool in WeaponController
+	irr::core::vector3df& debugViewPositionOffset() { return m_viewPositionOffset; }
+	irr::core::vector3df& debugViewRotationOffset() { return m_viewRotationOffset; }
+	irr::scene::IAnimatedMeshSceneNode* debugViewmodelNode() { return m_mesh.node; }
+	const std::string& debugWeaponName() const { return m_descriptor.name; }
 
 protected:
 	bool picked_up;

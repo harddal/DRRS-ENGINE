@@ -24,7 +24,7 @@ void Weapon_Pistol::init()
 	m_descriptor.name = "Player_Weapon_Pistol";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.3f, 0.0f, 0.7f);
+	m_viewPositionOffset = irr::core::vector3df(0.3300f, -0.0100f, 0.6800f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 

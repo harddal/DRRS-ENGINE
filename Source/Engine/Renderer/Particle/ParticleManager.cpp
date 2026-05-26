@@ -193,6 +193,33 @@ void ParticleManager::clear()
     m_effects.clear();
 }
 
+void ParticleManager::setEmitterDirection(uint32_t handle, const irr::core::vector3df& dir)
+{
+    if (handle == 0) return;
+    auto it = m_instances.find(handle);
+    if (it == m_instances.end()) return;
+
+    SPK::System* sys = it->second.system;
+    if (!sys) return;
+
+    SPK::Vector3D spkDir(dir.X, dir.Y, dir.Z);
+
+    for (size_t g = 0; g < sys->getNbGroups(); ++g)
+    {
+        SPK::Group* group = sys->getGroup(g);
+        if (!group) continue;
+        for (size_t e = 0; e < group->getNbEmitters(); ++e)
+        {
+            SPK::Emitter* emitter = group->getEmitter(e);
+            if (!emitter) continue;
+            if (auto* spheric = dynamic_cast<SPK::SphericEmitter*>(emitter))
+                spheric->setDirection(spkDir);
+            else if (auto* straight = dynamic_cast<SPK::StraightEmitter*>(emitter))
+                straight->setDirection(spkDir);
+        }
+    }
+}
+
 void ParticleManager::setPosition(uint32_t handle, const irr::core::vector3df& pos)
 {
     if (handle == 0) return;

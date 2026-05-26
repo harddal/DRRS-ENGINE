@@ -45,8 +45,8 @@ void Weapon_MiningLaser::init()
 	m_descriptor.name = "Player_Weapon_MiningLaser";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.25f, -0.1f, 0.3f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.2850f, -0.0950f, 0.4250f);
+	m_viewRotationOffset = irr::core::vector3df(0.00f, -1.00f, -3.50f);
 	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
 	m_mesh.mesh = "content/mesh/player/weapon/beam_cutter/hud.b3d";

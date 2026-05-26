@@ -24,8 +24,8 @@ void Weapon_RocketLauncher::init()
 	m_descriptor.name = "Player_Weapon_RocketLauncher";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.3f, -0.1f, 0.4f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.2950f, -0.1550f, 0.3600f);
+	m_viewRotationOffset = irr::core::vector3df(0.00f, -0.50f, -6.00f);
 	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
 	m_mesh.mesh = "content/mesh/player/weapon/rocket_launcher/hud.b3d";
@@ -652,7 +652,7 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 
 	// Trigger fire animation
 	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(81, 95);
+	m_mesh.node->setFrameLoop(81, 89);
 
 	// Create muzzle flash effect
 	createMuzzleFlash();

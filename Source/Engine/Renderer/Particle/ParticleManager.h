@@ -44,6 +44,10 @@ public:
     // Reposition an active looping effect. No-op if handle is 0 or not found. O(1) lookup.
     void setPosition(uint32_t handle, const irr::core::vector3df& pos);
 
+    // Override the emission direction on all spheric/straight emitters in an active instance.
+    // No-op if handle is 0 or not found. Call immediately after spawn() for directional effects.
+    void setEmitterDirection(uint32_t handle, const irr::core::vector3df& dir);
+
 private:
     struct BaseEffect
     {

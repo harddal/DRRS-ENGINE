@@ -37,6 +37,10 @@ public:
 
 private:
 	bool m_firstUpdate;
+	bool m_showViewmodelDebug = false;
+
+	void setViewmodelDebug(bool open);
+	void drawViewmodelDebugUI();
 
 	unsigned int m_current_weapon;
 	int m_pendingWeapon = -1; // >= 0 while waiting for unequip anim to finish

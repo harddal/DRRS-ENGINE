@@ -4,6 +4,9 @@
 
 #include "Engine/Engine.h"
 
+#include <IMGUI/imgui.h>
+#include "InventoryController.h"
+
 #define current_weapon m_player_weapon.at(m_current_weapon)
 
 void WeaponController::init()
@@ -35,8 +38,8 @@ void WeaponController::init()
 	m_player_weapon.emplace_back(std::make_unique<Weapon_BoltDriver>(m_weapon_boltdriver));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Minigun>(m_weapon_minigun));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_RocketLauncher>(m_weapon_rocketlauncher));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_BioRifle>(m_weapon_biorifle));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_GrenadeLauncher>(m_weapon_grenadelauncher));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_BioRifle>(m_weapon_biorifle));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_FuelRodCannon>(m_weapon_fuelrodcannon));
 }
 
@@ -114,6 +117,8 @@ void WeaponController::update()
 	{
 		current_weapon->reload();
 	}
+
+	drawViewmodelDebugUI();
 }
 
 void WeaponController::destroy()
@@ -168,4 +173,73 @@ void WeaponController::switchWeapon(PLAYER_WEAPON weapon)
 void WeaponController::unequipWeapon()
 {
 	m_current_weapon = WEAP_NONE;
+}
+
+void WeaponController::setViewmodelDebug(bool open)
+{
+	m_showViewmodelDebug = open;
+	ImGui::GetIO().MouseDrawCursor  = open;
+	InputManager::Get()->canProcessInput(!open);
+	g_PlayerInventoryIsDisplaying   = open;
+}
+
+void WeaponController::drawViewmodelDebugUI()
+{
+	// Toggle with F2 (only detectable while input is active, i.e. while window is closed)
+	static bool f2Last = false;
+	bool f2Now = InputManager::Get()->isKeyPressed(KEY_F2);
+	if (f2Now && !f2Last)
+		setViewmodelDebug(true);
+	f2Last = f2Now;
+
+	if (!m_showViewmodelDebug)
+		return;
+
+	PlayerWeapon* weap = current_weapon.get();
+	if (!weap || !weap->debugViewmodelNode())
+		return;
+
+	ImGui::SetNextWindowSize(ImVec2(380, 0), ImGuiCond_Once);
+	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Once);
+	ImGui::Begin("Viewmodel Transform", &m_showViewmodelDebug);
+
+	// Detect close via the ImGui X button
+	if (!m_showViewmodelDebug)
+	{
+		setViewmodelDebug(false);
+		ImGui::End();
+		return;
+	}
+
+	ImGui::TextDisabled("%s", weap->debugWeaponName().c_str());
+	ImGui::Separator();
+
+	auto& pos = weap->debugViewPositionOffset();
+	auto& rot = weap->debugViewRotationOffset();
+
+	float p[3] = { pos.X, pos.Y, pos.Z };
+	float r[3] = { rot.X, rot.Y, rot.Z };
+
+	bool changed = false;
+	changed |= ImGui::DragFloat3("Position", p, 0.005f, -3.0f, 3.0f, "%.4f");
+	changed |= ImGui::DragFloat3("Rotation", r, 0.5f,  -180.0f, 180.0f, "%.2f");
+
+	if (changed)
+	{
+		pos = irr::core::vector3df(p[0], p[1], p[2]);
+		rot = irr::core::vector3df(r[0], r[1], r[2]);
+		weap->debugViewmodelNode()->setPosition(pos);
+		weap->debugViewmodelNode()->setRotation(rot);
+	}
+
+	ImGui::Separator();
+	ImGui::TextDisabled("Copy-paste:");
+
+	char posBuf[128], rotBuf[128];
+	snprintf(posBuf, sizeof(posBuf), "irr::core::vector3df(%.4ff, %.4ff, %.4ff)", pos.X, pos.Y, pos.Z);
+	snprintf(rotBuf, sizeof(rotBuf), "irr::core::vector3df(%.2ff, %.2ff, %.2ff)", rot.X, rot.Y, rot.Z);
+	ImGui::InputText("##pos", posBuf, sizeof(posBuf), ImGuiInputTextFlags_ReadOnly);
+	ImGui::InputText("##rot", rotBuf, sizeof(rotBuf), ImGuiInputTextFlags_ReadOnly);
+
+	ImGui::End();
 }

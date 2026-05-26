@@ -21,8 +21,8 @@ void Weapon_BoltDriver::init()
 	m_descriptor.name = "Player_Weapon_BoltDriver";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.25f, 0.0f, 0.4f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.2650f, -0.0100f, 0.4150f);
+	m_viewRotationOffset = irr::core::vector3df(0.00f, 0.00f, -5.50f);
 	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
 
 	m_mesh.mesh = "content/mesh/player/weapon/bolt_driver/hud.b3d";

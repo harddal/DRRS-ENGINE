@@ -26,7 +26,7 @@ void EditorState::init(std::string args)
 
 	Engine::Get()->stateManager()->initState(ESID_EDITORGAME);
 
-	WorldManager::Get()->importScene(_asset_scn_pak("navtest"));
+	WorldManager::Get()->importScene(_asset_scn_pak("dm_turbine"));
 }
 
 void EditorState::update(float dt)
