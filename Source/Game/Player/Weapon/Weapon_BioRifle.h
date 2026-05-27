@@ -42,6 +42,7 @@ private:
 	{
 		uint32_t                 handle;
 		irr::core::vector3df     position;
+		irr::core::vector3df     direction;
 		float                    spawnTime;
 	};
 

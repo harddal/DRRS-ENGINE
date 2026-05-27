@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "../CameraFX.h"
 
@@ -228,7 +229,7 @@ void Weapon_BioRifle::update()
 				if (handle)
 				{
 					ParticleManager::Get()->setEmitterDirection(handle, forward);
-					m_mistBursts.push_back({ handle, muzzlePos, currentTime });
+					m_mistBursts.push_back({ handle, muzzlePos, forward, currentTime });
 				}
 			}
 		}
@@ -271,7 +272,11 @@ void Weapon_BioRifle::persist()
 
 			for (const auto& burst : m_mistBursts)
 			{
-				if ((pos - burst.position).getLength() <= m_mistDmgRadius)
+				// Offset the sphere center forward so it represents where the cloud has drifted,
+				// not the muzzle origin. This prevents the player from taking damage just from
+				// holding the weapon while also allowing anyone to walk into the cloud.
+				irr::core::vector3df cloudCenter = burst.position + burst.direction * 2.5f;
+				if ((pos - cloudCenter).getLength() <= m_mistDmgRadius)
 				{
 					entity.getComponent<DamageReceiverComponent>().damageReceived += m_altDmgPerTick;
 					break; // Damage once per entity per tick regardless of burst overlap
@@ -367,13 +372,53 @@ void Weapon_BioRifle::spawnGlob()
 	muzzleBone->updateAbsolutePosition();
 	irr::core::vector3df spawnPos = muzzleBone->getAbsolutePosition();
 
-	irr::core::vector3df target    = camera.camera->getTarget();
-	irr::core::vector3df direction = (target - spawnPos).normalize();
+	// Raycast from camera to find where the crosshair intersects world geometry
+	irr::core::vector3df camPos = camera.camera->getAbsolutePosition();
+	irr::core::vector3df aimFar = camera.targetNode
+		? camera.targetNode->getAbsolutePosition()
+		: camPos + (camera.camera->getTarget() - camPos).normalize() * 1000.0f;
 
-	direction.Y += m_lobAngle;
-	direction.normalize();
+	RaycastResultData aimHit = RenderManager::Get()->raycastWorldPosition(camPos, aimFar, true);
+	irr::core::vector3df aimTarget = aimHit.hit ? aimHit.point : aimFar;
 
-	spawnPos += direction * m_spawnOffset;
+	// Solve for the low-arc launch velocity that lands on aimTarget
+	irr::core::vector3df launchVelocity;
+	{
+		irr::core::vector3df toTarget(aimTarget.X - spawnPos.X, 0.0f, aimTarget.Z - spawnPos.Z);
+		float d = toTarget.getLength();
+		float h = aimTarget.Y - spawnPos.Y;
+
+		bool solved = false;
+		if (d > 0.01f)
+		{
+			float v2   = m_projectileSpeed * m_projectileSpeed;
+			float disc = v2 * v2 - m_gravity * (m_gravity * d * d + 2.0f * h * v2);
+			if (disc >= 0.0f)
+			{
+				float tanTheta = (v2 - std::sqrt(disc)) / (m_gravity * d);
+				float theta    = std::atan(tanTheta);
+				irr::core::vector3df horizDir = toTarget;
+				horizDir.normalize();
+				launchVelocity    = horizDir * (m_projectileSpeed * std::cos(theta));
+				launchVelocity.Y += m_projectileSpeed * std::sin(theta);
+				solved = true;
+			}
+		}
+
+		if (!solved)
+		{
+			// Fallback: static lob angle (target out of range or directly above)
+			irr::core::vector3df fallDir = (aimTarget - spawnPos).normalize();
+			fallDir.Y += m_lobAngle;
+			fallDir.normalize();
+			launchVelocity = fallDir * m_projectileSpeed;
+		}
+	}
+
+	irr::core::vector3df launchDir = launchVelocity;
+	launchDir.normalize();
+
+	spawnPos += launchDir * m_spawnOffset;
 
 	anax::Entity projectileEntity = WorldManager::Get()->managerSystem()->getWorld().createEntity();
 
@@ -389,7 +434,7 @@ void Weapon_BioRifle::spawnGlob()
 	transform.position        = spawnPos;
 	transform.initialPosition = spawnPos;
 
-	irr::core::vector3df initialRotation = direction.getHorizontalAngle();
+	irr::core::vector3df initialRotation = launchDir.getHorizontalAngle();
 	transform.rotation        = initialRotation;
 	transform.initialRotation = initialRotation;
 
@@ -422,7 +467,7 @@ void Weapon_BioRifle::spawnGlob()
 	proj.distanceTraveled = 0.0f;
 	proj.isTrackingActive = false;
 	proj.entity           = projectileEntity;
-	proj.velocity         = direction * proj.speed;
+	proj.velocity         = launchVelocity;
 	proj.previousPosition = spawnPos;
 	proj.trailParticles   = nullptr;
 	proj.isBouncing       = false;
