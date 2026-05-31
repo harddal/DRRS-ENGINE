@@ -23,10 +23,20 @@ struct TriggerZoneComponent : anax::Component
     std::string entity = "null", triggered_entity = "null";
 
     template <class Archive>
-    void serialize(Archive& archive)
+    void save(Archive& archive) const
     {
         unsigned int trigger_mask = static_cast<unsigned int>(mask);
         bool onoff = toggle;
         archive(CEREAL_NVP(trigger_mask), CEREAL_NVP(entity), CEREAL_NVP(triggered_entity), CEREAL_NVP(reset), CEREAL_NVP(onoff), CEREAL_NVP(single_use), CEREAL_NVP(invert));
+    }
+
+    template <class Archive>
+    void load(Archive& archive)
+    {
+        unsigned int trigger_mask = 0;
+        bool onoff = false;
+        archive(CEREAL_NVP(trigger_mask), CEREAL_NVP(entity), CEREAL_NVP(triggered_entity), CEREAL_NVP(reset), CEREAL_NVP(onoff), CEREAL_NVP(single_use), CEREAL_NVP(invert));
+        mask   = static_cast<TRIGGER_ZONE_MASK>(trigger_mask);
+        toggle = onoff;
     }
 };

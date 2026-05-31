@@ -73,6 +73,17 @@ Entity& ManagerSystem::getEntityByName(string name)
     return m_nullEntity;
 }
 
+std::vector<Entity*> ManagerSystem::getEntitiesByName(string name)
+{
+    std::vector<Entity*> results;
+    for (auto& entity : getEntities())
+    {
+        if (entity.getComponent<DescriptorComponent>().name == name)
+            results.push_back(&const_cast<Entity&>(entity));
+    }
+    return results;
+}
+
 Entity& ManagerSystem::getEntityByID(entityid id)
 {
     if (id >= _entity_null_value)

@@ -12,7 +12,7 @@ void MenuState::init(std::string args)
 	m_fadeStart = std::chrono::steady_clock::now();
 
 	PhysicsManager::Get()->createScene();
-	WorldManager::Get()->importScene(_asset_scn_pak("mainmenu"));
+	WorldManager::Get()->importScene(_asset_scn_pak("dm_turbine"));
 
 	SoundManager::Get()->sound()->play2D("content/sound/music/main_menu.wav", true);
 }

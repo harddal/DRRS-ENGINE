@@ -1267,13 +1267,31 @@ void RenderManager::draw(f32 dt)
 
     // Draw debug nodes directly to the backbuffer after post-processing so
     // they are never affected by bloom or tonemapping.
+    // Animated mesh nodes with transparent materials must bypass n->render() for the
+    // same reason as LDR effect nodes: render() skips transparent buffers outside drawAll().
     for (size_t i = 0; i < m_debugNodes.size(); ++i)
     {
         if (!debugWasVisible[i]) continue;
         auto* n = m_debugNodes[i];
         n->updateAbsolutePosition();
         m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
-        n->render();
+        if (n->getType() == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* an = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
+            if (an->getMesh())
+            {
+                auto* mesh = an->getMesh()->getMesh(an->getFrameNr());
+                for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+                {
+                    m_driver->setMaterial(an->getMaterial(b));
+                    m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+                }
+            }
+        }
+        else
+        {
+            n->render();
+        }
     }
 
     // Depth pre-pass: stamp viewmodel geometry into the backbuffer depth buffer so

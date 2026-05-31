@@ -18,6 +18,18 @@ static void AS_PlayEntitySound(int e, std::string sound)
 		}
 }
 
+static void AS_PlayEntitySoundByIndex(int e, int index)
+{
+    auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
+
+    if (!entity.isValid()) return;
+    if (!entity.hasComponent<SoundComponent>()) return;
+
+    auto& sounds = entity.getComponent<SoundComponent>().sounds;
+    if (index >= 0 && index < (int)sounds.size())
+        sounds[index].play = true;
+}
+
 static void AS_PlaySoundAtPosition(irr::core::vector3df pos, std::string file)
 {
 	SoundManager::Get()->sound()->play3D(file.c_str(), pos);
@@ -70,6 +82,7 @@ void ScriptBindings::RegisterSound(asIScriptEngine* engine)
 	engine->SetDefaultNamespace("sound");
 	{
 		engine->RegisterGlobalFunction("void play(int entityId, string sound)", asFUNCTION(AS_PlayEntitySound), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void playIndex(int entityId, int index)", asFUNCTION(AS_PlayEntitySoundByIndex), asCALL_CDECL);
 		engine->RegisterGlobalFunction("void playAt(vector3d position, string sound)", asFUNCTION(AS_PlaySoundAtPosition), asCALL_CDECL);
 		engine->RegisterGlobalFunction("int play2d(string file, float volume = 1.0f, bool loop = false)", asFUNCTION(AS_Play2D), asCALL_CDECL);
 		engine->RegisterGlobalFunction("int play3d(vector3d position, string file, float volume = 1.0f, bool loop = false)", asFUNCTION(AS_Play3D), asCALL_CDECL);

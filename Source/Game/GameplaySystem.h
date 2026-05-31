@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_set>
+
 #include "anax/anax.hpp"
 
 #include "Game/Components/DamageReceiverComponent.h"
@@ -28,5 +30,7 @@ private:
 	irr::f32 m_current, m_last, m_time;
 
 	std::vector<std::pair<irr::core::vector3df, irr::core::vector3df>> m_waterZones;
+
+	void propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited);
 
 };

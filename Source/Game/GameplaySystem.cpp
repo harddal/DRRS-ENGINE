@@ -40,6 +40,49 @@ void GameplaySystem::init()
 	
 }
 
+static std::vector<std::string> splitReceiver(const std::string& s)
+{
+    std::vector<std::string> tokens;
+    std::stringstream ss(s);
+    std::string tok;
+    while (getline(ss, tok, ','))
+        tokens.push_back(tok);
+    return tokens;
+}
+
+void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited)
+{
+    if (!entity.isValid()) return;
+
+    auto id = entity.getComponent<DescriptorComponent>().id;
+    if (visited.count(id)) return;
+    visited.insert(id);
+
+    if (entity.hasComponent<LogicComponent>() && entity.hasComponent<ScriptComponent>())
+    {
+        auto& logic  = entity.getComponent<LogicComponent>();
+        auto& script = entity.getComponent<ScriptComponent>();
+
+        logic.isActivated = true;
+
+        if (script.hasOnLogicEventActivate)
+            ScriptManager::Get()->execute(script, script.onLogicEventActivate, id);
+
+        for (auto& token : splitReceiver(logic.receiver))
+        {
+            for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
+                propagateLogicSignal(*next, visited);
+        }
+
+        logic.isActivated = false;
+    }
+    else if (entity.hasComponent<LightComponent>())
+    {
+        entity.getComponent<RenderComponent>().isVisible =
+            !entity.getComponent<RenderComponent>().isVisible;
+    }
+}
+
 void GameplaySystem::update()
 {
 	m_waterZones.clear();
@@ -283,50 +326,16 @@ void GameplaySystem::update()
 
 				if (logicComponent.isActivated)
 				{
-					std::vector<std::string> tokens;
-					std::stringstream check1(logicComponent.receiver);
-					std::string intermediate;
+					std::unordered_set<entityid> visited;
+					visited.insert(entity.getComponent<DescriptorComponent>().id);
 
-					while (getline(check1, intermediate, ','))
+					for (auto& token : splitReceiver(logicComponent.receiver))
 					{
-						tokens.push_back(intermediate);
+						for (auto* r_ent : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
+							propagateLogicSignal(*r_ent, visited);
 					}
 
-					for (auto& token : tokens)
-					{
-						auto& r_ent = WorldManager::Get()->managerSystem()->getEntityByName(token);
-
-						if (r_ent.isValid())
-						{
-							if (r_ent.hasComponent<LogicComponent>() && r_ent.hasComponent<ScriptComponent>())
-							{
-								auto& r_ent_logic = r_ent.getComponent<LogicComponent>();
-								auto& r_ent_script = r_ent.getComponent<ScriptComponent>();
-
-								r_ent_logic.isActivated = true;
-
-								if (r_ent_script.hasOnLogicEventActivate)
-								{
-									ScriptManager::Get()->execute(
-										r_ent_script, r_ent_script.onLogicEventActivate,
-										r_ent.getComponent<DescriptorComponent>().id);
-								}
-
-								r_ent_logic.isActivated = false;
-							}
-							else
-							{
-								if (r_ent.hasComponent<LightComponent>())
-								{
-									auto& render = r_ent.getComponent<RenderComponent>();
-
-									render.isVisible = !render.isVisible;
-								}
-							}
-						}
-
-						logicComponent.isActivated = false;
-					}
+					logicComponent.isActivated = false;
 				}
 			}
 		}
@@ -500,6 +509,17 @@ void GameplaySystem::update()
 									ScriptManager::Get()->execute(
 										ent_script, ent_script.onLogicEventActivate,
 										entity.getComponent<DescriptorComponent>().id);
+								}
+
+								if (!ent_logic.receiver.empty())
+								{
+									std::unordered_set<entityid> visited;
+									visited.insert(entity.getComponent<DescriptorComponent>().id);
+									for (auto& t : splitReceiver(ent_logic.receiver))
+									{
+										for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(t))
+											propagateLogicSignal(*next, visited);
+									}
 								}
 
 								ent_logic.isActivated = false;

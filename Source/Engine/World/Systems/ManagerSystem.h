@@ -17,6 +17,7 @@ public:
     std::string getNameByID(entityid id);
 
     anax::Entity& getEntityByName(std::string name);
+    std::vector<anax::Entity*> getEntitiesByName(std::string name);
     anax::Entity& getEntityByID(entityid id);
 
     bool doesEntityExist(std::string name);

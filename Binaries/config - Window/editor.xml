@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+	<value0>
+		<drawPointLightBounds>true</drawPointLightBounds>
+		<useSnap>false</useSnap>
+		<snapX>1</snapX>
+		<snapY>1</snapY>
+		<snapZ>1</snapZ>
+	</value0>
+</cereal>
+

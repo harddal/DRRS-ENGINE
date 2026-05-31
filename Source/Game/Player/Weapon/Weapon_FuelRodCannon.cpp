@@ -6,6 +6,9 @@
 
 #include "Engine/Renderer/Particle/ParticleManager.h"
 #include "Engine/Resource/FilePaths.h"
+#include "Engine/Sound/GeigerEffect.h"
+
+#include "Game/Components/NPCComponent.h"
 
 #undef MB_RIGHT
 #undef max
@@ -131,6 +134,19 @@ void Weapon_FuelRodCannon::destroy()
 	}
 	m_projectiles.clear();
 
+	for (auto& zone : m_zones)
+	{
+		if (zone.particles)
+		{
+			zone.particles->remove();
+			zone.particles = nullptr;
+		}
+	}
+	m_zones.clear();
+
+	GeigerEffect::Get()->setEnabled(false);
+	GeigerEffect::Get()->setStrength(0.0f);
+
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
 	m_mesh.node->remove();
 
@@ -183,6 +199,7 @@ void Weapon_FuelRodCannon::persist()
 
 	updateProjectiles(dt);
 	updateMuzzleFlash(dt);
+	updateZones(dt);
 }
 
 void Weapon_FuelRodCannon::equip()
@@ -289,7 +306,6 @@ void Weapon_FuelRodCannon::spawnProjectile()
 	mesh.castShadows    = false;
 	mesh.receiveShadows = false;
 
-	// Green point light to sell the glowing fuel rod
 	projectileEntity.addComponent<LightComponent>();
 	auto& light         = projectileEntity.getComponent<LightComponent>();
 	light.type          = LT_POINT;
@@ -341,19 +357,16 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 			continue;
 		}
 
-		// Create green plasma trail once transform node is ready
 		if (!it->trailParticles)
 		{
 			auto* particleSystem = RenderManager::Get()->sceneManager()->addParticleSystemSceneNode(false, transformComp.node);
 
 			auto* emitter = particleSystem->createPointEmitter(
 				irr::core::vector3df(0, 0, 0),
-				20,
-				35,
+				20, 35,
 				irr::video::SColor(255, 80, 220, 80),
 				irr::video::SColor(255, 20, 120, 20),
-				200,
-				450,
+				200, 450,
 				1,
 				irr::core::dimension2df(0.12f, 0.12f),
 				irr::core::dimension2df(0.18f, 0.18f)
@@ -432,7 +445,6 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 		if (hitSomething && hitNode)
 		{
 			entityid hitEntityID = hitNode->getID();
-
 			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
 				hitEntityID != it->entity.getComponent<DescriptorComponent>().id)
 			{
@@ -507,7 +519,6 @@ void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid 
 {
 	SoundManager::Get()->sound()->play3D("content/sound/effect/explosion2.wav", pos);
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
-	applySplashDamage(pos, directHitID);
 
 	anax::Entity& playerEnt = WorldManager::Get()->managerSystem()->getEntityByName("player");
 	if (playerEnt.isValid() && playerEnt.hasComponent<TransformComponent>())
@@ -523,6 +534,7 @@ void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid 
 			g_CameraFX.addShake(intensity, shakeDurMs);
 	}
 
+	// Point damage on direct hit
 	if (directHitID != _entity_null_value)
 	{
 		auto entities = WorldManager::Get()->managerSystem()->getEntities();
@@ -532,10 +544,204 @@ void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid 
 				entity.getComponent<DescriptorComponent>().id == directHitID)
 			{
 				if (entity.hasComponent<DamageReceiverComponent>())
-					entity.getComponent<DamageReceiverComponent>().damageReceived += m_pointDamage;
+					entity.getComponent<DamageReceiverComponent>().damageReceived += (int)m_pointDamage;
 				break;
 			}
 		}
+	}
+
+	// The zone does all ongoing damage; no instant splash
+	spawnZone(pos, false);
+}
+
+void Weapon_FuelRodCannon::spawnZone(const irr::core::vector3df& pos, bool secondary)
+{
+	RadiationZone zone;
+	zone.position     = pos;
+	zone.isSecondary  = secondary;
+	zone.damageAccum  = 0.0f;
+
+	if (secondary)
+	{
+		zone.radius        = 3.5f;
+		zone.maxLifetime   = 5000.0f;
+		zone.damageTickRate = 600.0f;
+		zone.damagePerTick  = 10.0f;
+	}
+	else
+	{
+		zone.radius        = 6.0f;
+		zone.maxLifetime   = 8000.0f;
+		zone.damageTickRate = 500.0f;
+		zone.damagePerTick  = 15.0f;
+	}
+
+	// Build a standalone particle cloud at the zone position
+	auto* psys = RenderManager::Get()->sceneManager()->addParticleSystemSceneNode(
+		false, nullptr, -1, pos);
+
+	auto* emitter = psys->createSphereEmitter(
+		irr::core::vector3df(0, 0, 0),
+		zone.radius * 0.4f,          // emit from inner sphere so cloud spreads naturally
+		irr::core::vector3df(0.0f, 0.002f, 0.0f),
+		secondary ? 8 : 18,
+		secondary ? 16 : 32,
+		irr::video::SColor(180, 40, 180, 40),
+		irr::video::SColor(120, 10, 100, 10),
+		1500, 3000,
+		30,
+		irr::core::dimension2df(0.3f, 0.3f),
+		irr::core::dimension2df(0.6f, 0.6f)
+	);
+
+	psys->setEmitter(emitter);
+	emitter->drop();
+
+	auto* fade = psys->createFadeOutParticleAffector(irr::video::SColor(0, 0, 0, 0), 800);
+	psys->addAffector(fade);
+	fade->drop();
+
+	psys->setMaterialFlag(irr::video::EMF_LIGHTING,       false);
+	psys->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE,  false);
+	psys->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
+	psys->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
+
+	auto* tex = RenderManager::Get()->driver()->getTexture("content/texture/particle/smoke_04.png");
+	if (!tex)
+		tex = RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png");
+	if (tex)
+		psys->setMaterialTexture(0, tex);
+
+	zone.particles = psys;
+
+	m_zones.emplace_back(std::move(zone));
+
+	SoundManager::Get()->sound()->play3D(
+		secondary ? "content/sound/effect/radiation_hiss.wav"
+		          : "content/sound/effect/radiation_impact.wav",
+		pos);
+}
+
+void Weapon_FuelRodCannon::updateZones(float dt)
+{
+	if (m_zones.empty())
+		return;
+
+	anax::Entity& playerEnt = WorldManager::Get()->managerSystem()->getEntityByName("player");
+
+	irr::core::vector3df playerPos(0, 0, 0);
+	bool playerValid = playerEnt.isValid() && playerEnt.hasComponent<TransformComponent>();
+	if (playerValid)
+		playerPos = playerEnt.getComponent<TransformComponent>().getPosition();
+
+	// Buffer secondary zones to append after the loop (can't modify m_zones while iterating)
+	std::vector<irr::core::vector3df> pendingSecondaries;
+
+	float maxRadiationContrib = 0.0f;
+
+	for (auto it = m_zones.begin(); it != m_zones.end();)
+	{
+		it->lifetime  += dt;
+		it->damageAccum += dt;
+
+		// Radiation contribution to postprocess + geiger — linear falloff from zone edge to centre
+		if (playerValid)
+		{
+			float dist = (playerPos - it->position).getLength();
+			float t    = 1.0f - std::min(dist / it->radius, 1.0f);
+			maxRadiationContrib = std::max(maxRadiationContrib, t);
+		}
+
+		// Damage tick
+		if (it->damageAccum >= it->damageTickRate)
+		{
+			it->damageAccum -= it->damageTickRate;
+
+			auto& allEntities = WorldManager::Get()->managerSystem()->getEntities();
+			for (auto& entity : allEntities)
+			{
+				if (!entity.isValid()) continue;
+				if (!entity.hasComponent<DescriptorComponent>()) continue;
+				if (!entity.hasComponent<TransformComponent>()) continue;
+
+				auto& desc = entity.getComponent<DescriptorComponent>();
+
+				irr::core::vector3df entPos = entity.getComponent<TransformComponent>().getPosition();
+				float dist = (entPos - it->position).getLength();
+				if (dist >= it->radius) continue;
+
+				// Damage alive entities (player gets half — self-irradiation is punishing but not instant)
+				if (desc.isAlive && entity.hasComponent<DamageReceiverComponent>())
+				{
+					float falloff   = 1.0f - (dist / it->radius);
+					bool  isPlayer  = playerValid && (desc.id == playerEnt.getComponent<DescriptorComponent>().id);
+					float scale     = isPlayer ? 0.5f : 1.0f;
+					int   damage    = (int)(it->damagePerTick * falloff * scale);
+					if (damage > 0)
+						entity.getComponent<DamageReceiverComponent>().damageReceived += damage;
+				}
+
+				// Contamination: primaries only — watch for NPC death inside the zone.
+				// Dead entities are NOT skipped here so we catch the tick they die.
+				if (!it->isSecondary && entity.hasComponent<NPCComponent>())
+				{
+					if (!desc.isAlive && it->secondarySpawned.find(desc.id) == it->secondarySpawned.end())
+					{
+						pendingSecondaries.emplace_back(entPos);
+						it->secondarySpawned.insert(desc.id);
+					}
+				}
+			}
+		}
+
+		// Fade emitter rate as zone ages so cloud visually dissipates before disappearing
+		if (it->particles)
+		{
+			float lifeRatio = it->lifetime / it->maxLifetime;
+			if (lifeRatio > 0.6f)
+			{
+				// Cut emission in the last 40% of lifetime
+				auto* emitter = it->particles->getEmitter();
+				if (emitter)
+				{
+					float fadeRatio = 1.0f - ((lifeRatio - 0.6f) / 0.4f);
+					int maxParticles = (int)(( it->isSecondary ? 16 : 32) * fadeRatio);
+					emitter->setMaxParticlesPerSecond(std::max(0, maxParticles));
+				}
+			}
+		}
+
+		if (it->lifetime >= it->maxLifetime)
+		{
+			if (it->particles)
+			{
+				it->particles->remove();
+				it->particles = nullptr;
+			}
+			it = m_zones.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	// Spawn secondaries outside the iteration loop
+	for (const auto& pos : pendingSecondaries)
+		spawnZone(pos, true);
+
+	// Contribute radiation to postprocess + geiger — uses std::max so we cooperate with
+	// any script-driven radiation sources that already contributed this frame
+	if (maxRadiationContrib > 0.0f)
+	{
+		auto* rm = RenderManager::Get();
+#undef max
+		float combined = std::max(rm->radiationCallback()->intensity, maxRadiationContrib);
+		rm->radiationCallback()->intensity = combined;
+		rm->setRadiationEnabled(true);
+
+		GeigerEffect::Get()->setEnabled(true);
+		GeigerEffect::Get()->setStrength(std::max(GeigerEffect::Get()->strength, maxRadiationContrib));
 	}
 }
 
@@ -574,7 +780,6 @@ void Weapon_FuelRodCannon::createMuzzleFlash()
 	m_muzzleStarNode->setVisible(true);
 	m_muzzleStarNode->updateAbsolutePosition();
 
-	// Green tint for the fuel rod muzzle flash
 	m_muzzleStarNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 80, 220, 80);
 	m_muzzleStarNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 80, 220, 80);
 
@@ -599,56 +804,5 @@ void Weapon_FuelRodCannon::updateMuzzleFlash(float dt)
 
 		m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
 		m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-	}
-}
-
-void Weapon_FuelRodCannon::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
-{
-	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
-		return;
-
-	auto& entities = WorldManager::Get()->managerSystem()->getEntities();
-	for (auto& entity : entities)
-	{
-		if (!entity.isValid()) continue;
-		if (!entity.hasComponent<DescriptorComponent>()) continue;
-		if (!entity.hasComponent<TransformComponent>()) continue;
-
-		auto& desc = entity.getComponent<DescriptorComponent>();
-
-		if (desc.id == directHitEntityID) continue;
-		if (!desc.isAlive) continue;
-
-		irr::core::vector3df entityPos = entity.getComponent<TransformComponent>().getPosition();
-		float dist = (entityPos - epicentre).getLength();
-
-		if (dist >= m_splashRadius) continue;
-
-		float falloff = 1.0f - (dist / m_splashRadius);
-		float damage  = m_splashDamage * falloff;
-
-		if (damage > 0.0f && entity.hasComponent<DamageReceiverComponent>())
-		{
-			entity.getComponent<DamageReceiverComponent>().damageReceived += damage;
-		}
-
-		if (m_splashForce > 0.0f && entity.hasComponent<PhysicsComponent>())
-		{
-			auto& phys = entity.getComponent<PhysicsComponent>();
-			if (phys.actor && !phys.kinematic)
-			{
-				irr::core::vector3df dir = entityPos - epicentre;
-				float len = dir.getLength();
-				if (len > 0.001f)
-					dir /= len;
-				else
-					dir = irr::core::vector3df(0.0f, 1.0f, 0.0f);
-
-				float impulse = m_splashForce * falloff;
-				phys.actor->addForce(
-					physx::PxVec3(dir.X, dir.Y, dir.Z) * impulse,
-					physx::PxForceMode::eIMPULSE);
-			}
-		}
 	}
 }

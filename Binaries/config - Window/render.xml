@@ -5,13 +5,13 @@
 		<vSync>false</vSync>
 		<pointFilterOverride>false</pointFilterOverride>
 		<api>0</api>
-		<width>2560</width>
-		<height>1600</height>
-		<editor_width>2560</editor_width>
-		<editor_height>1600</editor_height>
+		<width>1920</width>
+		<height>1080</height>
+		<editor_width>1920</editor_width>
+		<editor_height>1080</editor_height>
 		<depth>32</depth>
-		<aspect>3</aspect>
-		<mode>4</mode>
+		<aspect>2</aspect>
+		<mode>3</mode>
 		<dpi_scale>1</dpi_scale>
 		<anisotropyFactor>8</anisotropyFactor>
 		<antialiasingFactor>1</antialiasingFactor>

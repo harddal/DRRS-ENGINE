@@ -4,6 +4,7 @@
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Game/Components/WaterComponent.h"
+#include "Game/Components/TriggerZoneComponent.h"
 
 #include "Editor/SceneInteractionManager.h"
 #include "Editor/EditorState.h"
@@ -408,6 +409,16 @@ void RenderSystem::setDebugMeshComponentData(anax::Entity& entity)
     meshComponent.node->setMaterialFlag(EMF_ANTI_ALIASING, false);
 
     meshComponent.node->setMaterialFlag(EMF_WIREFRAME, true);
+
+    if (entity.hasComponent<TriggerZoneComponent>()) {
+        meshComponent.node->setMaterialFlag(EMF_WIREFRAME, false);
+        meshComponent.node->setMaterialFlag(EMF_BACK_FACE_CULLING, false);
+        meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, false);
+        meshComponent.node->setMaterialType(EMT_TRANSPARENT_ALPHA_CHANNEL);
+        auto* zoneTex = RenderManager::Get()->driver()->getTexture("content/texture/color/green_transparent.png");
+        if (zoneTex)
+            meshComponent.node->setMaterialTexture(0, zoneTex);
+    }
 
     meshComponent.node->setMaterialFlag(EMF_GOURAUD_SHADING, false);
 
