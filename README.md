@@ -11,10 +11,10 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 ## Features
 
 **Rendering**
-- Per-pixel PBR lighting — GGX/Cook-Torrance BRDF, normal maps, specular
+- Per-pixel PBR lighting: GGX/Cook-Torrance BRDF, normal maps, specular
 - Spot-light shadow mapping with slope-scale bias (2048×2048 ECF_R32F)
 - CPU lightmap baking (xatlas UV unwrap → ray-traced irradiance → dilated texture)
-- SPARK particle system integration — data-driven `.psys` effect files
+- SPARK particle system integration: data-driven `.psys` effect files
 - Splatmap terrain blending
 - ImGui-based rendering backend (OpenGL 3+)
 
@@ -36,7 +36,7 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 - Script reference auto-generated to `Binaries/script_reference.html`
 
 **Audio**
-- SoLoud audio engine — 3D positional sound, rapid-fire voice management
+- SoLoud audio engine: 3D positional sound, rapid-fire voice management
 - `sound::play2d` / `sound::play3d` script bindings
 
 **ECS Architecture**
@@ -137,7 +137,7 @@ Binaries/
 
 Entity behavior is scripted in AngelScript, compiled to `.asc` files in `Binaries/content/script/`. The full API surface is documented in `Binaries/script_reference.html`.
 
-Example — `object/torch_light.asc`, a flickering light that exposes tunable parameters to the editor:
+Example: `object/torch_light.asc`, a flickering light that exposes tunable parameters to the editor:
 
 ```angelscript
 #include "../entity.asc"
