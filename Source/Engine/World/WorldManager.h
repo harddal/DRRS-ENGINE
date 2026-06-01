@@ -14,6 +14,7 @@
 #include "Engine/Types.h"
 #include "Game/GameplaySystem.h"
 #include "Game/NPC/NPCSystem.h"
+#include "Game/Behavior/BehaviorSystem.h"
 
 #include "Engine/Renderer/RenderManager.h"
 
@@ -255,6 +256,7 @@ public:
 	GameplaySystem*   gameplaySystem()   { return &m_gameplaySystem; }
 	NPCSystem*        npcSystem()        { return &m_npcSystem; }
 	ParticleSystem*   particleSystem()   { return &m_particleSystem; }
+	BehaviorSystem*   behaviorSystem()   { return &m_behaviorSystem; }
 	irr::f32 getParticleTime() { return m_particleTime; }
 
     static WorldManager* Get() { return s_Instance; }
@@ -305,6 +307,7 @@ private:
 	GameplaySystem m_gameplaySystem;
 	NPCSystem      m_npcSystem;
 	ParticleSystem m_particleSystem;
+	BehaviorSystem m_behaviorSystem;
 
 	irr::f32 m_worldCurrent, m_worldLast, m_worldTime;
 	irr::f32 m_cameraCurrent, m_cameraLast, m_cameraTime;

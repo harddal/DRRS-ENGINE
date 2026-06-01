@@ -11,6 +11,7 @@
 #include "Game/Components/NPCComponent.h"
 #include "Game/Components/TriggerZoneComponent.h"
 #include "Game/Components/WaterComponent.h"
+#include "Game/Components/BehaviorComponent.h"
 
 enum class ENTITY_COMPONENT
 {
@@ -42,5 +43,6 @@ enum class ENTITY_COMPONENT
 	TWEEN,
 	NAVAGENT,
 	WATER,
-	PARTICLE
+	PARTICLE,
+	BEHAVIOR
 };

@@ -106,6 +106,7 @@ entityid WorldManager::deserializeEntity(const string& file, entityid id, bool u
 
             std::string entityName = file + "[" + std::to_string(entityIdx) + "]";
             bool entityActivated = false;
+            bool entityNodeStarted = false;
 
             spdlog::debug("Deserializing entity {}/{} from '{}'", entityIdx + 1, entityInfos.size(), file);
 
@@ -113,6 +114,7 @@ entityid WorldManager::deserializeEntity(const string& file, entityid id, bool u
             {
             archive.setNextName("entity");
             archive.startNode();
+            entityNodeStarted = true;
 
             entity = m_gameWorld.createEntity();
 
@@ -271,13 +273,15 @@ entityid WorldManager::deserializeEntity(const string& file, entityid id, bool u
             {
                 spdlog::warn("Cereal exception on entity {}/{} ('{}') in '{}': {}",
                     entityIdx + 1, entityInfos.size(), entityName, file, e.what());
-                try { archive.finishNode(); } catch (...) {}
+                if (!entityActivated && entityNodeStarted)
+                    try { archive.finishNode(); } catch (...) {}
             }
             catch (const std::exception& e)
             {
                 spdlog::warn("Exception on entity {}/{} ('{}') in '{}': {}",
                     entityIdx + 1, entityInfos.size(), entityName, file, e.what());
-                try { archive.finishNode(); } catch (...) {}
+                if (!entityActivated && entityNodeStarted)
+                    try { archive.finishNode(); } catch (...) {}
             }
 
             if (!entityActivated)

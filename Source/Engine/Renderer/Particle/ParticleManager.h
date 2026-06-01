@@ -5,7 +5,10 @@
 #include <cstdint>
 
 #include <irrlicht.h>
+
 #include "SPK.h"
+
+#include "Engine/Renderer/Spark/include/RenderingAPIs/Irrlicht/SPK_IRR_DEF.h"
 
 struct ParticleSystemDef;
 

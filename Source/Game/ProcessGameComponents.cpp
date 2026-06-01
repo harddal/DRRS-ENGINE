@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 
 #include "Components.h"
+#include "Game/Components/BehaviorComponent.h"
 
 #include <spdlog/spdlog.h>
 
@@ -96,6 +97,14 @@ void GameState::serializeComponent(anax::Entity& entity, cereal::XMLOutputArchiv
 		archive.finishNode();
 	}
 
+	if (entity.hasComponent<BehaviorComponent>())
+	{
+		archive.setNextName("behavior");
+		archive.startNode();
+		archive(entity.getComponent<BehaviorComponent>());
+		archive.finishNode();
+	}
+
 }
 
 void GameState::deserializeComponent(anax::Entity& entity, cereal::XMLInputArchive& archive,
@@ -167,6 +176,11 @@ void GameState::deserializeComponent(anax::Entity& entity, cereal::XMLInputArchi
 	load("water", [&]() {
 		entity.addComponent<WaterComponent>();
 		archive(entity.getComponent<WaterComponent>());
+	});
+
+	load("behavior", [&]() {
+		entity.addComponent<BehaviorComponent>();
+		archive(entity.getComponent<BehaviorComponent>());
 	});
 
 }

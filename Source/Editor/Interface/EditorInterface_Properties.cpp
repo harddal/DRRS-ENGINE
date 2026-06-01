@@ -618,6 +618,12 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 					draw_component_properties(ENTITY_COMPONENT::WATER, entity);
 				}
 
+				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+				if (entity.hasComponent<BehaviorComponent>() && ImGui::CollapsingHeader("Behavior"))
+				{
+					draw_component_properties(ENTITY_COMPONENT::BEHAVIOR, entity);
+				}
+
 				ImGui::Separator();
 
 				if (ImGui::Button("Add Component..."))

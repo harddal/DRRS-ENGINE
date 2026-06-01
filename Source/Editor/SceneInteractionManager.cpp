@@ -66,6 +66,7 @@ void SceneInteractionManager::init()
 	m_clipboardSize = 0;
 
 	m_gizmoWasUsing = false;
+	m_rotationMatrixCached = false;
 	m_transformUndoStack.clear();
 	m_transformRedoStack.clear();
 
@@ -198,8 +199,12 @@ void SceneInteractionManager::draw()
 				transform.setTranslation(prop->position);
 				break;
 			case ImTransformControl::ROTATE:
-				transform.setTranslation(prop->position);
-				transform.setRotationDegrees(prop->rotation);
+				if (m_rotationMatrixCached && m_gizmoWasUsing) {
+					transform = m_cachedRotationMatrix;
+				} else {
+					transform.setTranslation(prop->position);
+					transform.setRotationDegrees(prop->rotation);
+				}
 				break;
 			case ImTransformControl::SCALE:
 				transform.setTranslation(prop->position);
@@ -226,6 +231,8 @@ void SceneInteractionManager::draw()
 					prop->position = transform.getTranslation();
 					break;
 				case ImTransformControl::ROTATE:
+					m_cachedRotationMatrix = transform;
+					m_rotationMatrixCached = true;
 					prop->rotation = transform.getRotationDegrees();
 					break;
 				case ImTransformControl::SCALE:
@@ -236,6 +243,8 @@ void SceneInteractionManager::draw()
 				}
 				PropManager::Get()->applyTransform(m_selectedPropId);
 			}
+			if (!ImTransformControl::IsUsing())
+				m_rotationMatrixCached = false;
 
 			m_isWidgetDrawn = true;
 		}
@@ -277,8 +286,12 @@ void SceneInteractionManager::draw()
 						transform.setTranslation(selectedTransform.getPosition());
 						break;
 					case ImTransformControl::ROTATE:
-						transform.setTranslation(selectedTransform.getPosition());
-						transform.setRotationDegrees(selectedTransform.getRotation());
+						if (m_rotationMatrixCached && m_gizmoWasUsing) {
+							transform = m_cachedRotationMatrix;
+						} else {
+							transform.setTranslation(selectedTransform.getPosition());
+							transform.setRotationDegrees(selectedTransform.getRotation());
+						}
 						break;
 					case ImTransformControl::SCALE:
 						transform.setTranslation(selectedTransform.getPosition());
@@ -322,6 +335,8 @@ void SceneInteractionManager::draw()
 							selectedTransform.setPosition(transform.getTranslation());
 							break;
 						case ImTransformControl::ROTATE:
+							m_cachedRotationMatrix = transform;
+							m_rotationMatrixCached = true;
 							selectedTransform.setRotation(transform.getRotationDegrees());
 							break;
 						case ImTransformControl::SCALE:
@@ -335,6 +350,8 @@ void SceneInteractionManager::draw()
 
 						WorldManager::Get()->renderSystem()->forceTransformUpdate();
 					}
+					if (!ImTransformControl::IsUsing())
+						m_rotationMatrixCached = false;
 
 					if (m_configuration.drawPointLightBounds)
 					{

@@ -89,7 +89,7 @@ struct TransformComponent : anax::Component
         initialPosition = irr::core::vector3df(ipx, ipy, ipz);
         initialRotation = irr::core::vector3df(irx, iry, irz);
         initialScale    = irr::core::vector3df(isx, isy, isz);
-        // node is null at load time; setters null-check, so this just sets the deprecated members
+
         setPosition(position);
         setRotation(rotation);
         setScale(scale);
@@ -105,7 +105,6 @@ struct TransformComponent : anax::Component
     }
     void setPosition(const irr::core::vector3df& v) /*const*/
     {
-        // *** DEPRECATED ***
         position = v;
 
         if (node) {
@@ -122,7 +121,6 @@ struct TransformComponent : anax::Component
     }
     void setRotation(const irr::core::vector3df& v) /*const*/
     {
-        // *** DEPRECATED ***
         rotation = v;
 
         if (node) {
@@ -139,7 +137,6 @@ struct TransformComponent : anax::Component
     }
     void setScale(const irr::core::vector3df& v) /*const*/
     {
-        // *** DEPRECATED ***
         scale = v;
 
         if (node) {

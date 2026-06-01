@@ -24,6 +24,10 @@
 
 #include "Editor/SceneInteractionManager.h"
 
+#include "Game/Behavior/BehaviorFactory.h"
+#include "Game/Behavior/Classes/WeaponPickupBehavior.h"
+#include "Game/Behavior/Classes/TurretBehavior.h"
+
 using namespace anax;
 using namespace cereal;
 using namespace std;
@@ -51,6 +55,12 @@ WorldManager::WorldManager()
 	m_gameWorld.addSystem(m_gameplaySystem);
 	m_gameWorld.addSystem(m_npcSystem);
 	m_gameWorld.addSystem(m_particleSystem);
+	m_gameWorld.addSystem(m_behaviorSystem);
+
+    BehaviorFactory::Get().registerBehavior("WeaponPickup",
+        [] { return std::make_unique<WeaponPickupBehavior>(); });
+    BehaviorFactory::Get().registerBehavior("Turret",
+        [] { return std::make_unique<TurretBehavior>(); });
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());
@@ -85,6 +95,7 @@ void WorldManager::update(irr::f32 dt)
 		m_physicsSystem.update(dt);
 		m_cctSystem.update(dt);
 		m_npcSystem.update(dt);
+		m_behaviorSystem.update(dt);
 		m_particleSystem.update(dt);
 		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 		m_gameplaySystem.update();
@@ -131,6 +142,8 @@ void WorldManager::update(irr::f32 dt)
 		m_npcCurrent = Engine::Get()->GetCounter();
 		m_npcSystem.update(dt);
 		m_npcTime = Engine::Get()->GetCounter() - m_npcCurrent;
+
+		m_behaviorSystem.update(dt);
 
 		m_particleCurrent = Engine::Get()->GetCounter();
 		m_particleSystem.update(dt);

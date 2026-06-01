@@ -220,6 +220,8 @@ private:
 
     static constexpr int k_maxUndoDepth = 50;
     bool m_gizmoWasUsing;
+    irr::core::matrix4 m_cachedRotationMatrix;
+    bool m_rotationMatrixCached;
     std::vector<UndoEntry> m_transformUndoStack;
     std::vector<UndoEntry> m_transformRedoStack;
 

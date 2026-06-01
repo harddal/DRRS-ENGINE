@@ -158,7 +158,9 @@ void TransformSystem::update()
 		auto& transform = entity.getComponent<TransformComponent>();
 
 		// DEBUG: Fixes bug where rotations can lurch but may have unintended side effects
-        transform.node->setRotation(Math::ConstrainAngleVector3(transform.node->getRotation()));
+        transform.node->setRotation(Math::ConstrainAngleVector3(transform.rotation));
+
+		transform.node->setPosition(transform.position);
 
         transform.node->updateAbsolutePosition();
     }

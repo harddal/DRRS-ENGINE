@@ -97,9 +97,10 @@ void EditorInterface::draw_window_add_component()
 			"Tween\0"
 			"Nav Agent\0"
 			"Water\0"
-			"Particle\0\0"; // 29
+			"Particle\0"
+			"Behavior\0\0"; // 30
 
-		ImGui::Combo("Component", &current_selected_component, component_list, 29);
+		ImGui::Combo("Component", &current_selected_component, component_list, 30);
 		ImGui::SameLine();
 
 		{
@@ -226,6 +227,10 @@ void EditorInterface::draw_window_add_component()
 					case ENTITY_COMPONENT::PARTICLE:
 						if (entity.hasComponent<ParticleComponent>()) break;
 						entity.addComponent<ParticleComponent>();
+						break;
+					case ENTITY_COMPONENT::BEHAVIOR:
+						if (entity.hasComponent<BehaviorComponent>()) break;
+						entity.addComponent<BehaviorComponent>();
 						break;
 					}
 
@@ -1350,6 +1355,81 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			break;
 		}
+	case ENTITY_COMPONENT::BEHAVIOR:
+		{
+			if (!entity.hasComponent<BehaviorComponent>())
+				return false;
+
+			auto& bc = entity.getComponent<BehaviorComponent>();
+
+			char typeBuf[128];
+			memset(typeBuf, 0, sizeof(typeBuf));
+			for (auto i = 0U; i < bc.behaviorType.size() && i < sizeof(typeBuf) - 1; i++)
+				typeBuf[i] = bc.behaviorType[i];
+
+			ImGui::Text("Behavior Type:");
+			ImGui::SameLine();
+			if (ImGui::InputText("##behaviortype", typeBuf, sizeof(typeBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+				bc.behaviorType = typeBuf;
+
+			if (bc.behavior)
+			{
+				ImGui::Spacing();
+				ImGui::Separator();
+				ImGui::Spacing();
+
+				for (auto prop : bc.behavior->getProperties())
+				{
+					switch (prop.type)
+					{
+					case BehaviorPropType::INT:
+						if (ImGui::InputInt(prop.name.c_str(), static_cast<int*>(prop.ptr), 1, 10))
+							bc.syncPropertyToMap(prop);
+						break;
+					case BehaviorPropType::FLOAT:
+						if (ImGui::InputFloat(prop.name.c_str(), static_cast<float*>(prop.ptr), 0, 0, "%.2f"))
+							bc.syncPropertyToMap(prop);
+						break;
+					case BehaviorPropType::BOOL:
+						if (ImGui::Checkbox(prop.name.c_str(), static_cast<bool*>(prop.ptr)))
+							bc.syncPropertyToMap(prop);
+						break;
+					case BehaviorPropType::STRING:
+					{
+						auto* str = static_cast<std::string*>(prop.ptr);
+						char strbuf[256];
+						memset(strbuf, 0, sizeof(strbuf));
+						for (auto j = 0U; j < str->size() && j < sizeof(strbuf) - 1; j++) strbuf[j] = str->at(j);
+						if (ImGui::InputText(prop.name.c_str(), strbuf, sizeof(strbuf), ImGuiInputTextFlags_EnterReturnsTrue))
+						{
+							str->assign(strbuf);
+							bc.syncPropertyToMap(prop);
+						}
+						break;
+					}
+					case BehaviorPropType::VECTOR3:
+					{
+						auto* v = static_cast<irr::core::vector3df*>(prop.ptr);
+						float f3v[3];
+						v->getAs3Values(f3v);
+						if (ImGui::InputFloat3(prop.name.c_str(), f3v, "%.2f"))
+						{
+							v->X = f3v[0]; v->Y = f3v[1]; v->Z = f3v[2];
+							bc.syncPropertyToMap(prop);
+						}
+						break;
+					}
+					default: break;
+					}
+				}
+			}
+			else
+			{
+				ImGui::TextDisabled("(no behavior loaded — enter game mode)");
+			}
+
+			break;
+		}
 	case ENTITY_COMPONENT::SOUND:
 		{
 			if (!entity.hasComponent<SoundComponent>())
@@ -1978,6 +2058,7 @@ void EditorInterface::add_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::NAVAGENT:            entity.addComponent<NavAgentComponent>();          break;
 	case ENTITY_COMPONENT::WATER:               entity.addComponent<WaterComponent>();             break;
 	case ENTITY_COMPONENT::PARTICLE:            entity.addComponent<ParticleComponent>();          break;
+	case ENTITY_COMPONENT::BEHAVIOR:            entity.addComponent<BehaviorComponent>();          break;
 	}
 }
 
@@ -2014,6 +2095,7 @@ bool EditorInterface::has_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::NAVAGENT:            return entity.hasComponent<NavAgentComponent>();
 	case ENTITY_COMPONENT::WATER:               return entity.hasComponent<WaterComponent>();
 	case ENTITY_COMPONENT::PARTICLE:            return entity.hasComponent<ParticleComponent>();
+	case ENTITY_COMPONENT::BEHAVIOR:            return entity.hasComponent<BehaviorComponent>();
 	default:                                    return false;
 	}
 }
