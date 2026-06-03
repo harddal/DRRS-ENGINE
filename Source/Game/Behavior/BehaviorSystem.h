@@ -10,4 +10,5 @@ public:
     void onEntityAdded(anax::Entity& entity) override;
     void onEntityRemoved(anax::Entity& entity) override;
     void update(irr::f32 dt);
+    void persist(irr::f32 dt);
 };

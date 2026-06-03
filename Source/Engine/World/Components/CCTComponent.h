@@ -8,6 +8,8 @@
 
 #include <cereal/cereal.hpp>
 
+namespace irr { namespace scene { class ISceneNode; } }
+
 struct CCTComponent : anax::Component
 {
     bool active;
@@ -15,6 +17,8 @@ struct CCTComponent : anax::Component
 	physx::PxController* controller;
 
 	physx::PxVec3 displacement;
+
+    irr::scene::ISceneNode* hitboxNode = nullptr;
 
     template <class Archive>
     void serialize(Archive& archive) { archive(CEREAL_NVP(active)); }

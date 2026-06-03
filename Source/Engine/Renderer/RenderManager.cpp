@@ -2056,10 +2056,24 @@ RaycastResultData RenderManager::raycastWorldPosition(vector3df start, vector3df
         data.normal.normalize();
         
         // Ensure normal points toward ray origin (away from surface)
-        // If dot product is negative, normal points into surface - flip it
         vector3df rayDir = point - start;
-        if (data.normal.dotProduct(rayDir) > 0) {
+        bool insideHit = (data.normal.dotProduct(rayDir) > 0);
+        if (insideHit)
             data.normal = -data.normal;
+
+        // Ray started inside the player hitbox (weapon fired outward, spawned projectile,
+        // shell casing). Skip the hitbox and recast from just past the hit face so the
+        // real target is found instead. Outside hits on the player are unaffected.
+        if (insideHit && data.node)
+        {
+            auto& hitEnt = WorldManager::Get()->managerSystem()->getEntityByID(data.node->getID());
+            if (hitEnt.isValid() &&
+                hitEnt.hasComponent<DescriptorComponent>() &&
+                hitEnt.getComponent<DescriptorComponent>().type == ET_PLAYER)
+            {
+                vector3df dir = (end - start).normalize();
+                return raycastWorldPosition(point + dir * 0.01f, end, excludeDebugNodes);
+            }
         }
 
         return data;

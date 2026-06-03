@@ -96,6 +96,7 @@ void WorldManager::update(irr::f32 dt)
 		m_cctSystem.update(dt);
 		m_npcSystem.update(dt);
 		m_behaviorSystem.update(dt);
+		m_behaviorSystem.persist(dt);
 		m_particleSystem.update(dt);
 		if (ParticleManager::Get()) ParticleManager::Get()->update(dt);
 		m_gameplaySystem.update();

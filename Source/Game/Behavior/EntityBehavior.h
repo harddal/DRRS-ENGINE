@@ -19,9 +19,10 @@ class EntityBehavior
 {
 public:
     virtual ~EntityBehavior() = default;
-    virtual void init(anax::Entity& entity)             {}
-    virtual void update(anax::Entity& entity, float dt) {}
-    virtual void destroy(anax::Entity& entity)          {}
+    virtual void init(anax::Entity& entity)              {}
+    virtual void update(anax::Entity& entity, float dt)  {}
+    virtual void persist(anax::Entity& entity, float dt) {}
+    virtual void destroy(anax::Entity& entity)           {}
 
     virtual std::vector<BehaviorProperty> getProperties() { return {}; }
 };

@@ -40,9 +40,21 @@ void BehaviorSystem::update(irr::f32 dt)
     for (auto& entity : getEntities())
     {
         if (!entity.isValid()) continue;
-		
+
         auto& bc = entity.getComponent<BehaviorComponent>();
         if (bc.behavior)
             bc.behavior->update(const_cast<anax::Entity&>(entity), dt);
+    }
+}
+
+void BehaviorSystem::persist(irr::f32 dt)
+{
+    for (auto& entity : getEntities())
+    {
+        if (!entity.isValid()) continue;
+
+        auto& bc = entity.getComponent<BehaviorComponent>();
+        if (bc.behavior)
+            bc.behavior->persist(const_cast<anax::Entity&>(entity), dt);
     }
 }

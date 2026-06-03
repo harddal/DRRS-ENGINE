@@ -781,6 +781,18 @@ void PlayerController::update(float dt)
 	
 	transform.setPosition(smoothedPosition);
 
+	if (cct.hitboxNode)
+	{
+		auto* capsule  = static_cast<physx::PxCapsuleController*>(cct.controller);
+		float h        = static_cast<float>(capsule->getHeight());
+		float r        = static_cast<float>(capsule->getRadius());
+		float diameter = 2.0f * r;
+		// smoothedPosition is already the PhysX capsule centre (foot + r + h/2),
+		// so no additional offset is needed — the cube origin is also at its centre.
+		cct.hitboxNode->setPosition(smoothedPosition);
+		cct.hitboxNode->setScale(vector3df(diameter, h + 2.0f * r, diameter));
+	}
+
 	// Smooth crouch transition using lerp
 	if (abs(m_currentCrouchHeight - m_targetCrouchHeight) > 0.01f)
 	{

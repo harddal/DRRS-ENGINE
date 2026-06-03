@@ -584,6 +584,9 @@ public:
     std::string getMeshMaterialFromRay(irr::core::vector3df start, irr::core::vector3df end);
     std::string getMeshMaterialFromCameraRay(irr::scene::ICameraSceneNode *camera = nullptr);
 
+    // Casts a ray and returns the first hit. Automatically skips the player hitbox when the ray
+    // originates inside it (weapons/projectiles/shells fired by the player) so they cannot
+    // self-damage or bounce off their own hitbox. Hits on the hitbox from outside are unaffected.
     RaycastResultData raycastWorldPosition(irr::core::vector3df start, irr::core::vector3df end, bool excludeDebugNodes = false);
 
 	static bool getAABBIntersection(irr::scene::ISceneNode* n1, irr::scene::ISceneNode* n2) { return n1->getTransformedBoundingBox().intersectsWithBox(n2->getTransformedBoundingBox()); }

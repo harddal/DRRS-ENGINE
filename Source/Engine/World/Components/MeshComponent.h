@@ -109,9 +109,10 @@ struct MeshComponent : anax::Component
                       cereal::make_nvp("mtp6", materialTypeParams[6]),
                       cereal::make_nvp("mtp7", materialTypeParams[7])); }
         catch (cereal::Exception&) {}
-        try { archive(CEREAL_NVP(texNormal), CEREAL_NVP(texRoughness),
-                      CEREAL_NVP(texMetallic), CEREAL_NVP(texEmission)); }
-        catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(texNormal));    } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(texRoughness)); } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(texMetallic));  } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(texEmission));  } catch (cereal::Exception&) {}
 	}
 
 	MeshComponent() :

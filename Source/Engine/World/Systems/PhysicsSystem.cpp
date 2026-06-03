@@ -574,16 +574,55 @@ void CCTSubsystem::onEntityAdded(anax::Entity& entity)
     entity.getComponent<CCTComponent>().controller = PhysicsManager::Get()->createCCT(m_capsuleDesc);
 
     auto pos = entity.getComponent<TransformComponent>().getPosition();
-    
+
     // Position CCT foot at ground level
     // PhysX capsule controller position is at: foot + radius + (height / 2)
     float cctCenterHeight = m_capsuleDesc.radius + (m_capsuleDesc.height / 2.0f);
     entity.getComponent<CCTComponent>().controller->setPosition(PxExtendedVec3(pos.X, pos.Y + cctCenterHeight, pos.Z));
+
+    // Create an invisible hitbox node so Irrlicht raycasts can hit the player.
+    // The PhysX CCT capsule is not an Irrlicht node so getSceneNodeAndCollisionPointFromRay
+    // would miss it entirely without this. We keep isVisible()==true (required for raycast
+    // traversal) but zero out vertex alpha so nothing is drawn to the framebuffer.
+    auto* smgr = RenderManager::Get()->sceneManager();
+    auto* node = smgr->addCubeSceneNode(1.0f);
+
+    node->setID(entity.getComponent<DescriptorComponent>().id);
+
+    float totalH   = m_capsuleDesc.height + 2.0f * m_capsuleDesc.radius;
+    float diameter = 2.0f * m_capsuleDesc.radius;
+    node->setScale(vector3df(diameter, totalH, diameter));
+    node->setPosition(pos + vector3df(0.0f, cctCenterHeight, 0.0f));
+
+    // Alpha=0 transparent material — node is visible to the scene graph but writes nothing
+    for (u32 b = 0; b < node->getMesh()->getMeshBufferCount(); b++)
+    {
+        auto* buf   = node->getMesh()->getMeshBuffer(b);
+        auto* verts = static_cast<video::S3DVertex*>(buf->getVertices());
+        for (u32 v = 0; v < buf->getVertexCount(); v++)
+            verts[v].Color = video::SColor(0, 0, 0, 0);
+        buf->setDirty(scene::EBT_VERTEX);
+    }
+    node->setMaterialType(video::EMT_TRANSPARENT_VERTEX_ALPHA);
+    node->setMaterialFlag(video::EMF_ZWRITE_ENABLE, false);
+    node->setMaterialFlag(video::EMF_LIGHTING, false);
+
+    auto* selector = smgr->createTriangleSelectorFromBoundingBox(node);
+    node->setTriangleSelector(selector);
+    selector->drop();
+
+    entity.getComponent<CCTComponent>().hitboxNode = node;
 }
 
 void CCTSubsystem::onEntityRemoved(anax::Entity& entity)
 {
-    entity.getComponent<CCTComponent>().controller->release();
+    auto& cctc = entity.getComponent<CCTComponent>();
+    if (cctc.hitboxNode)
+    {
+        cctc.hitboxNode->remove();
+        cctc.hitboxNode = nullptr;
+    }
+    cctc.controller->release();
 }
 
 void CCTSubsystem::init(PxScene* scene)
