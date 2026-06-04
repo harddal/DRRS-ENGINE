@@ -72,6 +72,7 @@ private:
     ShellCasing          m_shellPool[SHELL_POOL_SIZE];
     float                m_lastShellBounceSound = 0.0f;
     irr::core::vector3df m_lastFiringDir;
+    irr::core::vector3df m_modelUp = irr::core::vector3df(0.0f, 1.0f, 0.0f);
 
     void fire(const irr::core::vector3df& muzzlePos, const irr::core::vector3df& dir);
     void createMuzzleFlash();

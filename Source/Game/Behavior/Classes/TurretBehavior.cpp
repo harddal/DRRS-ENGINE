@@ -22,6 +22,7 @@ void TurretBehavior::init(anax::Entity& entity)
     m_currentPitch    = 0.0f;
     m_isFiring        = false;
     m_destroyed       = false;
+    m_modelUp         = vector3df(0.0f, 1.0f, 0.0f);
     m_fireCooldown    = 0.0f;
     m_burstCount      = 0;
     m_muzzleFlashTime = MUZZLE_FLASH_DURATION;
@@ -92,6 +93,14 @@ void TurretBehavior::update(anax::Entity& entity, float dt)
     mc.node->updateAbsolutePosition();
     mc.node->animateJoints();
 
+    // Extract model local up each frame — used for orientation-aware pitch, yaw, and shell ejection.
+    // Rows [4][5][6] of Irrlicht's row-major matrix4 = local +Y axis in world space.
+    {
+        const irr::core::matrix4& worldMat = mc.node->getAbsoluteTransformation();
+        m_modelUp = vector3df(worldMat[4], worldMat[5], worldMat[6]);
+        m_modelUp.normalize();
+    }
+
     if (m_isFiring)
     {
         auto stepAngle = [](float current, float target, float speed, float dt) -> float {
@@ -105,25 +114,28 @@ void TurretBehavior::update(anax::Entity& entity, float dt)
         irr::core::matrix4 invWorld = mc.node->getAbsoluteTransformation();
         invWorld.setTranslation(vector3df(0.0f, 0.0f, 0.0f));
         invWorld.makeInverse();
-        vector3df horizDir(toPlayer.X, 0.0f, toPlayer.Z);
-        invWorld.rotateVect(horizDir);
 
-        float distXZ = sqrtf(toPlayer.X * toPlayer.X + toPlayer.Z * toPlayer.Z);
+        // Yaw: transform full toPlayer into model local space, then zero local Y.
+        // Zeroing world Y first (old approach) breaks for ceiling/wall mounts.
+        vector3df localDir = toPlayer;
+        invWorld.rotateVect(localDir);
+        localDir.Y = 0.0f;
+        float localHorizDist = sqrtf(localDir.X * localDir.X + localDir.Z * localDir.Z);
 
-        if (distXZ > 0.5f)
+        if (localHorizDist > 0.5f)
         {
-            float targetYaw = radToDeg(atan2f(horizDir.X, horizDir.Z));
+            float targetYaw = radToDeg(atan2f(localDir.X, localDir.Z));
             m_currentYaw    = stepAngle(m_currentYaw, targetYaw, m_rotateSpeed, dt);
         }
 
-        // Pitch from the ROT_X pivot position, not the entity root.
-        // At close range the height difference between root and barrel pivot is
-        // significant — using root causes the barrel to overshoot above the player.
+        // Pitch: transform fromPivot into local space using the same invWorld.
+        // Using local components makes pitch correct for any mount orientation.
         vector3df fromPivot = m_boneRotX
             ? (playerTc.position - m_boneRotX->getAbsolutePosition())
             : toPlayer;
-        float distXZFromPivot = sqrtf(fromPivot.X * fromPivot.X + fromPivot.Z * fromPivot.Z);
-        float targetPitch = radToDeg(atan2f(-fromPivot.Y, distXZFromPivot)) + 2.0f;
+        invWorld.rotateVect(fromPivot);
+        float distHorizLocal = sqrtf(fromPivot.X * fromPivot.X + fromPivot.Z * fromPivot.Z);
+        float targetPitch = radToDeg(atan2f(-fromPivot.Y, distHorizLocal)) + 2.0f;
         m_currentPitch    = stepAngle(m_currentPitch, targetPitch, m_rotateSpeed, dt);
     }
 
@@ -149,7 +161,7 @@ void TurretBehavior::update(anax::Entity& entity, float dt)
     {
         vector3df losOrigin = m_boneFirespot
             ? m_boneFirespot->getAbsolutePosition()
-            : tc.position + vector3df(0.0f, 1.5f, 0.0f);
+            : tc.position + m_modelUp * 1.5f;
         vector3df losTarget = playerTc.position + vector3df(0.0f, 0.9f, 0.0f);
 
         RaycastResultData los = RenderManager::Get()->raycastWorldPosition(losOrigin, losTarget, true);
@@ -370,14 +382,13 @@ void TurretBehavior::ejectShell()
     }
     if (!shell || !shell->node) return;
 
-    vector3df worldUp(0.0f, 1.0f, 0.0f);
-    vector3df right = m_lastFiringDir.crossProduct(worldUp).normalize();
+    vector3df right = m_lastFiringDir.crossProduct(m_modelUp).normalize();
     vector3df rnd(
         Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
         Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
         Engine::Get()->rng()->getFloat(-0.3f, 0.3f)
     );
-    vector3df ejectionDir = (-right + worldUp * 1.5f + rnd).normalize();
+    vector3df ejectionDir = (-right + m_modelUp * 1.5f + rnd).normalize();
     float     speed       = 8.0f * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
 
     // Offset spawn outward so the shell starts clear of the mesh
