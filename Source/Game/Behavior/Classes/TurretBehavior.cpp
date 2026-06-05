@@ -21,32 +21,59 @@ void TurretBehavior::init(anax::Entity& entity)
     m_currentYaw      = 0.0f;
     m_currentPitch    = 0.0f;
     m_isFiring        = false;
+    m_active          = true;
     m_destroyed       = false;
     m_modelUp         = vector3df(0.0f, 1.0f, 0.0f);
     m_fireCooldown    = 0.0f;
     m_burstCount      = 0;
     m_muzzleFlashTime = MUZZLE_FLASH_DURATION;
+    m_smokeHandle     = 0;
+    m_coronaNode      = nullptr;
 
     if (!entity.hasComponent<MeshComponent>()) return;
     auto& mc = entity.getComponent<MeshComponent>();
     if (!mc.node) return;
+
+    m_entityScale = entity.hasComponent<TransformComponent>()
+        ? entity.getComponent<TransformComponent>().scale.X
+        : 1.0f;
 
     mc.node->setJointMode(irr::scene::EJUOR_CONTROL);
     m_boneRotY     = mc.node->getJointNode("ROT_Y");
     m_boneRotX     = mc.node->getJointNode("ROT_X");
     m_boneFirespot = mc.node->getJointNode("FIRESPOT");
     m_boneEject    = mc.node->getJointNode("EJECT");
+    m_boneLight    = mc.node->getJointNode("LIGHT");
 
     if (!m_boneRotY)     spdlog::warn("TurretBehavior: bone 'ROT_Y' not found");
     if (!m_boneRotX)     spdlog::warn("TurretBehavior: bone 'ROT_X' not found");
     if (!m_boneFirespot) spdlog::warn("TurretBehavior: bone 'FIRESPOT' not found");
     if (!m_boneEject)    spdlog::warn("TurretBehavior: bone 'EJECT' not found");
+    if (!m_boneLight)    spdlog::warn("TurretBehavior: bone 'LIGHT' not found");
+
+    if (m_boneLight)
+    {
+        float coronaSize = 0.3f * m_entityScale;
+        m_coronaNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
+            m_boneLight, irr::core::dimension2df(coronaSize, coronaSize), irr::core::vector3df(0.0f, 0.0f, 0.0f));
+        m_coronaNode->setMaterialTexture(0, RenderManager::Get()->driver()->getTexture("content/texture/particle/flare.png"));
+        m_coronaNode->setMaterialFlag(irr::video::EMF_LIGHTING,         false);
+        m_coronaNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE,    false);
+        m_coronaNode->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER,  true);
+        m_coronaNode->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
+        m_coronaNode->setMaterialType(irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL);
+        m_coronaNode->setColor(irr::video::SColor(255, 255, 40, 40));
+    }
 
     m_muzzleFlashMaterial = irr::video::EMT_TRANSPARENT_ADD_COLOR;
 
-    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/rifle/fire.wav", true);
-    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/prop/shell1.wav", true);
-    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/prop/shell2.wav", true);
+    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/rifle/fire.wav",   true);
+    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/prop/shell1.wav",          true);
+    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/prop/shell2.wav",          true);
+    SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/effect/explosion1.wav",    true);
+
+    ParticleManager::Get()->precache("explosion", "content/particle/explosion.psys");
+    ParticleManager::Get()->precache("fire",      "content/particle/fire.psys");
 
     auto perpixelMat = ShaderMaterialManager::get("phong_perpixel");
     auto* shellMesh  = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/shellmedium.obj");
@@ -56,7 +83,7 @@ void TurretBehavior::init(anax::Entity& entity)
         m_shellPool[i].node = RenderManager::Get()->sceneManager()->addMeshSceneNode(shellMesh);
         if (m_shellPool[i].node)
         {
-			m_shellPool[i].node->setScale(irr::core::vector3df(3.0f, 3.0f, 3.0f));
+			m_shellPool[i].node->setScale(irr::core::vector3df(3.0f * m_entityScale, 3.0f * m_entityScale, 3.0f * m_entityScale));
             m_shellPool[i].node->setMaterialTexture(0, shellTex);
             m_shellPool[i].node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER,  true);
             m_shellPool[i].node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
@@ -72,13 +99,7 @@ void TurretBehavior::update(anax::Entity& entity, float dt)
     if (!m_boneRotY || !m_boneRotX) return;
     if (!entity.hasComponent<TransformComponent>()) return;
     if (!entity.hasComponent<MeshComponent>())     return;
-
-    if (!m_destroyed && entity.hasComponent<DamageReceiverComponent>())
-    {
-        if (entity.getComponent<DamageReceiverComponent>().health <= 0)
-            m_destroyed = true;
-    }
-    if (m_destroyed) return;
+    if (!m_active || m_destroyed) return;
 
     auto& tc = entity.getComponent<TransformComponent>();
     auto& mc = entity.getComponent<MeshComponent>();
@@ -214,6 +235,38 @@ void TurretBehavior::update(anax::Entity& entity, float dt)
 
 void TurretBehavior::persist(anax::Entity& entity, float dt)
 {
+    if (!m_destroyed && entity.hasComponent<DamageReceiverComponent>())
+    {
+        if (entity.getComponent<DamageReceiverComponent>().health <= 0)
+        {
+            m_destroyed = true;
+
+            vector3df deathPos = m_boneFirespot
+                ? m_boneFirespot->getAbsolutePosition()
+                : entity.getComponent<TransformComponent>().getPosition() + vector3df(0.0f, 1.5f, 0.0f);
+
+            vector3df rotYPos = m_boneRotY
+                ? m_boneRotY->getAbsolutePosition()
+                : entity.getComponent<TransformComponent>().getPosition();
+
+            uint32_t exHandle = ParticleManager::Get()->spawn("explosion", irr2spk(rotYPos));
+            ParticleManager::Get()->setScale(exHandle, m_entityScale);
+
+            m_smokeHandle = ParticleManager::Get()->spawn("fire", irr2spk(rotYPos), true);
+            ParticleManager::Get()->setScale(m_smokeHandle, m_entityScale);
+
+            if (m_boneRotX)
+                m_boneRotX->setRotation(vector3df(70.0f, 0.0f, 0.0f));
+
+            SoundManager::Get()->sound()->play3D(
+                "content/sound/effect/explosion1.wav",
+                deathPos, false, false, true, 0, 1.0f);
+        }
+    }
+
+    if (m_coronaNode)
+        m_coronaNode->setVisible(m_active && !m_destroyed);
+
     updateMuzzleFlash(dt);
     updateTracers(dt);
     updateShells(dt);
@@ -237,7 +290,10 @@ void TurretBehavior::fire(const vector3df& muzzlePos, const vector3df& dir)
                 if (hitEntity.hasComponent<DamageReceiverComponent>())
                     hitEntity.getComponent<DamageReceiverComponent>().damageReceived += m_damage;
 
-                ParticleManager::Get()->spawn("spark", irr2spk(result.point));
+                if (hitDesc.type != ET_PLAYER)
+                    ParticleManager::Get()->setScale(
+                        ParticleManager::Get()->spawn("spark", irr2spk(result.point)),
+                        m_entityScale);
             }
         }
     }
@@ -260,14 +316,12 @@ void TurretBehavior::createMuzzleFlash()
     if (!m_muzzleStarNode)
     {
         m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-            m_boneFirespot, irr::core::dimension2df(1.2f, 1.2f), vector3df(0.0f, 0.0f, 0.0f));
+            m_boneFirespot, irr::core::dimension2df(1.2f * m_entityScale, 1.2f * m_entityScale), vector3df(0.0f, 0.0f, 0.0f));
         m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING,      false);
         m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
         m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
         m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterial);
-        m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 204, 76);
-        m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 204, 76);
-        m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 204, 76);
+        m_muzzleStarNode->setColor(irr::video::SColor(255, 255, 204, 76));
     }
 
     auto* tex = RenderManager::Get()->driver()->getTexture("content/texture/particle/star_05.png");
@@ -279,7 +333,7 @@ void TurretBehavior::createMuzzleFlash()
     {
         m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
             m_boneFirespot, vector3df(0.0f, 0.0f, 0.0f),
-            irr::video::SColorf(1.0f, 0.8f, 0.3f), 3.0f);
+            irr::video::SColorf(1.0f, 0.8f, 0.3f), 3.0f * m_entityScale);
     }
     if (m_muzzleLightNode)
     {
@@ -302,11 +356,9 @@ void TurretBehavior::updateMuzzleFlash(float dt)
     }
     else
     {
-        float fade    = 1.0f - (m_muzzleFlashTime / MUZZLE_FLASH_DURATION);
+        float fade     = 1.0f - (m_muzzleFlashTime / MUZZLE_FLASH_DURATION);
         irr::u32 alpha = static_cast<irr::u32>(fade * 255.0f);
-        m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-        m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-        m_muzzleStarNode->getMaterial(0).EmissiveColor.setAlpha(alpha);
+        m_muzzleStarNode->setColor(irr::video::SColor(alpha, 255, 204, 76));
     }
 }
 
@@ -318,7 +370,7 @@ void TurretBehavior::createTracerBeam(const vector3df& start, const vector3df& e
     dir.normalize();
 
     auto* planeMesh = RenderManager::Get()->sceneManager()->getGeometryCreator()
-        ->createPlaneMesh(irr::core::dimension2df(0.1f, dist), irr::core::dimension2du(1, 1));
+        ->createPlaneMesh(irr::core::dimension2df(0.1f * m_entityScale, dist), irr::core::dimension2du(1, 1));
     auto* node = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
     if (!node) return;
 
@@ -336,9 +388,16 @@ void TurretBehavior::createTracerBeam(const vector3df& start, const vector3df& e
     node->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
     node->setMaterialFlag(irr::video::EMF_BLEND_OPERATION,   true);
     node->setMaterialType(m_muzzleFlashMaterial);
-    node->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 200, 100);
-    node->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 200, 100);
-    node->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 200, 100);
+
+    auto* mesh = node->getMesh();
+    for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+    {
+        auto* buf   = mesh->getMeshBuffer(b);
+        auto* verts = static_cast<irr::video::S3DVertex*>(buf->getVertices());
+        for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+            verts[v].Color = irr::video::SColor(255, 255, 200, 100);
+        buf->setDirty(irr::scene::EBT_VERTEX);
+    }
 
     TracerBeam tb;
     tb.node      = node;
@@ -363,8 +422,15 @@ void TurretBehavior::updateTracers(float dt)
             irr::u32 alpha = static_cast<irr::u32>(fade * 255.0f);
             if (it->node)
             {
-                it->node->getMaterial(0).AmbientColor.setAlpha(alpha);
-                it->node->getMaterial(0).DiffuseColor.setAlpha(alpha);
+                auto* mesh = it->node->getMesh();
+                for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+                {
+                    auto* buf   = mesh->getMeshBuffer(b);
+                    auto* verts = static_cast<irr::video::S3DVertex*>(buf->getVertices());
+                    for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+                        verts[v].Color = irr::video::SColor(alpha, 255, 200, 100);
+                    buf->setDirty(irr::scene::EBT_VERTEX);
+                }
             }
             ++it;
         }
@@ -389,10 +455,10 @@ void TurretBehavior::ejectShell()
         Engine::Get()->rng()->getFloat(-0.3f, 0.3f)
     );
     vector3df ejectionDir = (-right + m_modelUp * 1.5f + rnd).normalize();
-    float     speed       = 8.0f * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
+    float     speed       = 8.0f * m_entityScale * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
 
     // Offset spawn outward so the shell starts clear of the mesh
-    vector3df ejectPos = m_boneEject->getAbsolutePosition() + ejectionDir * 0.5f;
+    vector3df ejectPos = m_boneEject->getAbsolutePosition() + ejectionDir * 0.5f * m_entityScale;
 
     float yaw   = atan2f(m_lastFiringDir.X, m_lastFiringDir.Z) * (180.0f / 3.14159265f);
     float pitch = asinf(irr::core::clamp(m_lastFiringDir.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
@@ -479,8 +545,16 @@ void TurretBehavior::updateShells(float dt)
     }
 }
 
+void TurretBehavior::onLogicSignal(anax::Entity& entity)
+{
+    m_active = !m_active;
+}
+
 void TurretBehavior::destroy(anax::Entity& entity)
 {
+    if (m_smokeHandle)
+        ParticleManager::Get()->destroy(m_smokeHandle);
+
     for (int i = 0; i < SHELL_POOL_SIZE; i++)
     {
         if (m_shellPool[i].node)
@@ -496,4 +570,5 @@ void TurretBehavior::destroy(anax::Entity& entity)
 
     if (m_muzzleStarNode)  { m_muzzleStarNode->remove();  m_muzzleStarNode  = nullptr; }
     if (m_muzzleLightNode) { m_muzzleLightNode->remove(); m_muzzleLightNode = nullptr; }
+    if (m_coronaNode)      { m_coronaNode->remove();      m_coronaNode      = nullptr; }
 }

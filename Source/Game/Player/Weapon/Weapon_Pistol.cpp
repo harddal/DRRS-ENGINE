@@ -390,7 +390,7 @@ void Weapon_Pistol::fire()
 				if (hitEntity.hasComponent<DamageReceiverComponent>())
 				{
 					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += 60;
+					damageComp.damageReceived += m_damage;
 				}
 
 				// Create impact spark particles at hit position with surface normal

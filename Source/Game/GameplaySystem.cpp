@@ -76,6 +76,12 @@ void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_s
 
         logic.isActivated = false;
     }
+    else if (entity.hasComponent<BehaviorComponent>())
+    {
+        auto& bc = entity.getComponent<BehaviorComponent>();
+        if (bc.behavior)
+            bc.behavior->onLogicSignal(entity);
+    }
     else if (entity.hasComponent<LightComponent>())
     {
         entity.getComponent<RenderComponent>().isVisible =

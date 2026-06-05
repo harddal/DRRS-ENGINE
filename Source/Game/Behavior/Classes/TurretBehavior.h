@@ -11,6 +11,7 @@ public:
     void update(anax::Entity& entity, float dt) override;
     void persist(anax::Entity& entity, float dt) override;
     void destroy(anax::Entity& entity) override;
+    void onLogicSignal(anax::Entity& entity) override;
 
     std::vector<BehaviorProperty> getProperties() override
     {
@@ -30,17 +31,23 @@ private:
     float m_burstPause     = 1000.0f; // ms pause between bursts
     int   m_damage         = 5;
 
-    float m_currentYaw   = 0.0f;
-    float m_currentPitch = 0.0f;
-    bool  m_isFiring     = false;
-    bool  m_destroyed    = false;
-    float m_fireCooldown = 0.0f;
-    int   m_burstCount   = 0;
+    float    m_currentYaw   = 0.0f;
+    float    m_currentPitch = 0.0f;
+    bool     m_isFiring     = false;
+    bool     m_active       = true;
+    bool     m_destroyed    = false;
+    float    m_fireCooldown = 0.0f;
+    int      m_burstCount   = 0;
+    uint32_t m_smokeHandle  = 0;
+    float    m_entityScale  = 1.0f;
 
     irr::scene::IBoneSceneNode* m_boneRotY     = nullptr;
     irr::scene::IBoneSceneNode* m_boneRotX     = nullptr;
     irr::scene::IBoneSceneNode* m_boneFirespot = nullptr;
     irr::scene::IBoneSceneNode* m_boneEject    = nullptr;
+    irr::scene::IBoneSceneNode* m_boneLight    = nullptr;
+
+    irr::scene::IBillboardSceneNode* m_coronaNode = nullptr;
 
     // Muzzle flash
     irr::video::E_MATERIAL_TYPE          m_muzzleFlashMaterial;
@@ -51,7 +58,7 @@ private:
 
     // Tracer beams
     struct TracerBeam {
-        irr::scene::ISceneNode* node = nullptr;
+        irr::scene::IMeshSceneNode* node = nullptr;
         float spawnTime = 0.0f;
         float lifetime  = 50.0f;
     };

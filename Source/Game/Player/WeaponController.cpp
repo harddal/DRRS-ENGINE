@@ -56,6 +56,17 @@ void WeaponController::update()
 		m_firstUpdate = true;
 	}
 
+	// Complete a pending weapon switch once the current weapon's unequip anim is done.
+	// This runs before input so that a switch completing this frame is visible to the
+	// input code below — preventing startUnequip() from being called on an already-hidden
+	// weapon (which would set isUnequipping=true on an invisible node and lock the system).
+	if (m_pendingWeapon >= 0 && !current_weapon->isUnequipping())
+	{
+		m_current_weapon = static_cast<unsigned int>(m_pendingWeapon);
+		m_pendingWeapon = -1;
+		current_weapon->equip();
+	}
+
 	// Mouse wheel: scroll up = previous weapon, scroll down = next weapon
 	float wheel = InputManager::Get()->getMouseWheelDelta();
 	if (wheel < 0.f)
@@ -91,14 +102,6 @@ void WeaponController::update()
 	{
 		if (InputManager::Get()->getKeyPressOnce(numKeys[i], &numKeyState[i]))
 			switchWeapon(static_cast<PLAYER_WEAPON>(i));
-	}
-
-	// Complete a pending weapon switch once the current weapon's unequip anim is done
-	if (m_pendingWeapon >= 0 && !current_weapon->isUnequipping())
-	{
-		m_current_weapon = static_cast<unsigned int>(m_pendingWeapon);
-		m_pendingWeapon = -1;
-		current_weapon->equip();
 	}
 
 	current_weapon->update();

@@ -40,6 +40,12 @@
                 <isVisible>true</isVisible>
             </value0>
         </render>
+		<logic>
+            <value0>
+                <isActivated>false</isActivated>
+                <receiver>0</receiver>
+            </value0>
+        </logic>
         <mesh>
             <value0>
                 <mesh>content/mesh/npc/turret_1/turret_1.b3d</mesh>

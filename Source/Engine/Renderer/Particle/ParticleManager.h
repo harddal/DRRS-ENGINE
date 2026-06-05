@@ -56,6 +56,13 @@ public:
     // No-op if handle is 0 or not found. Call immediately after spawn() for directional effects.
     void setEmitterDirection(uint32_t handle, const irr::core::vector3df& dir);
 
+    // Scale zone dimensions, renderer quad sizes, and emitter forces of an active instance.
+    // Intended to be called once immediately after spawn(); each call multiplies from current values.
+    // Point-renderer effects are unaffected (no runtime size getter in SPARK).
+    // NOTE: only affects the live clone — scale is lost on burst-style loop=true effects when
+    // the system sleeps and re-clones from the unscaled base. Safe for continuous emitters (fire, smoke).
+    void setScale(uint32_t handle, float scale);
+
 private:
     struct BaseEffect
     {

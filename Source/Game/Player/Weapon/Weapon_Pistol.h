@@ -27,6 +27,7 @@ private:
 	bool m_isUnequipping = false;
 	float m_lastFireTime = 0.0f;
 	const float m_minFireInterval = 150.0f; // ms — semi-auto cadence limiter
+	int m_damage = 10;
 
 	// Aim spread (tight for a precision sidearm)
 	float m_spread = 0.008f;

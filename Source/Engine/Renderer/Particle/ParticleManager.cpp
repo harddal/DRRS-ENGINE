@@ -220,6 +220,48 @@ void ParticleManager::setEmitterDirection(uint32_t handle, const irr::core::vect
     }
 }
 
+void ParticleManager::setScale(uint32_t handle, float scale)
+{
+    if (handle == 0) return;
+    auto it = m_instances.find(handle);
+    if (it == m_instances.end()) return;
+
+    SPK::System* sys = it->second.system;
+    if (!sys) return;
+
+    for (size_t g = 0; g < sys->getNbGroups(); ++g)
+    {
+        SPK::Group* group = sys->getGroup(g);
+        if (!group) continue;
+
+        if (auto* quad = dynamic_cast<SPK::QuadRendererInterface*>(group->getRenderer()))
+            quad->setScale(quad->getScaleX() * scale, quad->getScaleY() * scale);
+
+        for (size_t e = 0; e < group->getNbEmitters(); ++e)
+        {
+            SPK::Emitter* emitter = group->getEmitter(e);
+            if (!emitter) continue;
+
+            if (SPK::Zone* zone = emitter->getZone())
+            {
+                if (auto* s = dynamic_cast<SPK::Sphere*>(zone))
+                    s->setRadius(s->getRadius() * scale);
+                else if (auto* b = dynamic_cast<SPK::AABox*>(zone))
+                    b->setDimension(b->getDimension() * scale);
+                else if (auto* r = dynamic_cast<SPK::Ring*>(zone))
+                    r->setRadius(r->getMinRadius() * scale, r->getMaxRadius() * scale);
+                else if (auto* c = dynamic_cast<SPK::Cylinder*>(zone))
+                {
+                    c->setRadius(c->getRadius() * scale);
+                    c->setLength(c->getLength() * scale);
+                }
+            }
+
+            emitter->setForce(emitter->getForceMin() * scale, emitter->getForceMax() * scale);
+        }
+    }
+}
+
 void ParticleManager::setPosition(uint32_t handle, const irr::core::vector3df& pos)
 {
     if (handle == 0) return;

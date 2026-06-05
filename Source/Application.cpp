@@ -43,6 +43,13 @@ Application::Application(const std::string& name, const std::string& args) : m_r
     m_log = std::make_shared<spdlog::logger>(spdlog::logger("core", { m_log_console_sink, m_log_file_sink, ImGuiLogSink::instance() }));
     set_default_logger(m_log);
     m_log->set_level(spdlog::level::trace);
+    m_log->flush_on(spdlog::level::warn);
+    spdlog::flush_every(std::chrono::seconds(1));
+
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS*) -> LONG {
+        spdlog::default_logger()->flush();
+        return EXCEPTION_CONTINUE_SEARCH;
+    });
 
     if (s_Instance)
     {
@@ -66,7 +73,4 @@ Application::~Application()
 void Application::update()
 {
     m_engine->update();
-
-	// Will save the log every loop, problem will cause microstuttering, need to make a timer for every x seconds?
-	m_log->flush();
 }

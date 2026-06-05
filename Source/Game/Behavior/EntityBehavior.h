@@ -23,6 +23,7 @@ public:
     virtual void update(anax::Entity& entity, float dt)  {}
     virtual void persist(anax::Entity& entity, float dt) {}
     virtual void destroy(anax::Entity& entity)           {}
+    virtual void onLogicSignal(anax::Entity& entity)     {}
 
     virtual std::vector<BehaviorProperty> getProperties() { return {}; }
 };

@@ -32,6 +32,7 @@ private:
 	bool m_isUnequipping = false;
 	bool m_isReloadingAnim = false;
 	SoundHandle m_fireLoopHandle;
+	int m_damage = 5;
 
 	// Cached bone/scene nodes
 	irr::scene::ISceneNode* m_muzzleNode = nullptr;
