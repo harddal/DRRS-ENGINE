@@ -1026,7 +1026,7 @@ RenderManager::~RenderManager()
     m_device->closeDevice();
 	m_device->drop();
 
-    delete s_Instance;
+    s_Instance = nullptr;
 }
 
 void RenderManager::beginImGui()

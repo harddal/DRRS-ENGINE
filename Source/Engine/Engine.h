@@ -121,6 +121,11 @@ public:
     Engine(const std::string& name = std::string(), const std::string& args = std::string());
     ~Engine();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
 	void init();
 	
     void update();
@@ -192,20 +197,19 @@ private:
 
     std::string m_cmdLineArgs;
 
-    StateManager m_stateManager;
-
-    DebugConsole m_debugConsole;
-
 	GameManager m_gameManager;
     InputManager m_inputManager;
-    NavigationManager m_navigationManager;
-    PhysicsManager m_physicsManager;
     RenderManager m_renderManager;
-    PropManager m_propManager;       // after RenderManager — destroyed before it (reverse order)
-    ParticleManager m_particleManager;
-    ScriptManager m_scriptManager;
+    PhysicsManager m_physicsManager;
     SoundManager m_soundManager;
-    WorldManager m_worldManager;
+    ScriptManager m_scriptManager;
+	WorldManager m_worldManager;
+    ParticleManager m_particleManager;
+    PropManager m_propManager;
+    NavigationManager m_navigationManager;
 
 	RNG m_rng;
+
+    DebugConsole m_debugConsole;
+    StateManager m_stateManager;
 };

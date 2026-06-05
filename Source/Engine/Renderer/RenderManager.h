@@ -511,6 +511,11 @@ public:
     RenderManager(const std::string& name = std::string(), const std::string& args = std::string());
     ~RenderManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
 	void getResolutionFromMode(int aspect, int mode, int& width, int& height);
 	
     void beginImGui();

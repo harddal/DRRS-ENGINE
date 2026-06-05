@@ -27,6 +27,11 @@ public:
     SoundManager();
     ~SoundManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
 	SoundConfiguration getConfiguration() const { return m_configuration; }
 	void saveConfiguration(SoundConfiguration configuration);
 

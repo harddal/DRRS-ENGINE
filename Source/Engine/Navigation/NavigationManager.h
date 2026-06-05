@@ -44,6 +44,11 @@ public:
     NavigationManager();
     ~NavigationManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
     // --- Geometry accumulation ---
     // Add an Irrlicht mesh to the input geometry pool. Apply a world transform if the
     // mesh is not already in world space. Call buildNavMesh() once all geometry is added.

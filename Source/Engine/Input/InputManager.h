@@ -101,7 +101,7 @@ public:
 	InputManager& operator=(const InputManager&) = delete;
 
     InputManager();
-    ~InputManager() { delete s_Instance; }
+    ~InputManager() { s_Instance = nullptr; }
 
 	void update(bool processInput = true);
 

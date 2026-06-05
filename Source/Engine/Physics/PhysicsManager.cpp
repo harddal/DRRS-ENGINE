@@ -171,14 +171,14 @@ PhysicsManager::~PhysicsManager()
 {
     destroyScene();
 
-	m_cuda->release();
+	//m_cuda->release();
     m_dispatcher->release();
     m_physics->release();
 	m_pvd->release();
 	m_transport->release();
     m_foundation->release();
 
-    delete s_Instance;
+    s_Instance = nullptr;
 }
 
 void PhysicsManager::update(irr::f32 dt)

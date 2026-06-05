@@ -46,7 +46,7 @@ ScriptManager::~ScriptManager()
     m_executionContext->Release();
     m_engine->ShutDownAndRelease();
 
-    delete s_Instance;
+    s_Instance = nullptr;
 }
 
 // May not work at all, need to refactor

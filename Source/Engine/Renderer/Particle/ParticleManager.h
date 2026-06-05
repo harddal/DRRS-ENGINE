@@ -20,6 +20,11 @@ public:
     ParticleManager();
     ~ParticleManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
     // Load and cache a named effect from a .psys file.
     // Safe to call multiple times with the same name — second call is a no-op.
     // Returns false if the file cannot be loaded.

@@ -48,7 +48,7 @@ SoundManager::SoundManager() : m_soundEngine(new SoundEngine())
 SoundManager::~SoundManager()
 {
     delete m_soundEngine;
-    delete s_Instance;
+    s_Instance = nullptr;
 }
 
 void SoundManager::saveConfiguration(SoundConfiguration configuration)

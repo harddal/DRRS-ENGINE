@@ -56,12 +56,11 @@ Application::Application(const std::string& name, const std::string& args) : m_r
 }
 Application::~Application()
 {
-    m_log->flush();
+    delete m_engine;
+
+	m_log->flush();
 
     spdlog::shutdown();
-
-    delete m_engine;
-    delete s_Instance;
 }
 
 void Application::update()

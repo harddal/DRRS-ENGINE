@@ -72,7 +72,7 @@ WorldManager::~WorldManager()
 {
     m_gameWorld.removeAllSystems();
     
-    delete s_Instance;
+    s_Instance = nullptr;
 }
 
 void WorldManager::update(irr::f32 dt)

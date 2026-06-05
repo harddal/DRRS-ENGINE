@@ -12,6 +12,11 @@ public:
     ScriptManager();
     ~ScriptManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
     int execute(std::string module, std::string function, int entid = 0xFFFF);
     // TODO: Change the ScriptComponent parameter to accept a module name string instead
     int execute(ScriptComponent script, asIScriptFunction* function, int entid = 0xFFFF);

@@ -87,8 +87,11 @@ void GameManager::destroy()
 
 	Engine::Get()->setGameMode(false);
 
-	g_FreeCameraController->destroy();
-	g_FreeCameraController.release();
+	if (g_FreeCameraController)
+	{
+		g_FreeCameraController->destroy();
+		g_FreeCameraController.reset();
+	}
 
 	if (g_PlayerController && WorldManager::Get()->managerSystem()->getEntityByName("player").isValid())
 	{

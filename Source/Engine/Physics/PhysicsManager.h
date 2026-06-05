@@ -69,6 +69,11 @@ public:
     PhysicsManager();
     ~PhysicsManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
     void update(irr::f32 dt);
 
     void createScene();

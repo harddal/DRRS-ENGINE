@@ -201,6 +201,11 @@ public:
     PropManager();
     ~PropManager();
 
+	static void destroy() {
+		delete s_Instance;
+		s_Instance = nullptr;
+	}
+
     static PropManager* Get() { return s_Instance; }
 
     // -----------------------------------------------------------------------
