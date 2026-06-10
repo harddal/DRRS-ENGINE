@@ -363,6 +363,12 @@ static void AS_RestorePostProcessDefaults()
     rm->setRadiationEnabled(d.radiationEnabled); rm->radiationCallback()->intensity      = d.radiationIntensity;
 }
 
+// ENGINE STATE
+static bool AS_Engine_IsMenu()   { return Engine::Get()->stateManager()->current() == ESID_MENU; }
+static bool AS_Engine_IsGame()   { return Engine::Get()->stateManager()->current() == ESID_GAME; }
+static bool AS_Engine_IsEditor() { return Engine::Get()->stateManager()->current() == ESID_EDITOR || Engine::Get()->stateManager()->current() == ESID_EDITORGAME; }
+static int  AS_Engine_GetState() { return static_cast<int>(Engine::Get()->stateManager()->current()); }
+
 void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 {
     engine->SetDefaultNamespace("render");
@@ -446,6 +452,14 @@ void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 
 		engine->RegisterGlobalFunction("void saveDefaults()",    asFUNCTION(AS_SavePostProcessDefaults),    asCALL_CDECL);
 		engine->RegisterGlobalFunction("void restoreDefaults()", asFUNCTION(AS_RestorePostProcessDefaults), asCALL_CDECL);
+	}
+
+	engine->SetDefaultNamespace("engine");
+	{
+		engine->RegisterGlobalFunction("bool isMenu()",   asFUNCTION(AS_Engine_IsMenu),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool isGame()",   asFUNCTION(AS_Engine_IsGame),   asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool isEditor()", asFUNCTION(AS_Engine_IsEditor), asCALL_CDECL);
+		engine->RegisterGlobalFunction("int  getState()", asFUNCTION(AS_Engine_GetState), asCALL_CDECL);
 	}
 
     engine->SetDefaultNamespace("");

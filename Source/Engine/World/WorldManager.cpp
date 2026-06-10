@@ -163,6 +163,12 @@ void WorldManager::update(irr::f32 dt)
 
 	m_worldTime = Engine::Get()->GetCounter() - m_worldCurrent;
 #endif
+
+	if (!m_pendingSaveFile.empty())
+	{
+		exportScene(m_pendingSaveFile);
+		m_pendingSaveFile.clear();
+	}
 }
 
 void WorldManager::updateEntityQueues()
@@ -348,6 +354,18 @@ void WorldManager::exportPrefab(const std::string& file)
 	// TODO: Loop through entities in the prefab and serialize them
 	// for (entity in prefab)
 	//     serializeEntity(entity)
+}
+
+void WorldManager::loadScene(const std::string& file)
+{
+	Engine::Get()->clearScene();
+	PhysicsManager::Get()->createScene();
+	importScene(file);
+}
+
+void WorldManager::queueSceneSave(const std::string& file)
+{
+	m_pendingSaveFile = file;
 }
 
 void WorldManager::importScene(const std::string& file)

@@ -489,8 +489,7 @@ void Weapon_RocketLauncher::createMuzzleFlash()
 	// Force immediate position update to prevent lag during fast camera movement
 	m_muzzleStarNode->updateAbsolutePosition();
 
-	m_muzzleStarNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 100, 150, 255);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 100, 150, 255);
+	m_muzzleStarNode->setColor(irr::video::SColor(255, 100, 150, 255));
 
 	m_muzzleFlashTime = 0.0f;
 }
@@ -514,8 +513,7 @@ void Weapon_RocketLauncher::updateMuzzleFlash(float dt)
 
 		if (m_muzzleStarNode)
 		{
-			m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
+			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 100, 150, 255));
 		}
 	}
 }

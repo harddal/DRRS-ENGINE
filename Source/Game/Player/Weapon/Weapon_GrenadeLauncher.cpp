@@ -657,8 +657,7 @@ void Weapon_GrenadeLauncher::createMuzzleFlash()
 	m_muzzleStarNode->setVisible(true);
 	m_muzzleStarNode->updateAbsolutePosition();
 
-	m_muzzleStarNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 200, 160, 80);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 200, 160, 80);
+	m_muzzleStarNode->setColor(irr::video::SColor(255, 200, 160, 80));
 
 	m_muzzleFlashTime = 0.0f;
 }
@@ -679,8 +678,7 @@ void Weapon_GrenadeLauncher::updateMuzzleFlash(float dt)
 		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
 		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
 
-		m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-		m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
+		m_muzzleStarNode->setColor(irr::video::SColor(alpha, 200, 160, 80));
 	}
 }
 

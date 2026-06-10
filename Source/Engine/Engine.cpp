@@ -276,15 +276,16 @@ void Engine::StateManager::updateUI(irr::f32 dt)
 
 ENGINE_STATE_ID Engine::StateManager::setState(ENGINE_STATE_ID state, const std::string& args)
 {
-    if (state != ESID_INVALID) 
+    if (state != ESID_INVALID)
 	{
-        if (!m_states[state]->hasInitialized()) 
-		{
-			m_initNewState = true;
+        if (m_states[state]->hasInitialized() &&
+            static_cast<unsigned int>(state) != m_current)
+        {
+            destroyState(state);
         }
 
+        m_initNewState = true;
 		m_next = static_cast<unsigned int>(state);
-
 		m_args = args;
     }
 

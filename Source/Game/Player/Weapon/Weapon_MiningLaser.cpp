@@ -151,9 +151,17 @@ void Weapon_MiningLaser::init()
 			m_laserNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
 			m_laserNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
 			m_laserNode->setMaterialType(m_muzzleFlashMaterialType);
-			m_laserNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 30, 30);
-			m_laserNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 30, 30);
-			m_laserNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 30, 30);
+			{
+				irr::video::SColor laserColor(255, 255, 30, 30);
+				irr::scene::IMesh* lmesh = m_laserNode->getMesh();
+				for (irr::u32 b = 0; b < lmesh->getMeshBufferCount(); b++)
+				{
+					irr::scene::IMeshBuffer* buf = lmesh->getMeshBuffer(b);
+					for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+						static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = laserColor;
+					buf->setDirty(irr::scene::EBT_VERTEX);
+				}
+			}
 			m_laserNode->setVisible(false);
 		}
 	}
@@ -439,9 +447,7 @@ void Weapon_MiningLaser::createMuzzleFlash()
 	m_muzzleStarNode->updateAbsolutePosition();
 
 	// Tint star red for laser effect
-	m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 30, 30);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 30, 30);
-	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 30, 30);
+	m_muzzleStarNode->setColor(irr::video::SColor(255, 255, 30, 30));
 
 	// Create/show red point light at muzzle if not exists
 	if (!m_muzzleLightNode)
@@ -484,9 +490,7 @@ void Weapon_MiningLaser::updateMuzzleFlash(float dt)
 
 		if (m_muzzleStarNode)
 		{
-			m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).EmissiveColor.setAlpha(alpha);
+			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 255, 30, 30));
 		}
 	}
 }
@@ -517,8 +521,17 @@ void Weapon_MiningLaser::createLaserBeam(const irr::core::vector3df& start, cons
 	m_laserNode->setRotation(rotation);
 
 	// Reset alpha and restart fade timer
-	m_laserNode->getMaterial(0).AmbientColor.setAlpha(255);
-	m_laserNode->getMaterial(0).DiffuseColor.setAlpha(255);
+	{
+		irr::video::SColor laserColor(255, 255, 30, 30);
+		irr::scene::IMesh* lmesh = m_laserNode->getMesh();
+		for (irr::u32 b = 0; b < lmesh->getMeshBufferCount(); b++)
+		{
+			irr::scene::IMeshBuffer* buf = lmesh->getMeshBuffer(b);
+			for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+				static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = laserColor;
+			buf->setDirty(irr::scene::EBT_VERTEX);
+		}
+	}
 	m_laserFireTime = Engine::Get()->getCurrentTime();
 	m_laserNode->setVisible(true);
 }
@@ -537,6 +550,15 @@ void Weapon_MiningLaser::updateLaserBeam(float dt)
 
 	float fadeProgress = elapsed / m_laserFadeDuration;
 	irr::u32 alpha = static_cast<irr::u32>((1.0f - fadeProgress) * 255.0f);
-	m_laserNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-	m_laserNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
+	{
+		irr::video::SColor laserColor(alpha, 255, 30, 30);
+		irr::scene::IMesh* lmesh = m_laserNode->getMesh();
+		for (irr::u32 b = 0; b < lmesh->getMeshBufferCount(); b++)
+		{
+			irr::scene::IMeshBuffer* buf = lmesh->getMeshBuffer(b);
+			for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+				static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = laserColor;
+			buf->setDirty(irr::scene::EBT_VERTEX);
+		}
+	}
 }

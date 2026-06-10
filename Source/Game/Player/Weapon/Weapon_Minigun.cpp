@@ -645,9 +645,7 @@ void Weapon_Minigun::createMuzzleFlash()
 	m_muzzleStarNode->updateAbsolutePosition();
 
 	// Tint star yellow-orange for minigun effect
-	m_muzzleStarNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 204, 76);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 204, 76);
-	m_muzzleStarNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 204, 76);
+	m_muzzleStarNode->setColor(irr::video::SColor(255, 255, 204, 76));
 
 	// Create/show blue point light at MUZZLE if not exists
 	if (!m_muzzleLightNode)
@@ -690,9 +688,7 @@ void Weapon_Minigun::updateMuzzleFlash(float dt)
 
 		if (m_muzzleStarNode)
 		{
-			m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
-			m_muzzleStarNode->getMaterial(0).EmissiveColor.setAlpha(alpha);
+			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 255, 204, 76));
 		}
 	}
 }
@@ -764,10 +760,18 @@ void Weapon_Minigun::createTracerBeam(const irr::core::vector3df& start, const i
 	// Use the same MUZZLE flash shader for depth-aware transparency
 	tracerNode->setMaterialType(m_muzzleFlashMaterialType);
 	
-	// Set bright yellow/orange color for tracer
-	tracerNode->getMaterial(0).AmbientColor  = irr::video::SColor(255, 255, 200, 100);
-	tracerNode->getMaterial(0).DiffuseColor  = irr::video::SColor(255, 255, 200, 100);
-	tracerNode->getMaterial(0).EmissiveColor = irr::video::SColor(255, 255, 200, 100);
+	// Set bright yellow/orange color for tracer via vertex color (material colors ignored by additive blend)
+	{
+		irr::video::SColor tracerColor(255, 255, 200, 100);
+		irr::scene::IMesh* mesh = tracerNode->getMesh();
+		for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+		{
+			irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
+			for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+				static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = tracerColor;
+			buf->setDirty(irr::scene::EBT_VERTEX);
+		}
+	}
 	
 	// Store tracer for update/cleanup
 	TracerBeam tracer;
@@ -883,8 +887,15 @@ void Weapon_Minigun::updateTracers(float dt)
 			
 			if (it->node)
 			{
-				it->node->getMaterial(0).AmbientColor.setAlpha(alpha);
-				it->node->getMaterial(0).DiffuseColor.setAlpha(alpha);
+				irr::video::SColor tracerColor(alpha, 255, 200, 100);
+				irr::scene::IMesh* mesh = it->node->getMesh();
+				for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+				{
+					irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
+					for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
+						static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = tracerColor;
+					buf->setDirty(irr::scene::EBT_VERTEX);
+				}
 			}
 			
 			++it;

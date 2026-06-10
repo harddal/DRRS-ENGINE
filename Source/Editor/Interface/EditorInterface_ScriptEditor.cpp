@@ -59,7 +59,7 @@ static const TextEditor::Language* ascLanguage()
         lang.identifiers.clear();
         for (const char* k : { "debug", "log", "math", "time", "transform", "entity", "camera",
                                 "light", "physx", "render", "animation", "raycast", "postprocess",
-                                "sound", "game", "player", "cvar", "console", "autokill", "interaction",
+                                "sound", "game", "engine", "player", "cvar", "console", "autokill", "interaction",
                                 "logic", "trigger", "marker", "hp", "data", "item", "dialog", "water",
                                 "npc", "tween", "nav", "input" })
             lang.identifiers.insert(k);

@@ -52,7 +52,7 @@ private:
 	const float m_muzzleFlashDuration = 50.0f; // 50ms flash
 
 	// Shell ejection system - pooled fake physics, no ECS/PhysX
-	static constexpr int SHELL_POOL_SIZE = 240;
+	static constexpr int SHELL_POOL_SIZE = 50;
 	struct ShellCasing {
 		irr::scene::IMeshSceneNode* node = nullptr;
 		irr::core::vector3df velocity;        // units/second
@@ -74,7 +74,7 @@ private:
 	const int m_tracerFrequency = 3;
 
 	struct TracerBeam {
-		irr::scene::ISceneNode* node;
+		irr::scene::IMeshSceneNode* node;
 		float spawnTime;
 		float lifetime = 50.0f;
 	};

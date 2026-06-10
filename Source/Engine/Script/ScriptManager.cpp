@@ -289,6 +289,8 @@ int ScriptManager::compile(ScriptComponent& script)
     {
         for (auto ex_data : script.script_data)
         {
+            if (ex_data.index >= script.global_values.size()) continue;
+
             switch (ex_data.type)
             {
             case AS_DATA_TYPE::INT:

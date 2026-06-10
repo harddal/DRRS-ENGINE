@@ -63,18 +63,25 @@ void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_s
         auto& logic  = entity.getComponent<LogicComponent>();
         auto& script = entity.getComponent<ScriptComponent>();
 
-        logic.isActivated = true;
-
         if (script.hasOnLogicEventActivate)
-            ScriptManager::Get()->execute(script, script.onLogicEventActivate, id);
-
-        for (auto& token : splitReceiver(logic.receiver))
         {
-            for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
-                propagateLogicSignal(*next, visited);
+            logic.isActivated = false;
+            ScriptManager::Get()->execute(script, script.onLogicEventActivate, id);
+        }
+        else
+        {
+            logic.isActivated = true;
         }
 
-        logic.isActivated = false;
+        if (logic.isActivated)
+        {
+            for (auto& token : splitReceiver(logic.receiver))
+            {
+                for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
+                    propagateLogicSignal(*next, visited);
+            }
+            logic.isActivated = false;
+        }
     }
     else if (entity.hasComponent<BehaviorComponent>())
     {
@@ -349,7 +356,7 @@ void GameplaySystem::update()
 // ---- MARKER COMPONENT
 		if (entity.hasComponent<MarkerComponent>())
 		{
-			auto transformComponent = entity.getComponent<TransformComponent>();
+			auto& transformComponent = entity.getComponent<TransformComponent>();
 			auto& markerComponent   = entity.getComponent<MarkerComponent>();
 
 			switch (markerComponent.type)
@@ -365,7 +372,7 @@ void GameplaySystem::update()
 						WorldManager::Get()->spawnEntity(
 							_asset_ent("player/player"), "player", false,
 							transformComponent.position - irr::core::vector3df(0.0f, PLAYER_HEIGHT, 0.0f),
-							transformComponent.rotation);
+							irr::core::vector3df(0.0f, transformComponent.rotation.Y, 0.0f));
 						
 						markerComponent.hasUpdated = true;
 					}
@@ -374,12 +381,13 @@ void GameplaySystem::update()
 						spdlog::debug("MT_PLAYER_START did not spawn a player controller, one already exists");
 					}
 				}
-				else if (markerComponent.hasUpdated)
+
+				if (WorldManager::Get()->managerSystem()->doesEntityExist("player"))
 				{
 					auto& playerTransform = WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<TransformComponent>();
 					
 					transformComponent.setPosition(playerTransform.getPosition() + irr::core::vector3df(0.0f, PLAYER_HEIGHT, 0.0f));
-					transformComponent.setRotation(playerTransform.getRotation());
+					transformComponent.setRotation(irr::core::vector3df(0.0f, playerTransform.getRotation().Y, 0.0f));
 				}
 				break;
 
@@ -508,16 +516,20 @@ void GameplaySystem::update()
 							{
 								auto& ent_logic = entity.getComponent<LogicComponent>();
 								auto& ent_script = entity.getComponent<ScriptComponent>();
-								ent_logic.isActivated = !triggerzoneComponent.invert;
 
 								if (ent_script.hasOnLogicEventActivate)
 								{
+									ent_logic.isActivated = false;
 									ScriptManager::Get()->execute(
 										ent_script, ent_script.onLogicEventActivate,
 										entity.getComponent<DescriptorComponent>().id);
 								}
+								else
+								{
+									ent_logic.isActivated = !triggerzoneComponent.invert;
+								}
 
-								if (!ent_logic.receiver.empty())
+								if (ent_logic.isActivated && !ent_logic.receiver.empty())
 								{
 									std::unordered_set<entityid> visited;
 									visited.insert(entity.getComponent<DescriptorComponent>().id);
@@ -526,9 +538,8 @@ void GameplaySystem::update()
 										for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(t))
 											propagateLogicSignal(*next, visited);
 									}
+									ent_logic.isActivated = false;
 								}
-
-								ent_logic.isActivated = false;
 
 								triggerzoneComponent.reset = false;
 							}

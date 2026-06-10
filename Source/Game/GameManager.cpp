@@ -40,24 +40,19 @@ void GameManager::init(const std::string &args)
 
 	Engine::Get()->setGameMode();
 
-	PhysicsManager::Get()->createScene();
-
-	WorldManager::Get()->importScene(args);
+	WorldManager::Get()->loadScene(args);
 
 	g_FreeCameraController = std::make_unique<FreeCameraController>();
 	g_FreeCameraController->init();
 
-	//if (WorldManager::Get()->managerSystem()->getEntityByName("player").isValid())
-	{
-		g_PlayerController = std::make_unique<PlayerController>();
-		g_PlayerController->init();
-	}
+	g_PlayerController = std::make_unique<PlayerController>();
+	g_PlayerController->init();
 }
 
 void GameManager::update(float dt, bool editor_mode)
 {
 	// If not in debug, escape key activates the menu
-	
+
 	static auto esc_pressed = false;
 	if (InputManager::Get()->getKeyPressOnce(KEY_ESCAPE, &esc_pressed, true) && !editor_mode)
 	{

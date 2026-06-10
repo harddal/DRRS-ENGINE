@@ -234,8 +234,10 @@ public:
 	// NOIMP
 	void exportPrefab(const std::string& file);
 	
+	void loadScene(const std::string& file);
 	void importScene(const std::string& file);
 	void exportScene(const std::string& file);
+	void queueSceneSave(const std::string& file);
 
 	SceneDescriptor getCurrentSceneDescriptor() const { return m_currentSceneDescriptor; }
 	void setCurrentSceneDescriptor(SceneDescriptor& desc) { m_currentSceneDescriptor = desc; }
@@ -296,6 +298,7 @@ private:
 
     std::vector<entityid> m_killedEntityIDQueue;
     std::vector<EntitySpawnDescriptor> m_entitySpawnQueue;
+    std::string m_pendingSaveFile;
 
     std::array<bool, _entity_null_value> m_entityIDArray;
 

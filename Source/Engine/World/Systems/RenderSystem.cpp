@@ -420,6 +420,16 @@ void RenderSystem::setDebugMeshComponentData(anax::Entity& entity)
             meshComponent.node->setMaterialTexture(0, zoneTex);
     }
 
+	if (entity.getComponent<DescriptorComponent>().name == "checkpoint_zone") {
+		meshComponent.node->setMaterialFlag(EMF_WIREFRAME, false);
+		meshComponent.node->setMaterialFlag(EMF_BACK_FACE_CULLING, false);
+		meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, false);
+		meshComponent.node->setMaterialType(EMT_TRANSPARENT_ALPHA_CHANNEL);
+		auto* zoneTex = RenderManager::Get()->driver()->getTexture("content/texture/color/yellow_transparent.png");
+		if (zoneTex)
+			meshComponent.node->setMaterialTexture(0, zoneTex);
+	}
+
     meshComponent.node->setMaterialFlag(EMF_GOURAUD_SHADING, false);
 
     meshComponent.node->setMaterialFlag(EMF_LIGHTING, false);

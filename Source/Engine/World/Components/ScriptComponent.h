@@ -155,14 +155,17 @@ struct ScriptComponent : anax::Component
         std::vector<std::string> data;
         archive(CEREAL_NVP(script), CEREAL_NVP(data));
 
-        // Each entry is encoded as "INDEX:TYPE:DATA" where index and type are single digits.
+        // Each entry is encoded as "INDEX:TYPE:DATA"
         for (const auto& entry : data)
         {
+            size_t c1 = entry.find(':');
+            size_t c2 = entry.find(':', c1 + 1);
+            if (c1 == std::string::npos || c2 == std::string::npos) continue;
             script_data.emplace_back(ExposedScriptData(
-                atoi(entry.substr(0, 1).c_str()),
+                atoi(entry.substr(0, c1).c_str()),
                 "",
-                static_cast<AS_DATA_TYPE>(atoi(entry.substr(2, 1).c_str())),
-                entry.substr(4)));
+                static_cast<AS_DATA_TYPE>(atoi(entry.substr(c1 + 1, c2 - c1 - 1).c_str())),
+                entry.substr(c2 + 1)));
         }
     }
 

@@ -773,8 +773,7 @@ void Weapon_BioRifle::createMuzzleFlash()
 	m_muzzleStarNode->updateAbsolutePosition();
 
 	// Green tint for the bio muzzle flash
-	m_muzzleStarNode->getMaterial(0).AmbientColor = irr::video::SColor(255, 40, 220, 40);
-	m_muzzleStarNode->getMaterial(0).DiffuseColor = irr::video::SColor(255, 40, 220, 40);
+	m_muzzleStarNode->setColor(irr::video::SColor(255, 40, 220, 40));
 
 	m_muzzleFlashTime = 0.0f;
 }
@@ -795,7 +794,6 @@ void Weapon_BioRifle::updateMuzzleFlash(float dt)
 		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
 		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
 
-		m_muzzleStarNode->getMaterial(0).AmbientColor.setAlpha(alpha);
-		m_muzzleStarNode->getMaterial(0).DiffuseColor.setAlpha(alpha);
+		m_muzzleStarNode->setColor(irr::video::SColor(alpha, 40, 220, 40));
 	}
 }

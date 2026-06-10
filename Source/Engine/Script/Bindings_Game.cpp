@@ -9,6 +9,13 @@
 #include "Game/Player/InventoryController.h"
 #include "Game/Player/PlayerController.h"
 
+#include <boost/filesystem.hpp>
+#include <boost/range/iterator_range.hpp>
+#include <algorithm>
+#include <iomanip>
+#include <set>
+#include <sstream>
+
 bool AS_GetCVarExists(std::string name)
 {
 	return WorldManager::Get()->getCVarExists(name);
@@ -33,6 +40,68 @@ void AS_ClearCVars()
 static void AS_ExecuteCommand(std::string cmd)
 {
 	// NOIMP
+}
+
+static void AS_SaveScene(std::string file)
+{
+    WorldManager::Get()->exportScene(file);
+}
+
+static void AS_LoadScene(std::string file)
+{
+	WorldManager::Get()->loadScene(file);
+}
+
+static std::string AS_SaveCheckpoint(int maxSlots)
+{
+	namespace fs = boost::filesystem;
+	boost::system::error_code ec;
+
+	if (maxSlots <= 0) maxSlots = 1;
+
+	const std::string saveDir = "saves";
+	fs::create_directories(saveDir, ec);
+
+	struct Slot { fs::path path; std::time_t writeTime; int index; };
+	std::vector<Slot> slots;
+	std::set<int>     usedIndices;
+
+	for (auto& entry : boost::make_iterator_range(fs::directory_iterator(saveDir, ec), {}))
+	{
+		const std::string name = entry.path().filename().string();
+		if (name.size() > 15 &&
+			name.substr(0, 11) == "checkpoint_" &&
+			name.substr(name.size() - 4) == ".pak")
+		{
+			try {
+				int idx = std::stoi(name.substr(11, name.size() - 15));
+				slots.push_back({ entry.path(), fs::last_write_time(entry.path(), ec), idx });
+				usedIndices.insert(idx);
+			} catch (...) {}
+		}
+	}
+
+	std::string targetPath;
+
+	if (static_cast<int>(slots.size()) < maxSlots)
+	{
+		int next = 0;
+		while (usedIndices.count(next)) ++next;
+
+		std::ostringstream oss;
+		oss << saveDir << "/checkpoint_"
+		    << std::setw(3) << std::setfill('0') << next << ".pak";
+		targetPath = oss.str();
+	}
+	else
+	{
+		auto oldest = std::min_element(slots.begin(), slots.end(),
+			[](const Slot& a, const Slot& b){ return a.writeTime < b.writeTime; });
+		targetPath = oldest->path.string();
+	}
+
+	WorldManager::Get()->queueSceneSave(targetPath);
+	return targetPath;
 }
 
 void AS_ActivateLogicComponent(int e, bool b)
@@ -1377,6 +1446,10 @@ void ScriptBindings::RegisterGame(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("bool isLogicEventActive(int entityId)", asFUNCTION(AS_IsLogicComponentActivated), asCALL_CDECL);
 
 		engine->RegisterGlobalFunction("void interact(int entityId)", asFUNCTION(as_interact), asCALL_CDECL);
+
+		engine->RegisterGlobalFunction("void save(string filename)", asFUNCTION(AS_SaveScene), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void load(string filename)", asFUNCTION(AS_LoadScene), asCALL_CDECL);
+		engine->RegisterGlobalFunction("string saveCheckpoint(int maxSlots)", asFUNCTION(AS_SaveCheckpoint), asCALL_CDECL);
 	}
 
 	engine->SetDefaultNamespace("player");

@@ -1250,6 +1250,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				script.script = buf;
+				script.script_data.clear();
 				if (ScriptManager::Get()->compile(entity.getComponent<ScriptComponent>()) < 0)
 					invalid_script = true;
 				else
@@ -1261,7 +1262,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			{
 				std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_script, "content\\script"));
 				if (!chosen.empty())
+				{
 					script.script = chosen;
+					script.script_data.clear();
+					if (ScriptManager::Get()->compile(entity.getComponent<ScriptComponent>()) < 0)
+						invalid_script = true;
+					else
+						invalid_script = false;
+				}
 			}
 
 			if (invalid_script)

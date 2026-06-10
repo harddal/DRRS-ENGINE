@@ -76,7 +76,7 @@ private:
 	const int m_tracerFrequency = 3;
 
 	struct TracerBeam {
-		irr::scene::ISceneNode* node;
+		irr::scene::IMeshSceneNode* node;
 		float spawnTime;
 		float lifetime = 50.0f;
 	};

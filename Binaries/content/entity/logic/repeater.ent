@@ -3,7 +3,7 @@
     <entity>
         <descriptor>
             <value0>
-                <name>event_timer</name>
+                <name>repeater</name>
                 <type>4</type>
                 <isDebug>false</isDebug>
                 <isSerializable>true</isSerializable>
@@ -42,12 +42,12 @@
         </render>
         <debugsprite>
             <value0>
-                <sprite>sprite/timer.png</sprite>
+                <sprite>sprite/repeat.png</sprite>
             </value0>
         </debugsprite>
         <script>
             <value0>
-                <script>content/script/logic/event_timer.asc</script>
+                <script>content/script/logic/repeater.asc</script>
                 <data/>
             </value0>
         </script>

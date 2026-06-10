@@ -11,14 +11,7 @@
 #include "Engine/Input/InputManager.h"
 
 #include <string>
-#include <iostream>
-#include <iomanip>
-#include <ctime>
-#include <sstream>
-
-using namespace std;
-using namespace boost;
-using namespace filesystem;
+#include <algorithm>
 
 using namespace ImGui;
 
@@ -116,8 +109,37 @@ static bool
 	show_window_controls   = false,
 	show_window_remap_key  = false,
 	show_window_settings   = false,
-	show_window_save_game  = false,
-	show_window_name_save  = false;
+	show_window_save_game  = false;
+
+// ---- File browser shared state ----
+static std::string        fb_current_dir  = "saves";
+static std::vector<std::string> fb_subdirs;
+static std::vector<std::string> fb_pak_files;
+static bool               fb_needs_refresh = false;
+static char               fb_save_name[128] = "save";
+
+static void FB_Refresh()
+{
+    fb_subdirs.clear();
+    fb_pak_files.clear();
+
+    namespace fs = boost::filesystem;
+    boost::system::error_code ec;
+    fs::path p(fb_current_dir);
+    if (!fs::exists(p, ec) || !fs::is_directory(p, ec))
+        return;
+
+    for (auto& entry : boost::make_iterator_range(fs::directory_iterator(p, ec), {}))
+    {
+        if (fs::is_directory(entry, ec))
+            fb_subdirs.push_back(entry.path().filename().string());
+        else if (fs::is_regular_file(entry, ec) && entry.path().extension().string() == ".pak")
+            fb_pak_files.push_back(entry.path().filename().string());
+    }
+
+    std::sort(fb_subdirs.begin(),   fb_subdirs.end());
+    std::sort(fb_pak_files.begin(), fb_pak_files.end());
+}
 
 bool MainMenu::IsEscapeKeyLocked()
 {
@@ -132,7 +154,6 @@ void MainMenu::Reset()
 	show_window_remap_key  = false;
 	show_window_settings   = false;
 	show_window_save_game  = false;
-	show_window_name_save  = false;
 }
 
 void MainMenu::Draw(bool is_ingame_menu)
@@ -141,13 +162,6 @@ void MainMenu::Draw(bool is_ingame_menu)
 	if (!theme_applied) { ApplyTheme(); theme_applied = true; }
 
 	static bool window_open = true;
-
-	static bool search_save_games = false;
-
-	static int current_save_slot = 0;
-
-	static vector<std::wstring> files;
-	static vector<std::pair<bool, std::string>> saves;
 
 	static sKeyActionPair currentKeyPair("null", KEY_UNKNOWN);
 	
@@ -160,7 +174,7 @@ void MainMenu::Draw(bool is_ingame_menu)
 	PopStyleColor();*/
 	
 	{
-		const bool any_subwindow_open = show_window_load_game || show_window_save_game || show_window_name_save || show_window_settings || show_window_controls || show_window_remap_key;
+		const bool any_subwindow_open = show_window_load_game || show_window_save_game || show_window_settings || show_window_controls || show_window_remap_key;
 
 		PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 		PushStyleColor(ImGuiCol_Border,   ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -199,24 +213,20 @@ void MainMenu::Draw(bool is_ingame_menu)
 
 				if (MenuTextButton("Save Game", btn_w))
 				{
-					search_save_games = true;
-
+					fb_needs_refresh      = true;
 					show_window_save_game = true;
-
-					show_window_controls = false;
-					show_window_settings = false;
+					show_window_controls  = false;
+					show_window_settings  = false;
 					show_window_load_game = false;
 				}
 			}
 
 			if (MenuTextButton("Load Game", btn_w))
 			{
-				search_save_games = true;
-
+				fb_needs_refresh      = true;
 				show_window_load_game = true;
-
-				show_window_controls = false;
-				show_window_settings = false;
+				show_window_controls  = false;
+				show_window_settings  = false;
 				show_window_save_game = false;
 			}
 
@@ -249,382 +259,133 @@ void MainMenu::Draw(bool is_ingame_menu)
 		PopStyleColor(2);
 	}
 
-	if (search_save_games)
+	if (fb_needs_refresh)
 	{
-		for (auto i = 0; i < 5; i++)
-		{
-			saves.emplace_back(std::pair<bool, std::string>(false, std::string()));
-		}
-		
-		const path dir = "saves/";
-		recursive_directory_iterator it(dir), end;
-
-		for (auto& entry : make_iterator_range(it, end)) {
-			if (is_regular(entry)) {
-				files.emplace_back(entry.path().native());
-			}
-		}
-
-		for (auto& file : files)
-		{
-			const auto
-				filepath = string(file.begin(), file.end()),
-				filename = Utility::FilenameFromPath(filepath),
-				file_ext = Utility::FileExtensionFromPath(filepath);
-
-			if (file_ext == string(".scn"))
-			{
-				if (filename.substr(0, 6) == "save00")
-				{
-					saves.at(0).first = true;
-					if (filename.length() < 7)
-					{
-						saves.at(0).second = "Save 1";
-					}
-					else
-					{
-						saves.at(0).second = filename;
-					}
-				}
-
-				if (filename.substr(0, 6) == "save01")
-				{
-					saves.at(1).first = true;
-					if (filename.length() < 7)
-					{
-						saves.at(1).second = "Save 2";
-					}
-					else
-					{
-						saves.at(1).second = filename;
-					}
-				}
-
-				if (filename.substr(0, 6) == "save02")
-				{
-					saves.at(2).first = true;
-					if (filename.length() < 7)
-					{
-						saves.at(2).second = "Save 3";
-					}
-					else
-					{
-						saves.at(2).second = filename;
-					}
-				}
-
-				if (filename.substr(0, 6) == "save03")
-				{
-					saves.at(3).first = true;
-					if (filename.length() < 7)
-					{
-						saves.at(3).second = "Save 4";
-					}
-					else
-					{
-						saves.at(3).second = filename;
-					}
-				}
-
-				if (filename.substr(0, 6) == "save04")
-				{
-					saves.at(4).first = true;
-					if (filename.length() < 7)
-					{
-						saves.at(4).second = "Save 5";
-					}
-					else
-					{
-						saves.at(4).second = filename;
-					}
-				}
-			}
-		}
-
-		search_save_games = false;
-	}
-	
-	if (show_window_save_game) 
-	{
-		Begin("Save Game", &show_window_save_game, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |  ImGuiWindowFlags_NoMove);
-		{
-			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width / 2 - GetWindowSize().x / 2, RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
-
-
-			ImGui::PushID(std::string("BUTTON_SAVE_" + std::to_string(0)).c_str());
-			if (Button(saves.at(0).first ? saves.at(0).second.substr(6).c_str() : " - Empty - ", _menu_button_size))
-			{
-				show_window_name_save = true;
-
-				show_window_save_game = false;
-
-				current_save_slot = 0;
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_SAVE_" + std::to_string(1)).c_str());
-			if (Button(saves.at(1).first ? saves.at(1).second.substr(6).c_str() : " - Empty - ", _menu_button_size))
-			{
-				show_window_name_save = true;
-
-				show_window_save_game = false;
-
-				current_save_slot = 1;
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_SAVE_" + std::to_string(2)).c_str());
-			if (Button(saves.at(2).first ? saves.at(2).second.substr(6).c_str() : " - Empty - ", _menu_button_size))
-			{
-				show_window_name_save = true;
-
-				show_window_save_game = false;
-
-				current_save_slot = 2;
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_SAVE_" + std::to_string(3)).c_str());
-			if (Button(saves.at(3).first ? saves.at(3).second.substr(6).c_str() : " - Empty - ", _menu_button_size))
-			{
-				show_window_name_save = true;
-
-				show_window_save_game = false;
-
-				current_save_slot = 3;
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_SAVE_" + std::to_string(4)).c_str());
-			if (Button(saves.at(4).first ? saves.at(4).second.substr(6).c_str() : " - Empty - ", _menu_button_size))
-			{
-				show_window_name_save = true;
-
-				show_window_save_game = false;
-
-				current_save_slot = 4;
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			if (Button("Cancel", _menu_button_size))
-			{
-				show_window_save_game = false;
-			}
-
-			End();
-		}
+		FB_Refresh();
+		fb_needs_refresh = false;
 	}
 
-	if (show_window_name_save)
+	// ---- Shared file browser helper ----
+	// Draws the directory listing into the current window.
+	// Returns the full path of a .pak file if one was clicked, otherwise empty.
+	auto DrawFileBrowser = [&]() -> std::string
 	{
-		Begin("Name Save Game", &show_window_name_save, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |  ImGuiWindowFlags_NoMove);
+		std::string selected;
+
+		// Current path + Up button
+		ImGui::TextDisabled("%s", fb_current_dir.c_str());
+		ImGui::SameLine();
+		if (ImGui::SmallButton("^  Up"))
+		{
+			namespace fs = boost::filesystem;
+			fs::path parent = fs::path(fb_current_dir).parent_path();
+			if (!parent.empty() && parent != fs::path(fb_current_dir))
+			{
+				fb_current_dir = parent.string();
+				FB_Refresh();
+			}
+		}
+
+		ImGui::Separator();
+
+		const float list_h = 260.0f * RenderManager::Get()->getConfiguration().dpi_scale;
+		ImGui::BeginChild("##fb_list", ImVec2(360.0f * RenderManager::Get()->getConfiguration().dpi_scale, list_h), true);
+
+		for (auto& d : fb_subdirs)
+		{
+			std::string label = "[" + d + "]";
+			if (ImGui::Selectable(label.c_str(), false))
+			{
+				fb_current_dir += "/" + d;
+				FB_Refresh();
+			}
+		}
+
+		for (auto& f : fb_pak_files)
+		{
+			if (ImGui::Selectable(f.c_str(), false))
+			{
+				selected = fb_current_dir + "/" + f;
+
+				// Pre-fill save name with stem of clicked file
+				std::string stem = f.size() > 4 ? f.substr(0, f.size() - 4) : f;
+				strncpy(fb_save_name, stem.c_str(), sizeof(fb_save_name) - 1);
+				fb_save_name[sizeof(fb_save_name) - 1] = '\0';
+			}
+		}
+
+		if (fb_subdirs.empty() && fb_pak_files.empty())
+			ImGui::TextDisabled("(empty)");
+
+		ImGui::EndChild();
+
+		return selected;
+	};
+
+	if (show_window_save_game)
+	{
+		SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(4096.0f, 4096.0f));
+		Begin("Save Game", &show_window_save_game, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
 		{
 			lockout_escape_key = true;
-			
-			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width / 2 - GetWindowSize().x / 2, RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
-			
-			static char buffer[20];
+			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width  / 2 - GetWindowSize().x / 2,
+			                    RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
 
-			static bool clear = true;
-			if (clear)
-			{
-				memset(buffer, '\0', sizeof buffer);
+			DrawFileBrowser(); // clicking a file pre-fills the name box but doesn't save
 
-				buffer[0] = 'S';
-				buffer[1] = 'a';
-				buffer[2] = 'v';
-				buffer[3] = 'e';
-				buffer[4] = ' ';
-				buffer[5] = to_string(current_save_slot + 1).at(0);
-				
-				clear = false;
-			}
-
-			ImGui::Text("Name: ");
-			
+			ImGui::Spacing();
+			ImGui::Text("Filename:");
 			ImGui::SameLine();
-			
-			ImGui::PushID("SaveNameTextBox");
-			ImGui::InputText("", buffer, sizeof buffer);
+			ImGui::PushID("SaveNameInput");
+			ImGui::SetNextItemWidth(240.0f * RenderManager::Get()->getConfiguration().dpi_scale);
+			ImGui::InputText("", fb_save_name, sizeof(fb_save_name));
 			ImGui::PopID();
-
 			ImGui::SameLine();
+			ImGui::TextDisabled(".pak");
 
-			if (Button("Clear", _window_button_size))
-			{
-				memset(buffer, '\0', sizeof buffer);
-			}
-			
-			ImGui::SameLine();
+			ImGui::Spacing();
 
 			if (Button("Save", _window_button_size))
 			{
-				show_window_name_save = false;
-				show_window_save_game = true;
-
-				search_save_games = true;
-
-				std::string name = buffer;
-
-				WorldManager::Get()->exportScene(string("saves/save0" + to_string(current_save_slot) + name + ".scn"));
-
-				clear = true;
-
+				std::string path = fb_current_dir + "/" + std::string(fb_save_name) + ".pak";
+				WorldManager::Get()->exportScene(path);
+				FB_Refresh();
+				show_window_save_game = false;
 				lockout_escape_key = false;
 			}
-
 			ImGui::SameLine();
-			
 			if (Button("Cancel", _window_button_size))
 			{
-				show_window_name_save = false;
-				show_window_save_game = true;
-
-				clear = true;
-
+				show_window_save_game = false;
 				lockout_escape_key = false;
 			}
-			
+
 			End();
 		}
 	}
-	
-	if (show_window_load_game) 
+
+	if (show_window_load_game)
 	{
-		Begin("Load Game", &show_window_load_game, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |  ImGuiWindowFlags_NoMove);
+		SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(4096.0f, 4096.0f));
+		Begin("Load Game", &show_window_load_game, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
 		{
-			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width / 2 - GetWindowSize().x / 2, RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
+			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width  / 2 - GetWindowSize().x / 2,
+			                    RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
 
-			ImGui::PushID(std::string("BUTTON_LOAD_" + std::to_string(0)).c_str());
-			if (saves.at(0).first)
+			std::string to_load = DrawFileBrowser();
+			if (!to_load.empty())
 			{
-				if (Button(saves.at(0).second.substr(6).c_str(), _menu_button_size))
-				{
-					if (is_ingame_menu)
-					{
-						Engine::Get()->stateManager()->destroyState(ESID_GAME);
-					}
+				if (is_ingame_menu)
+					Engine::Get()->stateManager()->destroyState(ESID_GAME);
 
-					Engine::Get()->stateManager()->setState(ESID_GAME, "saves/" + saves.at(0).second + ".scn");
-
-					show_window_load_game = false;
-				}
-			}
-			else
-			{
-				if (Button(" - Empty - ", _menu_button_size)) {}
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_LOAD_" + std::to_string(1)).c_str());
-			if (saves.at(1).first)
-			{
-				if (Button(saves.at(1).second.substr(6).c_str(), _menu_button_size))
-				{
-					if (is_ingame_menu)
-					{
-						Engine::Get()->stateManager()->destroyState(ESID_GAME);
-					}
-
-					Engine::Get()->stateManager()->setState(ESID_GAME, "saves/" + saves.at(1).second + ".scn");
-
-					show_window_load_game = false;
-				}
-			}
-			else
-			{
-				if (Button(" - Empty - ", _menu_button_size)) {}
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_LOAD_" + std::to_string(2)).c_str());
-			if (saves.at(2).first)
-			{
-				if (Button(saves.at(2).second.substr(6).c_str(), _menu_button_size))
-				{
-					if (is_ingame_menu)
-					{
-						Engine::Get()->stateManager()->destroyState(ESID_GAME);
-					}
-
-					Engine::Get()->stateManager()->setState(ESID_GAME, "saves/" + saves.at(2).second + ".scn");
-
-					show_window_load_game = false;
-				}
-			}
-			else
-			{
-				if (Button(" - Empty - ", _menu_button_size)) {}
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_LOAD_" + std::to_string(3)).c_str());
-			if (saves.at(3).first)
-			{
-				if (Button(saves.at(3).second.substr(6).c_str(), _menu_button_size))
-				{
-					if (is_ingame_menu)
-					{
-						Engine::Get()->stateManager()->destroyState(ESID_GAME);
-					}
-
-					Engine::Get()->stateManager()->setState(ESID_GAME, "saves/" + saves.at(3).second + ".scn");
-
-					show_window_load_game = false;
-				}
-			}
-			else
-			{
-				if (Button(" - Empty - ", _menu_button_size)) {}
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-
-			ImGui::PushID(std::string("BUTTON_LOAD_" + std::to_string(4)).c_str());
-			if (saves.at(4).first)
-			{
-				if (Button(saves.at(4).second.substr(6).c_str(), _menu_button_size))
-				{
-					if (is_ingame_menu)
-					{
-						Engine::Get()->stateManager()->destroyState(ESID_GAME);
-					}
-
-					Engine::Get()->stateManager()->setState(ESID_GAME, "saves/" + saves.at(4).second + ".scn");
-
-					show_window_load_game = false;
-				}
-			}
-			else
-			{
-				if (Button(" - Empty - ", _menu_button_size)) {}
-			}
-			ImGui::PopID();
-
-			ImGui::Spacing();
-			
-			if (Button("Cancel", _menu_button_size))
-			{
+				Engine::Get()->stateManager()->setState(ESID_GAME, to_load);
 				show_window_load_game = false;
 			}
-			
+
+			ImGui::Spacing();
+			if (Button("Cancel", _window_button_size))
+				show_window_load_game = false;
+
 			End();
 		}
 	}
@@ -988,7 +749,7 @@ void MainMenu::Draw(bool is_ingame_menu)
 			
 			SetWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width / 2 - GetWindowSize().x / 2, RenderManager::Get()->getConfiguration().height / 2 - GetWindowSize().y / 2));
 
-			ImGui::Text(string("Press a key to rebind \'" + currentKeyPair.getAction() + "\'").c_str());
+			ImGui::Text(std::string("Press a key to rebind \'" + currentKeyPair.getAction() + "\'").c_str());
 
 			for (auto i = 0; i < KEY_F1; i++)
 			{
