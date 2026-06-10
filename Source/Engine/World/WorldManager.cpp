@@ -27,6 +27,7 @@
 #include "Game/Behavior/BehaviorFactory.h"
 #include "Game/Behavior/Classes/WeaponPickupBehavior.h"
 #include "Game/Behavior/Classes/TurretBehavior.h"
+#include "Game/Behavior/Classes/MeleeZombieBehavior.h"
 
 using namespace anax;
 using namespace cereal;
@@ -61,6 +62,8 @@ WorldManager::WorldManager()
         [] { return std::make_unique<WeaponPickupBehavior>(); });
     BehaviorFactory::Get().registerBehavior("Turret",
         [] { return std::make_unique<TurretBehavior>(); });
+    BehaviorFactory::Get().registerBehavior("MeleeZombie",
+        [] { return std::make_unique<MeleeZombieBehavior>(); });
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());

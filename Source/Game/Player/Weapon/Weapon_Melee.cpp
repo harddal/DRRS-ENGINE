@@ -177,7 +177,29 @@ void Weapon_Melee::fire()
 	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(cameraPos, rayEnd, true);
 
 	if (raycastResult.hit && raycastResult.node)
-		ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+	{
+		auto& hitEntity = WorldManager::Get()->managerSystem()->getEntityByID(raycastResult.node->getID());
+
+		// Check if hit entity is valid and has correct type
+		if (hitEntity.isValid() && hitEntity.hasComponent<DescriptorComponent>())
+		{
+			auto& hitDescriptor = hitEntity.getComponent<DescriptorComponent>();
+
+			// Only register collision with static or dynamic entities
+			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
+			{
+				// Deal damage if entity can receive it
+				if (hitEntity.hasComponent<DamageReceiverComponent>())
+				{
+					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
+					damageComp.damageReceived += 10;
+				}
+
+				// Create impact spark particles at hit position with surface normal
+				ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+			}
+		}
+	}
 }
 
 void Weapon_Melee::reload()

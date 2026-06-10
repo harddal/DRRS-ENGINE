@@ -642,6 +642,9 @@
     <ClCompile Include="Source\Game\Behavior\Classes\TurretBehavior.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Application.h">
@@ -1392,6 +1395,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Behavior\Classes\TurretBehavior.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

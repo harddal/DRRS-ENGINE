@@ -1,3 +1,6 @@
+// --- DEPRECATED ---
+// Replaced by the BehaviorSystem, each NPC will have its own, instanced state machine.
+
 #pragma once
 
 #include <vector>

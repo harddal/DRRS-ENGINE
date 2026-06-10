@@ -58,32 +58,12 @@
                 <navCookable>false</navCookable>
             </value0>
         </mesh>
-        <npc>
+        <behavior>
             <value0>
-                <name>zombie</name>
-                <visionRange>5</visionRange>
-                <chaseRange>5</chaseRange>
-                <attackRange>1.25</attackRange>
-                <moveSpeed>0.0099999997764825821</moveSpeed>
-                <attackDelay>2000</attackDelay>
-                <state>1</state>
-                <disposition>1</disposition>
-                <start_waypoint/>
-                <current_waypoint/>
+                <behaviorType>MeleeZombie</behaviorType>
+                <properties></properties>
             </value0>
-        </npc>
-        <navagent>
-            <value0>
-                <moveSpeed>3.0</moveSpeed>
-                <arrivalRadius>0.5</arrivalRadius>
-            </value0>
-        </navagent>
-        <script>
-            <value0>
-                <script>content/script/npc/zombie.asc</script>
-                <data/>
-            </value0>
-        </script>
+        </behavior>
         <damagereceiver>
             <value0>
                 <threshold>100</threshold>
