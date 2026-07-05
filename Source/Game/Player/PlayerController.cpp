@@ -29,12 +29,13 @@ const float
 	g_walkSpeed        =  8.0f,   // units/sec — normal ground speed
 	g_sprintSpeed      =  10.0f,   // units/sec — sprint
 	g_crouchSpeed      =  5.0f,   // units/sec — crouched
-	g_jumpSpeed        =  10.0f,   // units/sec — initial upward velocity
-	g_gravity          = 20.0f,   // units/sec² — downward acceleration
+	g_jumpSpeed        =  10.5f,   // units/sec — initial upward velocity
+	g_gravity          = 20.0f,   // units/sec² — base downward acceleration (rising)
+	g_fallGravityMult  =  1.4f,   // extra gravity while falling — snappier, less floaty arc
 	g_groundAccel      = 10.0f,   // GoldSrc sv_accelerate equivalent
 	g_groundFriction   =  8.0f,   // GoldSrc sv_friction equivalent (default, overridden per material)
-	g_airAccel         = 10.0f,   // air acceleration multiplier
-	g_airSpeedCap      =  4.5f,   // max units/sec gainable per direction in air
+	g_airAccel         = 16.0f,   // air acceleration — responsive air steering
+	g_airSpeedCap      =  7.0f,   // max units/sec gainable per direction in air (bounded boomer-style)
 	g_headBobFrequency = 10.0f,
 	g_headBobAmplitude =  0.03f;
 
@@ -305,21 +306,13 @@ void PlayerController::update(float dt)
 	{
 		targetSpeed = g_crouchSpeed;
 	}
-	else if (InputManager::Get()->isActionPressed("sprint") && m_currentStamina >= m_minSprintStamina)
+	else if (InputManager::Get()->isActionPressed("sprint"))
 	{
 		targetSpeed = g_sprintSpeed;
-		m_currentStamina -= m_sprintStaminaDrain * (dt / 1000.0f);
-		if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
-		m_lastStaminaConsumedTime = currentTime;
 	}
 	else
 	{
 		targetSpeed = g_walkSpeed;
-		if (currentTime - m_lastStaminaConsumedTime >= m_staminaRechargeDelay)
-		{
-			m_currentStamina += m_staminaRechargeRate * (dt / 1000.0f);
-			if (m_currentStamina > m_maxStamina) m_currentStamina = m_maxStamina;
-		}
 	}
 
 	if (!isPlayerLocked())
@@ -342,6 +335,10 @@ void PlayerController::update(float dt)
 		}
 	}
 
+	// True on any frame a jump fires — used to skip ground friction so horizontal
+	// momentum carries into the jump (fluid chained re-jumps).
+	bool jumpedThisFrame = false;
+
 	// Track when player is grounded for coyote time
 	if (g_isOnSurface)
 	{
@@ -353,21 +350,16 @@ void PlayerController::update(float dt)
 	{
 		g_hasFallen = false;
 		//playJumpSound(player);
-		
+
 		// Execute buffered jump if jump was pressed recently
-		if (!is_crouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime && m_currentStamina >= m_minJumpStamina)
+		if (!is_crouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime)
 		{
 			// Start buffered jump
 			player_velocity.Y = g_jumpSpeed;
 
-			// Consume stamina for jumping
-			m_currentStamina -= m_jumpStaminaCost;
-			if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
-			// Record when stamina was consumed
-			m_lastStaminaConsumedTime = currentTime;
-
 			m_isJumping = true;
 			m_jumpConsumed = true;  // Mark input as consumed to prevent repeat jumps
+			jumpedThisFrame = true;
 			g_lastJumpTime = currentTime;
 			m_lastJumpInputTime = -1000; // Clear buffer
 		}
@@ -387,22 +379,19 @@ void PlayerController::update(float dt)
 
 			if (!isSwimming())
 			{
+				// No cooldown: tap-to-rejump fires the instant we touch ground.
+				// m_jumpConsumed (reset on button release) keeps it tap-based, not auto-bhop.
 				bool canJump = (g_isOnSurface || currentTime - m_lastGroundedTime < m_coyoteTime) &&
-				               currentTime - g_lastJumpTime > 500 &&
 				               !is_crouched &&
-				               !m_jumpConsumed &&
-				               m_currentStamina >= m_minJumpStamina;
+				               !m_jumpConsumed;
 
 				if (canJump)
 				{
 					player_velocity.Y = g_jumpSpeed;
 
-					m_currentStamina -= m_jumpStaminaCost;
-					if (m_currentStamina < 0.0f) m_currentStamina = 0.0f;
-					m_lastStaminaConsumedTime = currentTime;
-
 					m_isJumping = true;
 					m_jumpConsumed = true;
+					jumpedThisFrame = true;
 					g_lastJumpTime = currentTime;
 				}
 			}
@@ -523,10 +512,12 @@ void PlayerController::update(float dt)
 		}
 	}
 
-	// Apply gravity continuously (unless swimming)
+	// Apply gravity continuously (unless swimming).
+	// Falling uses stronger gravity for a snappier, less floaty arc.
 	if (!isSwimming())
 	{
-		player_velocity.Y -= g_gravity * (dt / 1000.0f);
+		float gravity = (player_velocity.Y < 0.0f) ? g_gravity * g_fallGravityMult : g_gravity;
+		player_velocity.Y -= gravity * (dt / 1000.0f);
 	}
 
 	// Reset vertical velocity and jump state when landing
@@ -553,7 +544,15 @@ void PlayerController::update(float dt)
 	// Apply ground or air movement to horizontal velocity only
 	vector3df horizontal_velocity = vector3df(player_velocity.X, 0, player_velocity.Z);
 
-	if (g_isOnSurface)
+	if (g_isOnSurface && jumpedThisFrame)
+	{
+		// Jumping this frame: skip ground friction entirely so horizontal momentum
+		// carries into the jump (fluid chained re-jumps). Still bounded by air
+		// accel/cap, so this is momentum preservation, not exponential bhop gain.
+		if (!m_isDodging)
+			horizontal_velocity = MoveAir(wishdir, horizontal_velocity, g_airAccel, g_airSpeedCap, dt / 1000.0f);
+	}
+	else if (g_isOnSurface)
 	{
 		auto surfaceTex = RenderManager::Get()->getMeshMaterialFromRay(
 			transform.getPosition(),
@@ -718,7 +717,7 @@ void PlayerController::update(float dt)
 	float moveDirection = deg2rad(m_cameraYaw);
 	// slopeNormal.Y < 0.999 means the surface is sloped enough to matter (~2.5°).
 	// Flat ground has Y = 1.0 so this is a no-op there.
-	if (g_isOnSurface && m_lastSlopeNormal.Y < 0.999f && m_lastSlopeNormal.Y > 0.3f)
+	if (g_isOnSurface && !jumpedThisFrame && m_lastSlopeNormal.Y < 0.999f && m_lastSlopeNormal.Y > 0.3f)
 	{
 		float worldVelX = player_velocity.Z * sinf(moveDirection) + player_velocity.X * sinf(moveDirection + __pi / 2.0f);
 		float worldVelZ = player_velocity.Z * cosf(moveDirection) + player_velocity.X * cosf(moveDirection + __pi / 2.0f);
@@ -767,18 +766,21 @@ void PlayerController::update(float dt)
 		// Otherwise stay grounded (ignores single-frame flickers)
 	}
 
-	// Smooth position updates to hide CCT micro-adjustments
-	// Direct copy causes visible jitter from PhysX overlap recovery
-	static vector3df smoothedPosition = transform.getPosition();
+	// Position update: snap horizontal for instant, snappy response; smooth only
+	// the vertical axis (framerate-independent) to absorb stair-step and PhysX
+	// overlap-recovery jitter without dragging horizontal movement behind input.
+	static float smoothedY = static_cast<float>(cct.controller->getPosition().y);
 	vector3df targetPosition = vector3df(
 		static_cast<float>(cct.controller->getPosition().x),
 		static_cast<float>(cct.controller->getPosition().y),
 		static_cast<float>(cct.controller->getPosition().z));
-	
-	// Lerp towards target - adjust factor for smoothness vs responsiveness
-	float smoothFactor = 0.3f;  // 0.1 = very smooth but laggy, 1.0 = direct copy (jittery)
-	smoothedPosition += (targetPosition - smoothedPosition) * smoothFactor;
-	
+
+	const float kVerticalSmoothRate = 18.0f;  // higher = snappier, lower = smoother
+	float yFactor = 1.0f - expf(-kVerticalSmoothRate * (dt / 1000.0f));
+	smoothedY += (targetPosition.Y - smoothedY) * yFactor;
+
+	vector3df smoothedPosition(targetPosition.X, smoothedY, targetPosition.Z);
+
 	transform.setPosition(smoothedPosition);
 
 	if (cct.hitboxNode)
@@ -893,9 +895,6 @@ void PlayerController::update(float dt)
 #ifdef DISPLAY_PLAYER_STATS
 	DisplayPlayerStats();
 #endif
-	
-	// Display stamina bar
-	DisplayStaminaBar(m_currentStamina, m_maxStamina);
 
 	m_hudController.update(g_PlayerData, m_inventoryController.isInventoryDisplaying());
 	m_interactionController.update(g_PlayerData);

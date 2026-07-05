@@ -167,51 +167,52 @@ void EditorInterface::detectKeyShortcuts()
 	}
 
 	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_O))
+		static bool key_o = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_O, &key_o))
 			function_open_scene();
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_S))
+
+		static bool key_s = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_S, &key_s))
 			funtion_save_scene();
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_B))
+
+		static bool key_b = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_B, &key_b))
 			m_windowData.draw_window_entity_builder = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_P))
+
+		static bool key_p = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_P, &key_p))
 			m_windowData.draw_window_prop_ent = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_H))
+
+		static bool key_h = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_H, &key_h))
 			m_windowData.draw_window_hiearchy = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_G))
+
+		static bool key_g = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_G, &key_g))
 			function_play_scene();
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_M))
+
+		static bool key_m = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_M, &key_m))
 			function_showhide_menubar();
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_E))
+
+		static bool key_e = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_E, &key_e))
 			m_windowData.draw_window_spawn_entity = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_R))
+
+		static bool key_r = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_R, &key_r))
 			m_windowData.draw_window_spawn_prefab = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_Q))
+
+		static bool key_q = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_Q, &key_q))
 			m_windowData.draw_window_prop_scene = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_TAB))
+
+		static bool key_tab = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_TAB, &key_tab))
 			m_windowData.draw_window_console = true;
-	}
-	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_T))
+
+		static bool key_t = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_T, &key_t))
 			draw_window_texture_browser();
 	}
 	{
@@ -246,17 +247,28 @@ void EditorInterface::detectKeyShortcuts()
 	}
 
 	{
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM1))
+		static bool key_num1 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM1, &key_num1))
 			g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::TRANSLATE);
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM2))
+
+		static bool key_num2 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM2, &key_num2))
 			g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::ROTATE);
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM3))
+
+		static bool key_num3 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM3, &key_num3))
 			g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::SCALE);
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM4))
+
+		static bool key_num4 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM4, &key_num4))
 			g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::LOCAL);
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM5))
+
+		static bool key_num5 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM5, &key_num5))
 			g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::WORLD);
-		if (control && InputManager::Get()->isKeyPressed(KEY_NUM6))
+
+		static bool key_num6 = false;
+		if (control && InputManager::Get()->getKeyRelease(KEY_NUM6, &key_num6))
 			g_sceneInteractor.useSnap(!g_sceneInteractor.isSnap());
 	}
 }

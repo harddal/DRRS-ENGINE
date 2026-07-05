@@ -89,9 +89,8 @@ private:
 	
 	// Jump tuning constants
 	const float m_jumpCutMultiplier = 0.5f;      // Velocity reduction on early release
-	const int m_coyoteTime = 50;                // Grace period for jumping after leaving ground (ms)
-	const int m_jumpBufferTime = 50;            // Time to buffer jump inputs (ms)
-	const float m_maxJumpHorizontalSpeed = 1.5f; // Maximum horizontal speed during jump (prevents excessive forward velocity)
+	const int m_coyoteTime = 110;               // Grace period for jumping after leaving ground (ms)
+	const int m_jumpBufferTime = 120;           // Time to buffer jump inputs (ms)
 
 	// Dodge mechanic (Unreal-style double-tap)
 	int   m_lastForwardTapTime  = -1000;
@@ -113,18 +112,7 @@ private:
 	float m_lastAirVelocityY = 0.0f;
 	irr::core::vector3df m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	irr::core::vector3df m_lastSlopeNormal    = irr::core::vector3df(0.0f, 1.0f, 0.0f);
-	
-	// Stamina system
-	float m_currentStamina = 100.0f;             // Current stamina (0-100) // Need to serialize this!!!
-	int m_lastStaminaConsumedTime = 0;           // Last time stamina was consumed
-	const float m_maxStamina = 100.0f;           // Maximum stamina
-	const float m_jumpStaminaCost = 0.0f;       // Stamina cost per jump
-	const float m_sprintStaminaDrain = 0.0f;    // Stamina drain per second while sprinting
-	const float m_staminaRechargeRate = 20.0f;   // Stamina recharge per second
-	const float m_minJumpStamina = 35.0f;        // Minimum stamina required to jump
-	const float m_minSprintStamina = 1.0f;       // Minimum stamina to continue sprinting
-	const int m_staminaRechargeDelay = 2000;     // Delay before stamina starts recharging (ms)
-	
+
 	// Footstep sound timing
 	int m_lastFootstepTime = 0;                  // Last time a footstep sound played
 	const int m_minFootstepInterval = 400;       // Minimum time between footsteps (ms)
