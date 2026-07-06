@@ -17,12 +17,14 @@
 
 #define DPI_SCALED_IMVEC2(x, y) ImVec2(x * RenderManager::Get()->getConfiguration().dpi_scale, y * RenderManager::Get()->getConfiguration().dpi_scale)
 
+// Irrlicht material texture slots (GL units 0-7). Units 8-12 are raw GL units
+// managed outside Irrlicht: 8-10 clustered light data, 11 shadow map, 12 env map.
 enum PBR_TEXTURE_SLOTS
 {
 	SLOT_DIFFUSE,
 	SLOT_LIGHT,
-	SLOT_ENV,
-	SLOT_SHADOW,
+	SLOT_ENV,        // FREE since the env map moved to raw unit 12 (terrain still uses slot 2 for its splat map)
+	SLOT_SHADOW,     // FREE since the shadow map moved to raw unit 11
 	SLOT_NORMAL,
 	SLOT_ROUGHNESS,
 	SLOT_METALLIC,
@@ -283,6 +285,7 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32 userData) override;
 
     void setEnvMap(irr::video::ITexture* t) { m_envMap = t; }
+    irr::video::ITexture* envMap() const    { return m_envMap; }
 
     // Fog — edit directly from the editor, same pattern as bloom/sharpen callbacks
     float fogColor[3] = { 0.0f, 0.3f, 0.6f };
@@ -491,6 +494,37 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices*, irr::s32) override {}
 };
 
+// SSAO generation — hemisphere sampling against the prepass buffer (half res).
+class SSAOGenCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float radius    = 1.0f;   // world-space hemisphere radius
+    float intensity = 1.0f;   // occlusion strength
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// Depth-aware 3x3 blur over the raw AO buffer.
+class SSAOBlurCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
+// Multiplies blurred AO (raw unit 13) onto the scene — first chain pass.
+class SSAOApplyCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override
+    {
+        int sceneSlot = 0, aoSlot = 13;
+        services->setPixelShaderConstant("tScene", &sceneSlot, 1);
+        services->setPixelShaderConstant("tAO",    &aoSlot,    1);
+    }
+};
+
 // Samples an 8x8 grid of the scene and writes log-average luminance to a 1x1 RTT.
 class LumMeasureCallback : public irr::video::IShaderConstantSetCallBack
 {
@@ -502,6 +536,8 @@ public:
         services->setPixelShaderConstant("tScene", &slot, 1);
     }
 };
+
+class ClusteredLightManager;
 
 class RenderManager
 {
@@ -794,12 +830,30 @@ public:
     bool isPosterizeEnabled()  const { return getPostProcessPassEnabled("posterize");  }
     bool isFilmGrainEnabled()  const { return getPostProcessPassEnabled("filmgrain");  }
 
-    // Shadow mapping — directional shadow map driven by the first ELT_DIRECTIONAL light.
+    // Shadow mapping — atlas of up to 4 spotlight shadow maps (one quadrant
+    // each); casters are assigned per frame by ClusteredLightManager.
     void  setShadowBias(float b)     { m_shadowBias = b; }
     float getShadowBias()    const   { return m_shadowBias; }
-    bool  hasShadowLight()   const   { return m_hasShadowLight; }
+    bool  hasShadowLight()   const   { return m_shadowCount > 0; }
     irr::video::ITexture* getShadowMapRTT()       const { return m_shadowMapRTT; }
-    const irr::core::matrix4& getLightProjView()  const { return m_lightProjView; }
+
+    // Clustered forward lighting — per-frame light/froxel textures replacing the
+    // per-draw-call gatherClosestLights path. Null until the constructor runs.
+    ClusteredLightManager* clusteredLights() const { return m_clusteredLights; }
+    // True while the Entity Builder / Particle Designer preview scene renders;
+    // the preview uses its own camera + lights, so shaders fall back to the
+    // legacy 8-light path for those draws.
+    bool isRenderingPreview() const { return m_renderingPreview; }
+
+    // SSAO — thin depth/normal pre-pass + half-res AO, applied as the first
+    // post-process pass. Toggle covers the pre-pass, AO passes, and chain pass.
+    void setSSAOEnabled(bool enabled)
+    {
+        m_ssaoEnabled = enabled;
+        setPostProcessPassEnabled("ssao_apply", enabled);
+    }
+    bool isSSAOEnabled() const { return m_ssaoEnabled; }
+    SSAOGenCallback* ssaoGenCallback() const { return m_ssaoGenCallback; }
 
     // Adaptive (auto) exposure — eye-adaptation effect.
     // When enabled, manual tonemapCallback()->exposure is overridden each frame.
@@ -878,10 +932,6 @@ private:
     // debug nodes, but for gameplay effects (muzzle flashes, SPARK particles).
     std::vector<irr::scene::ISceneNode*> m_ldrEffectNodes;
 
-    // GL extension function pointers for depth blitting (GL 3.0 / ARB_framebuffer_object).
-    // Loaded once in recreatePostProcessRTTs(); null if the driver doesn't support them.
-    void* m_fnBindFramebuffer = nullptr;
-    void* m_fnBlitFramebuffer = nullptr;
     // FBO ID of the scene RTT, captured each frame after setRenderTarget(m_sceneRTT).
     // Used to blit world depth into the backbuffer before LDR effect rendering.
     int   m_sceneFBOId        = -1;
@@ -917,14 +967,42 @@ private:
     RadiationCallback*           m_radiationCallback       = nullptr;
     LumMeasureCallback*          m_lumMeasureCallback      = nullptr;
 
-    // Shadow mapping
+    // Thin geometry pre-pass + SSAO (Stage 3)
+    void drawPrePass();
+    void drawSSAO();
+    irr::video::ITexture* m_prepassRTT      = nullptr;   // full res RGBA16F: normal.xyz + view depth
+    irr::video::ITexture* m_ssaoRTT[2]      = { nullptr, nullptr }; // half res: raw AO, blurred AO
+    irr::s32              m_prepassMat      = -1;
+    irr::s32              m_ssaoGenMat      = -1;
+    irr::s32              m_ssaoBlurMat     = -1;
+    ShadowDepthCallback*  m_prepassCallback = nullptr;   // no-op — prepass uses GL built-ins only
+    SSAOGenCallback*      m_ssaoGenCallback  = nullptr;
+    SSAOBlurCallback*     m_ssaoBlurCallback = nullptr;
+    SSAOApplyCallback*    m_ssaoApplyCallback = nullptr;
+    bool                  m_ssaoEnabled     = true;
+
+    // Shadow mapping — 4096x4096 R32F atlas, four 2048x2048 quadrants.
     irr::video::ITexture*          m_shadowMapRTT   = nullptr;
     irr::s32                       m_shadowDepthMat = -1;
     ShadowDepthCallback*           m_shadowDepthCallback = nullptr;
     irr::scene::ICameraSceneNode*  m_shadowCamera   = nullptr;
-    irr::core::matrix4             m_lightProjView;
-    bool                           m_hasShadowLight = false;
+    irr::core::matrix4             m_shadowMats[4];   // lightProj*lightView per slot
+    float                          m_shadowRects[4][4] = {}; // atlas: u, v, scale, active
+    int                            m_shadowCount    = 0;
     float                          m_shadowBias     = 0.002f;
+
+    // Clustered lighting
+    ClusteredLightManager* m_clusteredLights  = nullptr;
+    bool                   m_renderingPreview = false;
+
+    // Per-frame UBO (std140 "PerFrame" block, binding point 0). Holds time,
+    // camera basis, fog, ambient, shadow params, cluster params — everything
+    // that used to be re-uploaded as loose uniforms on every draw call.
+    unsigned int m_perFrameUBO = 0;
+    void updatePerFrameUBO(bool useClusters);
+    // Binds frame-constant textures to raw GL units above Irrlicht's material
+    // slots: 11 = shadow map RTT, 12 = environment map.
+    void bindPerFrameTextures();
 
     // Adaptive exposure state
     float m_adaptedExposure  = 1.0f;

@@ -351,6 +351,27 @@ bool COpenGLSLMaterialRenderer::linkProgram()
 			return false;
 		}
 
+		// ENGINE FORK: if the program declares the engine's "PerFrame" std140
+		// uniform block, bind it to binding point 0 — the engine's per-frame UBO
+		// (bound once via glBindBufferBase in RenderManager). Entry points are
+		// resolved locally because this Irrlicht build predates UBO support.
+#ifdef _IRR_WINDOWS_API_
+		{
+			typedef GLuint (APIENTRY *PFN_GetUniformBlockIndex)(GLuint, const char*);
+			typedef void   (APIENTRY *PFN_UniformBlockBinding)(GLuint, GLuint, GLuint);
+			static PFN_GetUniformBlockIndex pGetUniformBlockIndex =
+				(PFN_GetUniformBlockIndex)wglGetProcAddress("glGetUniformBlockIndex");
+			static PFN_UniformBlockBinding pUniformBlockBinding =
+				(PFN_UniformBlockBinding)wglGetProcAddress("glUniformBlockBinding");
+			if (pGetUniformBlockIndex && pUniformBlockBinding)
+			{
+				const GLuint blockIndex = pGetUniformBlockIndex(Program2, "PerFrame");
+				if (blockIndex != 0xFFFFFFFFu /*GL_INVALID_INDEX*/)
+					pUniformBlockBinding(Program2, blockIndex, 0);
+			}
+		}
+#endif
+
 		// get uniforms information
 
 		GLint num = 0;

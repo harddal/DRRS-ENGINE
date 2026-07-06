@@ -1,3 +1,4 @@
+#version 330 compatibility
 // Crystal Refraction Vertex Shader
 // Identical output to phong_perpixel.vert — view-space position and normal
 // via GL built-ins, plus texture UV. No lightmap UV needed.

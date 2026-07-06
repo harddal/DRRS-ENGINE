@@ -639,6 +639,13 @@ namespace scene
 
 		E_SCENE_NODE_RENDER_PASS CurrentRendertime;
 
+		//! ENGINE FORK: when true (set via the "Engine_SkipMeshTransparent"
+		//! parameter, cached at the top of drawAll), mesh/octree/animated-mesh
+		//! nodes are not registered for the built-in transparent pass — the
+		//! engine renders their transparent buffers itself in a sorted
+		//! per-buffer pass (RenderManager::drawTransparentPass).
+		bool SkipMeshTransparentRegistration;
+
 		//! An optional callbacks manager to allow the user app finer control
 		//! over the scene lighting and rendering.
 		ILightManager* LightManager;

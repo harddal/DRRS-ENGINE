@@ -1,3 +1,24 @@
+#version 330 compatibility
+
+// Per-frame constants — std140 block filled once per frame by RenderManager
+// (updatePerFrameUBO) and bound to binding point 0 by the fork patch in
+// COpenGLSLMaterialRenderer (see Include/irrlicht/PATCHES.md). Member names
+// match the old per-draw uniforms; layout must mirror struct PerFrameData in
+// RenderManager.cpp. fTime is engine time in MILLISECONDS; uTime is seconds.
+layout(std140) uniform PerFrame
+{
+    vec3  uAmbientColor;  float uHasShadow;
+    vec3  uFogColor;      float uFogDensity;
+    vec3  uCamRight;      float uFogStart;
+    vec3  uCamUp;         float uHasEnvMap;
+    vec3  uCamForward;    float uShadowBias;
+    vec4  uClusterParams; // (tileW_px, tileH_px, sliceScale, sliceBias)
+    float fTime;          float uTime;  float uUseClusters;  float uPerFramePad0;
+    mat4  uInvView;       // main camera view inverse — world-pos reconstruction
+    mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
+    vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active
+};
+
 // Barrel Heat Fragment Shader
 //
 // Extends phong_perpixel with a heat glow effect driven by uHeatLevel.
@@ -30,13 +51,20 @@ uniform vec4  uLightColor[MAX_LIGHTS];
 uniform float uLightRadius[MAX_LIGHTS];
 uniform float uLightCount;
 
+// Clustered lighting (ClusteredLightManager). When uUseClusters > 0.5, per-light
+// data comes from texelFetch textures on units 8-10 and the arrays above are
+// unused. Constants must match ClusteredLightManager: 16x8x24 grid, 4 texels
+// per light, 256-wide index texture.
+uniform sampler2D tLightData;     // unit 8: t0=pos+radius, t1=color+cosInner, t2=dir+cosOuter(-2=point)
+uniform sampler2D tClusterGrid;   // unit 9: (offset, count) per froxel
+uniform sampler2D tLightIndices;  // unit 10: flat light index list
+
+
 uniform float uRoughness;
 uniform float uMetallic;
-uniform vec3  uAmbientColor;
 
 // Heat uniforms — pushed each frame by BarrelHeatShaderCallback
 uniform float uHeatLevel;    // 0.0 cold .. 1.0 white-hot
-uniform float fTime;         // engine time in milliseconds, for shimmer animation
 uniform float uBarrelZMin;   // local-space Z at the rear of the barrel
 uniform float uBarrelZMax;   // local-space Z at the muzzle end (Z+ = front)
 
@@ -135,21 +163,50 @@ void main()
     vec3 diffuseAccum  = vec3(0.0);
     vec3 specularAccum = vec3(0.0);
 
-    for (int i = 0; i < MAX_LIGHTS; i++)
+    // Light list source: clustered path fetches this fragment's froxel list;
+    // fallback path iterates the per-object uniform arrays (8 closest lights).
+    int lightOffset = 0;
+    int lightNum    = int(uLightCount);
+    if (uUseClusters > 0.5)
     {
-        if (float(i) >= uLightCount)
-            break;
+        ivec2 tile  = clamp(ivec2(gl_FragCoord.xy / uClusterParams.xy), ivec2(0), ivec2(15, 7));
+        int   slice = clamp(int(floor(log2(max(vViewPos.z, 0.01)) * uClusterParams.z + uClusterParams.w)), 0, 23);
+        vec2  oc    = texelFetch(tClusterGrid, ivec2(tile.x + tile.y * 16, slice), 0).xy;
+        lightOffset = int(oc.x);
+        lightNum    = int(oc.y);
+    }
 
-        vec3  toLight = uLightPos[i] - vViewPos;
+    for (int n = 0; n < lightNum; n++)
+    {
+        vec3  lightPos;
+        vec3  lightColor;
+        float lightRadius;
+        if (uUseClusters > 0.5)
+        {
+            int  fi = lightOffset + n;
+            int  li = int(texelFetch(tLightIndices, ivec2(fi & 255, fi >> 8), 0).x);
+            vec4 t0 = texelFetch(tLightData, ivec2(li * 4 + 0, 0), 0);
+            vec4 t1 = texelFetch(tLightData, ivec2(li * 4 + 1, 0), 0);
+            lightPos    = t0.xyz;  lightRadius = t0.w;
+            lightColor  = t1.xyz;
+        }
+        else
+        {
+            lightPos    = uLightPos[n];
+            lightColor  = uLightColor[n].rgb;
+            lightRadius = uLightRadius[n];
+        }
+
+        vec3  toLight = lightPos - vViewPos;
         float dist    = length(toLight);
         vec3  L       = toLight / dist;
 
-        float atten = clamp(1.0 - (dist * dist) / (uLightRadius[i] * uLightRadius[i]), 0.0, 1.0);
+        float atten = clamp(1.0 - (dist * dist) / (lightRadius * lightRadius), 0.0, 1.0);
         if (atten <= 0.0) continue;
 
         float NdotL = max(dot(N, L), 0.0);
 
-        diffuseAccum += uLightColor[i].rgb * NdotL * atten;
+        diffuseAccum += lightColor * NdotL * atten;
 
         if (uRoughness < 0.99 && NdotL > 0.0)
         {
@@ -163,7 +220,7 @@ void main()
             vec3  F   = F_Schlick(VdotH, F0);
 
             vec3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
-            specularAccum += spec * uLightColor[i].rgb * NdotL * atten;
+            specularAccum += spec * lightColor * NdotL * atten;
         }
     }
 

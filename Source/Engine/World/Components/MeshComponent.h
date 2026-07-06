@@ -51,9 +51,6 @@ struct MeshComponent : anax::Component
 		disableZDraw,
 		isPreview,
 
-		// DEPRECATED
-		disableDeferredRendering,
-
 		recalculateNormals,
 		texturePointFilter,
 		isViewmodel,
@@ -97,7 +94,7 @@ struct MeshComponent : anax::Component
 		archive(
 			CEREAL_NVP(mesh), CEREAL_NVP(textures), CEREAL_NVP(isVisible), CEREAL_NVP(isAnimated),
 			CEREAL_NVP(receiveShadows), CEREAL_NVP(castShadows), CEREAL_NVP(transparent), CEREAL_NVP(disableZDraw), CEREAL_NVP(recalculateNormals), CEREAL_NVP(texturePointFilter),
-			CEREAL_NVP(disableDeferredRendering), CEREAL_NVP(renderMaterial), CEREAL_NVP(isViewmodel),
+			CEREAL_NVP(renderMaterial), CEREAL_NVP(isViewmodel),
 			CEREAL_NVP(navCookable));
         try { archive(CEREAL_NVP(shaderName)); } catch (cereal::Exception&) {}
         try { archive(cereal::make_nvp("mtp0", materialTypeParams[0]),
@@ -117,7 +114,7 @@ struct MeshComponent : anax::Component
 
 	MeshComponent() :
 		isPrimitive(false), isVisible(true), isAnimated(false), receiveShadows(false), castShadows(false),
-		transparent(false), disableZDraw(false), isPreview(false), disableDeferredRendering(false), recalculateNormals(false), texturePointFilter(false), isViewmodel(false), navCookable(false),
+		transparent(false), disableZDraw(false), isPreview(false), recalculateNormals(false), texturePointFilter(false), isViewmodel(false), navCookable(false),
         fps(60), currentFrame(0), trimesh(nullptr), node(nullptr), selector(nullptr), 
         renderMaterial(irr::video::EMT_SOLID) {}
 };

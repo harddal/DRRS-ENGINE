@@ -187,6 +187,11 @@ public:
 	\return True if this is a render target, otherwise false. */
 	virtual bool isRenderTarget() const { return false; }
 
+	//! ENGINE FORK: native GPU handle of this texture (GL texture name).
+	/** Used by the engine to bind frame-constant textures (shadow map, env map)
+	to raw texture units above Irrlicht's material slots. 0 if unavailable. */
+	virtual u32 getNativeHandle() const { return 0; }
+
 	//! Get name of texture (in most cases this is the filename)
 	const io::SNamedPath& getName() const { return NamedPath; }
 

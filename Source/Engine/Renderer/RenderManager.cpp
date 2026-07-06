@@ -13,6 +13,8 @@
 
 #include "Extensions/CUnrealMeshFileLoader.h"
 #include "Extensions/CBloodShader.h"
+#include "Engine/Renderer/GLExt.h"
+#include "Engine/Renderer/ClusteredLightManager.h"
 
 #include <IMGUI/backends/imgui_impl_opengl3.h>
 
@@ -35,6 +37,26 @@ using namespace video;
 
 RenderManager* RenderManager::s_Instance = nullptr;
 irr::gui::IGUIFont* g_DefaultTextRenderableFontSm;
+
+// Mirrors the std140 "PerFrame" uniform block declared by the lit shaders.
+// std140 rule used here: a vec3 is 16-byte aligned and a float declared right
+// after it packs into the remaining 4 bytes of the same 16-byte row.
+// Any layout change here must be mirrored in every shader that declares the
+// block (phong_perpixel/foliage/terrain_blend/barrel_heat/grass).
+struct PerFrameData
+{
+    float ambientColor[3]; float hasShadow;   // hasShadow = active shadow caster count
+    float fogColor[3];     float fogDensity;
+    float camRight[3];     float fogStart;
+    float camUp[3];        float hasEnvMap;
+    float camForward[3];   float shadowBias;
+    float clusterParams[4];
+    float timeMs; float timeSec; float useClusters; float pad0;
+    float invView[16];        // main camera view inverse — world-pos reconstruction
+    float shadowMat[4][16];   // lightProj*lightView per atlas slot
+    float shadowRect[4][4];   // xy = atlas offset, z = scale, w = slot active
+};
+static_assert(sizeof(PerFrameData) == 496, "PerFrameData must match the shaders' std140 PerFrame block");
 
 void Set_IMGUI_Default_Theme()
 {
@@ -142,99 +164,11 @@ bool ShaderMaterialManager::isRefraction(irr::s32 materialType)
     return false;
 }
 
-void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* services, s32 userData)
+// Legacy per-object lighting: gather the 8 closest lights on the CPU and upload
+// them as uniform arrays. Used for preview scenes and as the fallback when
+// clustered lighting is disabled or below the driver feature floor.
+static void uploadClosestLightUniforms(IMaterialRendererServices* services, IVideoDriver* driver)
 {
-    const auto driver = services->getVideoDriver();
-
-    auto time = static_cast<f32>(Engine::Get()->getCurrentTime());
-    services->setVertexShaderConstant("fTime", &time, 1);
-
-    auto resolution = vector2df(static_cast<irr::f32>(RenderManager::Get()->driver()->getScreenSize().Width), static_cast<irr::f32>(RenderManager::Get()->driver()->getScreenSize().Height));
-    services->setVertexShaderConstant("iResolution", reinterpret_cast<f32*>(&resolution), 2);
-
-    auto invWorld = driver->getTransform(ETS_WORLD);
-    invWorld.makeInverse();
-
-    services->setVertexShaderConstant("mInvWorld", invWorld.pointer(), 16);
-
-    auto worldViewProj = driver->getTransform(ETS_PROJECTION);
-    worldViewProj *= driver->getTransform(ETS_VIEW);
-    worldViewProj *= driver->getTransform(ETS_WORLD);
-
-    services->setVertexShaderConstant("mWorldViewProj", worldViewProj.pointer(), 16);
-
-    auto world = driver->getTransform(ETS_WORLD);
-    world = world.getTransposed();
-
-    services->setVertexShaderConstant("mTransWorld", world.pointer(), 16);
-
-    // Combined light MVP per object = lightProj * lightView * world.
-    // Mirrors exactly what gl_ModelViewProjectionMatrix is in the shadow depth pass,
-    // so depth values are numerically identical and self-shadowing acne is eliminated.
-    auto rm = RenderManager::Get();
-    auto lightMVP = rm->getLightProjView();
-    lightMVP *= driver->getTransform(ETS_WORLD);
-    services->setVertexShaderConstant("mLightMVP", lightMVP.pointer(), 16);
-
-    auto pos = RenderManager::Get()->sceneManager()->getActiveCamera()->getAbsolutePosition();
-
-    services->setVertexShaderConstant("fCameraPos", reinterpret_cast<f32*>(&pos), 3);
-
-    int textureLayerID = SLOT_DIFFUSE;
-    services->setPixelShaderConstant("tDiffuse", &textureLayerID, 1);
-
-    // Lightmap texture lives in material slot 1 (set by LightmapBaker::bakeScene).
-    // Bind sampler and inform the shader whether a baked lightmap is present.
-    int  lightmapLayerID = SLOT_LIGHT;
-    float hasLightmap = (m_currentMaterial.TextureLayer[SLOT_LIGHT].Texture != nullptr) ? 1.0f : 0.0f;
-    services->setPixelShaderConstant("tLightmap",    &lightmapLayerID, 1);
-    services->setPixelShaderConstant("uHasLightmap", &hasLightmap,     1);
-
-    // PBR texture maps — slots 4-7 (user-set via node->setMaterialTexture).
-    {
-        int normalSlot    = SLOT_NORMAL;
-        int roughnessSlot = SLOT_ROUGHNESS;
-        int metallicSlot  = SLOT_METALLIC;
-        int emissionSlot  = SLOT_EMISSION;
-        float hasNormal    = (m_currentMaterial.TextureLayer[SLOT_NORMAL].Texture    != nullptr) ? 1.0f : 0.0f;
-        float hasRoughness = (m_currentMaterial.TextureLayer[SLOT_ROUGHNESS].Texture != nullptr) ? 1.0f : 0.0f;
-        float hasMetallic  = (m_currentMaterial.TextureLayer[SLOT_METALLIC].Texture  != nullptr) ? 1.0f : 0.0f;
-        float hasEmission  = (m_currentMaterial.TextureLayer[SLOT_EMISSION].Texture  != nullptr) ? 1.0f : 0.0f;
-        services->setPixelShaderConstant("tNormalMap",       &normalSlot,    1);
-        services->setPixelShaderConstant("uHasNormalMap",    &hasNormal,     1);
-        services->setPixelShaderConstant("tRoughnessMap",    &roughnessSlot, 1);
-        services->setPixelShaderConstant("uHasRoughnessMap", &hasRoughness,  1);
-        services->setPixelShaderConstant("tMetallicMap",     &metallicSlot,  1);
-        services->setPixelShaderConstant("uHasMetallicMap",  &hasMetallic,   1);
-        services->setPixelShaderConstant("tEmissionMap",     &emissionSlot,  1);
-        services->setPixelShaderConstant("uHasEmissionMap",  &hasEmission,   1);
-    }
-
-    // Shadow map — slot 3.  Bind the RTT and inform the shader whether it is active.
-    {
-        int shadowSlot = SLOT_SHADOW;
-        services->setPixelShaderConstant("tShadowMap", &shadowSlot, 1);
-
-        auto* rmShadow = RenderManager::Get();
-        float hasShadow = (rmShadow->hasShadowLight() && rmShadow->getShadowMapRTT()) ? 1.0f : 0.0f;
-        services->setPixelShaderConstant("uHasShadow", &hasShadow, 1);
-
-        float shadowBias = rmShadow->getShadowBias();
-        services->setPixelShaderConstant("uShadowBias", &shadowBias, 1);
-
-        // Bind the shadow map texture to slot 3 by mutating a copy of the current
-        // material — same pattern used for the env map on slot 2.
-        if (hasShadow > 0.5f)
-        {
-            irr::video::SMaterial mat = m_currentMaterial;
-            mat.TextureLayer[SLOT_SHADOW].Texture = rmShadow->getShadowMapRTT();
-            driver->setMaterial(mat);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Per-pixel Blinn-Phong: upload up to MAX_LIGHTS closest dynamic lights
-    // -------------------------------------------------------------------------
     static constexpr int MAX_LIGHTS = 8;
 
     // Object world-space position comes from the current WORLD transform origin
@@ -286,6 +220,78 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     services->setPixelShaderConstant("uLightCosInner[0]", lightCosInner, MAX_LIGHTS);
     float fLightCount = static_cast<float>(lightCount);
     services->setPixelShaderConstant("uLightCount", &fLightCount, 1);
+}
+
+void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* services, s32 userData)
+{
+    const auto driver = services->getVideoDriver();
+
+    // Per-frame values (time, camera basis, fog, ambient, shadow matrices,
+    // cluster params) live in the PerFrame UBO, filled by RenderManager::
+    // updatePerFrameUBO(). Only per-material values are uploaded here — since
+    // the shadow atlas moved the light matrices into the UBO (vertex shaders
+    // reconstruct world position via uInvView), nothing per-OBJECT remains.
+
+    int textureLayerID = SLOT_DIFFUSE;
+    services->setPixelShaderConstant("tDiffuse", &textureLayerID, 1);
+
+    // Lightmap texture lives in material slot 1 (set by LightmapBaker::bakeScene).
+    // Bind sampler and inform the shader whether a baked lightmap is present.
+    int  lightmapLayerID = SLOT_LIGHT;
+    float hasLightmap = (m_currentMaterial.TextureLayer[SLOT_LIGHT].Texture != nullptr) ? 1.0f : 0.0f;
+    services->setPixelShaderConstant("tLightmap",    &lightmapLayerID, 1);
+    services->setPixelShaderConstant("uHasLightmap", &hasLightmap,     1);
+
+    // PBR texture maps — slots 4-7 (user-set via node->setMaterialTexture).
+    {
+        int normalSlot    = SLOT_NORMAL;
+        int roughnessSlot = SLOT_ROUGHNESS;
+        int metallicSlot  = SLOT_METALLIC;
+        int emissionSlot  = SLOT_EMISSION;
+        float hasNormal    = (m_currentMaterial.TextureLayer[SLOT_NORMAL].Texture    != nullptr) ? 1.0f : 0.0f;
+        float hasRoughness = (m_currentMaterial.TextureLayer[SLOT_ROUGHNESS].Texture != nullptr) ? 1.0f : 0.0f;
+        float hasMetallic  = (m_currentMaterial.TextureLayer[SLOT_METALLIC].Texture  != nullptr) ? 1.0f : 0.0f;
+        float hasEmission  = (m_currentMaterial.TextureLayer[SLOT_EMISSION].Texture  != nullptr) ? 1.0f : 0.0f;
+        services->setPixelShaderConstant("tNormalMap",       &normalSlot,    1);
+        services->setPixelShaderConstant("uHasNormalMap",    &hasNormal,     1);
+        services->setPixelShaderConstant("tRoughnessMap",    &roughnessSlot, 1);
+        services->setPixelShaderConstant("uHasRoughnessMap", &hasRoughness,  1);
+        services->setPixelShaderConstant("tMetallicMap",     &metallicSlot,  1);
+        services->setPixelShaderConstant("uHasMetallicMap",  &hasMetallic,   1);
+        services->setPixelShaderConstant("tEmissionMap",     &emissionSlot,  1);
+        services->setPixelShaderConstant("uHasEmissionMap",  &hasEmission,   1);
+    }
+
+    // Shadow map sampler — the RTT is bound once per frame to raw unit 11 by
+    // RenderManager::bindPerFrameTextures(); uHasShadow/uShadowBias are in the
+    // PerFrame UBO. (This replaces the old setMaterial-inside-callback hack.)
+    {
+        int shadowSlot = 11;
+        services->setPixelShaderConstant("tShadowMap", &shadowSlot, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Lighting: clustered per-frame texture path, or the legacy per-object
+    // gather of the 8 closest lights (preview scenes / feature-floor fallback).
+    // -------------------------------------------------------------------------
+    // uUseClusters and uClusterParams live in the PerFrame UBO (RenderManager
+    // keeps them in sync with this same condition, including the preview flip).
+    {
+        auto* clm = RenderManager::Get()->clusteredLights();
+        const bool useClusters = clm && clm->isEnabled() && !RenderManager::Get()->isRenderingPreview();
+
+        if (useClusters)
+        {
+            int lightDataSlot = 8, gridSlot = 9, indexSlot = 10;
+            services->setPixelShaderConstant("tLightData",    &lightDataSlot, 1);
+            services->setPixelShaderConstant("tClusterGrid",  &gridSlot,      1);
+            services->setPixelShaderConstant("tLightIndices", &indexSlot,     1);
+        }
+        else
+        {
+            uploadClosestLightUniforms(services, driver);
+        }
+    }
 
     // PBR material params — derived from Irrlicht SMaterial fields so existing
     // mesh setup code needs no changes.  Control per-mesh via:
@@ -299,46 +305,14 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     const irr::video::SMaterial& mat = m_currentMaterial;
     float roughness = 1.0f - sqrtf(irr::core::clamp(mat.Shininess, 0.0f, 128.0f) / 128.0f);
     float metallic  = static_cast<float>(mat.SpecularColor.getAlpha()) / 255.0f;
-    auto ambLight = RenderManager::Get()->sceneManager()->getAmbientLight();
-    float ambientColor[3] = { ambLight.getRed(), ambLight.getGreen(), ambLight.getBlue() };
     services->setPixelShaderConstant("uRoughness",    &roughness,    1);
     services->setPixelShaderConstant("uMetallic",     &metallic,     1);
-    services->setPixelShaderConstant("uAmbientColor", ambientColor,  3);
 
-    services->setPixelShaderConstant("uFogColor",   fogColor,    3);
-    services->setPixelShaderConstant("uFogDensity", &fogDensity, 1);
-    services->setPixelShaderConstant("uFogStart",   &fogStart,   1);
-
-    // --- Environment map ---
-    // Bind the equirectangular env map to slot 2 and tell the shader whether it's present.
-    int   envMapSlot = SLOT_ENV;
-    float hasEnvMap  = (m_envMap != nullptr) ? 1.0f : 0.0f;
-    services->setPixelShaderConstant("tEnvMap",    &envMapSlot, 1);
-    services->setPixelShaderConstant("uHasEnvMap", &hasEnvMap,  1);
-    if (m_envMap)
+    // Env map sampler — bound once per frame to raw unit 12 by RenderManager;
+    // uHasEnvMap and the camera basis vectors are in the PerFrame UBO.
     {
-        // IVideoDriver has no public setTexture(). The Irrlicht-idiomatic way to bind
-        // an extra texture to a unit is to add it to a material and call setMaterial().
-        // Irrlicht will then bind each TextureLayer to the corresponding GL texture unit.
-        // We copy the current material so nothing else changes; the next node's draw call
-        // will replace it with its own material as normal.
-        irr::video::SMaterial mat = m_currentMaterial;
-        mat.TextureLayer[SLOT_ENV].Texture = m_envMap;
-        driver->setMaterial(mat);
-    }
-
-    // Camera world-space basis vectors for view→world reflection conversion.
-    // Irrlicht world space is LEFT-HANDED (X+right, Y+up, Z+into screen).
-    // In left-handed space, right = worldUp × forward (reversed from right-handed).
-    {
-        auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
-        irr::core::vector3df forward = (cam->getTarget() - cam->getAbsolutePosition()).normalize();
-        irr::core::vector3df right   = cam->getUpVector().crossProduct(forward).normalize();
-        irr::core::vector3df up      = forward.crossProduct(right).normalize(); // re-orthogonalize
-
-        services->setPixelShaderConstant("uCamRight",   reinterpret_cast<f32*>(&right),   3);
-        services->setPixelShaderConstant("uCamUp",      reinterpret_cast<f32*>(&up),      3);
-        services->setPixelShaderConstant("uCamForward", reinterpret_cast<f32*>(&forward), 3);
+        int envMapSlot = 12;
+        services->setPixelShaderConstant("tEnvMap", &envMapSlot, 1);
     }
 
     // Fresnel rim + per-material alpha — read from MaterialTypeParams slots [2]/[3]
@@ -352,13 +326,11 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     services->setPixelShaderConstant("uFresnelPower",    &fresnelPower,    1);
     services->setPixelShaderConstant("uAlpha",           &matAlpha,        1);
 
-    // UV scroll + warp — driven by MaterialTypeParams[4..7].
-    float uTimeSec    = static_cast<float>(Engine::Get()->getCurrentTime()) / 1000.0f;
+    // UV scroll + warp — driven by MaterialTypeParams[4..7]. (uTime is in the UBO.)
     float uvScroll[2] = { m_currentMaterial.MaterialTypeParams[4],
                           m_currentMaterial.MaterialTypeParams[5] };
     float warpAmp     = m_currentMaterial.MaterialTypeParams[6];
     float warpSpeed   = m_currentMaterial.MaterialTypeParams[7];
-    services->setPixelShaderConstant("uTime",         &uTimeSec,  1);
     services->setPixelShaderConstant("uTexScroll",    uvScroll,   2);
     services->setPixelShaderConstant("uTexWarpAmp",   &warpAmp,   1);
     services->setPixelShaderConstant("uTexWarpSpeed", &warpSpeed, 1);
@@ -366,12 +338,12 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
 
 void TerrainShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
 {
-    // Upload all base PBR + lighting uniforms (tDiffuse=0, tLightmap=1, lights, env map suppressed).
+    // Upload all base PBR + lighting uniforms (tDiffuse=0, tLightmap=1, lights).
     ShaderConstantSetCallBack::OnSetConstants(services, userData);
 
-    // Suppress env map — slot 2 is the splat map, not an env map.
-    float hasEnvMap = 0.0f;
-    services->setPixelShaderConstant("uHasEnvMap", &hasEnvMap, 1);
+    // Note: the env map used to be suppressed here because the base callback
+    // bound it over the splat map on slot 2. It now lives on raw unit 12, so
+    // slot 2 stays the splat map; terrain's roughness=1 zeroes any env term.
 
     // Tell the shader which texture unit each splat/detail sampler lives on.
     // The textures themselves are pre-bound by PropManager::enablePainting via
@@ -493,6 +465,39 @@ void RadiationCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("uTime",      &t,         1);
 }
 
+void SSAOGenCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int slot = 0;
+    services->setPixelShaderConstant("tPrepass", &slot, 1);
+
+    // Projection extents for view-space position reconstruction — must match
+    // the camera the prepass was rendered with.
+    float projTan[2] = { 1.0f, 1.0f };
+    if (auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera())
+    {
+        const float ty = tanf(cam->getFOV() * 0.5f);
+        projTan[0] = ty * cam->getAspectRatio();
+        projTan[1] = ty;
+    }
+    services->setPixelShaderConstant("uProjTan",   projTan,    2);
+    services->setPixelShaderConstant("uRadius",    &radius,    1);
+    services->setPixelShaderConstant("uIntensity", &intensity, 1);
+}
+
+void SSAOBlurCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int aoSlot = 0, prepassSlot = 1;
+    services->setPixelShaderConstant("tAO",      &aoSlot,      1);
+    services->setPixelShaderConstant("tPrepass", &prepassSlot, 1);
+
+    auto sz = services->getVideoDriver()->getCurrentRenderTargetSize();
+    float rcpFrame[2] = {
+        1.0f / static_cast<float>(sz.Width),
+        1.0f / static_cast<float>(sz.Height)
+    };
+    services->setPixelShaderConstant("uRcpFrame", rcpFrame, 2);
+}
+
 void FXAAShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
 {
     int slot = 0;
@@ -512,6 +517,9 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     if (m_ppRTT[0])      { m_driver->removeTexture(m_ppRTT[0]);      m_ppRTT[0]      = nullptr; }
     if (m_ppRTT[1])      { m_driver->removeTexture(m_ppRTT[1]);      m_ppRTT[1]      = nullptr; }
     if (m_lumRTT)        { m_driver->removeTexture(m_lumRTT);        m_lumRTT        = nullptr; }
+    if (m_prepassRTT)    { m_driver->removeTexture(m_prepassRTT);    m_prepassRTT    = nullptr; }
+    if (m_ssaoRTT[0])    { m_driver->removeTexture(m_ssaoRTT[0]);    m_ssaoRTT[0]    = nullptr; }
+    if (m_ssaoRTT[1])    { m_driver->removeTexture(m_ssaoRTT[1]);    m_ssaoRTT[1]    = nullptr; }
 
     irr::core::dimension2du sz(w, h);
     m_sceneRTT      = m_driver->addRenderTargetTexture(sz, "pp_scene",     QUAD_COLOR_MODE);
@@ -519,22 +527,21 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     m_ppRTT[1]      = m_driver->addRenderTargetTexture(sz, "pp_buf1",      QUAD_COLOR_MODE);
     m_lumRTT        = m_driver->addRenderTargetTexture(irr::core::dimension2du(1, 1), "pp_lum", QUAD_COLOR_MODE);
 
-    if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT)
-        spdlog::error("RenderManager: failed to create post-process RTTs ({}x{})", w, h);
+    // Thin geometry pre-pass (full res) + SSAO working buffers (half res).
+    irr::core::dimension2du half(std::max(w / 2, 1u), std::max(h / 2, 1u));
+    m_prepassRTT = m_driver->addRenderTargetTexture(sz,   "prepass",  QUAD_COLOR_MODE);
+    m_ssaoRTT[0] = m_driver->addRenderTargetTexture(half, "ssao_raw",  irr::video::ECF_R32F);
+    m_ssaoRTT[1] = m_driver->addRenderTargetTexture(half, "ssao_blur", irr::video::ECF_R32F);
 
-    // Load FBO extension functions for depth blitting (only once — they don't change).
-    if (!m_fnBlitFramebuffer)
-    {
-        m_fnBindFramebuffer = (void*)wglGetProcAddress("glBindFramebuffer");
-        m_fnBlitFramebuffer = (void*)wglGetProcAddress("glBlitFramebuffer");
-        if (!m_fnBlitFramebuffer)
-            spdlog::warn("RenderManager: glBlitFramebuffer unavailable — LDR effect depth testing disabled");
-    }
+    if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT || !m_prepassRTT || !m_ssaoRTT[0] || !m_ssaoRTT[1])
+        spdlog::error("RenderManager: failed to create post-process RTTs ({}x{})", w, h);
 }
 
 void RenderManager::createShadowResources()
 {
-    constexpr irr::u32 SHADOW_RES = 2048;
+    // 4096 atlas = four 2048 quadrants — per-light resolution matches the old
+    // single 2048 map. Drop to 2048 (1024/light) if VRAM ever matters.
+    constexpr irr::u32 SHADOW_RES = 4096;
     if (m_shadowMapRTT)
         m_driver->removeTexture(m_shadowMapRTT);
 
@@ -554,72 +561,113 @@ void RenderManager::createShadowResources()
             irr::core::vector3df(0, 0, 0));
 }
 
-void RenderManager::drawShadowPass()
+void RenderManager::updatePerFrameUBO(bool useClusters)
 {
-    if (m_shadowDepthMat < 0 || !m_shadowMapRTT || !m_shadowCamera)
+    if (!m_perFrameUBO || !GLExt::BufferSubData)
         return;
 
-    // Find the first spotlight by traversing the scene graph directly rather than
-    // reading getDynamicLight(), which is populated during drawAll() and therefore
-    // holds last frame's position/direction. Traversing scene nodes and calling
-    // updateAbsolutePosition() gives the current-frame world transform, so the
-    // shadow camera and the lighting shader both use the same frame's light data.
-    bool foundLight = false;
-    irr::video::SLight lightData;
-    irr::core::array<irr::scene::ISceneNode*> lightNodes;
-    m_sceneManager->getSceneNodesFromType(irr::scene::ESNT_LIGHT, lightNodes);
-    for (irr::u32 i = 0; i < lightNodes.size(); ++i)
+    PerFrameData d = {};
+
+    auto ambLight = m_sceneManager->getAmbientLight();
+    d.ambientColor[0] = ambLight.getRed();
+    d.ambientColor[1] = ambLight.getGreen();
+    d.ambientColor[2] = ambLight.getBlue();
+    d.hasShadow  = m_shadowMapRTT ? static_cast<float>(m_shadowCount) : 0.0f;
+    d.shadowBias = m_shadowBias;
+
+    // Per-slot shadow matrices + atlas rects (filled by drawShadowPass; this
+    // function is called again right after that pass so the data is current).
+    for (int s = 0; s < 4; ++s)
     {
-        auto* ln = static_cast<irr::scene::ILightSceneNode*>(lightNodes[i]);
-        if (ln->getLightData().Type == irr::video::ELT_SPOT && ln->isVisible())
-        {
-            // Force the node's absolute transform to reflect the current-frame parent position.
-            // The parent (TransformComponent node) was already updated by TransformSystem.
-            ln->updateAbsolutePosition();
-
-            lightData          = ln->getLightData();
-            lightData.Position = ln->getAbsolutePosition();
-
-            // Recompute direction from current absolute transform — identical to how
-            // CLightSceneNode::render() derives it: rotate local (0,0,1) to world space.
-            irr::core::vector3df d(0.f, 0.f, 1.f);
-            ln->getAbsoluteTransformation().rotateVect(d);
-            lightData.Direction = d.normalize();
-
-            foundLight = true;
-            break;
-        }
+        memcpy(d.shadowMat[s], m_shadowMats[s].pointer(), 16 * sizeof(float));
+        memcpy(d.shadowRect[s], m_shadowRects[s], 4 * sizeof(float));
     }
 
-    m_hasShadowLight = foundLight;
-    if (!foundLight)
+    d.fogColor[0] = m_shaderConstantCallBack->fogColor[0];
+    d.fogColor[1] = m_shaderConstantCallBack->fogColor[1];
+    d.fogColor[2] = m_shaderConstantCallBack->fogColor[2];
+    d.fogDensity  = m_shaderConstantCallBack->fogDensity;
+    d.fogStart    = m_shaderConstantCallBack->fogStart;
+
+    d.hasEnvMap = (m_shaderConstantCallBack->envMap() != nullptr) ? 1.0f : 0.0f;
+
+    // Camera world-space basis for view→world reflection conversion.
+    // Irrlicht world space is LEFT-HANDED: right = worldUp × forward.
+    if (auto* cam = m_sceneManager->getActiveCamera())
+    {
+        irr::core::vector3df forward = (cam->getTarget() - cam->getAbsolutePosition()).normalize();
+        irr::core::vector3df right   = cam->getUpVector().crossProduct(forward).normalize();
+        irr::core::vector3df up      = forward.crossProduct(right).normalize();
+        d.camRight[0]   = right.X;   d.camRight[1]   = right.Y;   d.camRight[2]   = right.Z;
+        d.camUp[0]      = up.X;      d.camUp[1]      = up.Y;      d.camUp[2]      = up.Z;
+        d.camForward[0] = forward.X; d.camForward[1] = forward.Y; d.camForward[2] = forward.Z;
+
+        // Inverse of the exact view matrix drawAll() will use — cam->render()
+        // recomputes it from current transforms (same trick as the cluster
+        // build). Shaders reconstruct world position as uInvView * viewPos for
+        // shadow projection.
+        cam->updateAbsolutePosition();
+        cam->render();
+        irr::core::matrix4 invView;
+        m_driver->getTransform(irr::video::ETS_VIEW).getInverse(invView);
+        memcpy(d.invView, invView.pointer(), 16 * sizeof(float));
+    }
+
+    if (m_clusteredLights)
+    {
+        d.clusterParams[0] = m_clusteredLights->tileWidthPx();
+        d.clusterParams[1] = m_clusteredLights->tileHeightPx();
+        d.clusterParams[2] = m_clusteredLights->sliceScale();
+        d.clusterParams[3] = m_clusteredLights->sliceBias();
+    }
+
+    d.timeMs      = static_cast<float>(Engine::Get()->getCurrentTime());
+    d.timeSec     = d.timeMs / 1000.0f;
+    d.useClusters = useClusters ? 1.0f : 0.0f;
+
+    GLExt::BindBuffer(GL_UNIFORM_BUFFER, m_perFrameUBO);
+    GLExt::BufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(d), &d);
+    GLExt::BindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void RenderManager::bindPerFrameTextures()
+{
+    if (!GLExt::ActiveTexture)
         return;
 
-    irr::core::vector3df lightPos = lightData.Position;
-    irr::core::vector3df lightDir = lightData.Direction;
-    lightDir.normalize();
+    // Units 11/12 sit above Irrlicht's 8 material slots — its state tracker
+    // never rebinds them, so once-per-frame binding is sufficient. This
+    // replaces the old driver->setMaterial() hacks inside OnSetConstants that
+    // smuggled these textures in through material slots 2 and 3.
+    GLExt::ActiveTexture(GL_TEXTURE0 + 11);
+    glBindTexture(GL_TEXTURE_2D, m_shadowMapRTT ? m_shadowMapRTT->getNativeHandle() : 0);
 
-    const irr::core::vector3df up = (fabsf(lightDir.Y) < 0.99f)
-        ? irr::core::vector3df(0.f, 1.f, 0.f)
-        : irr::core::vector3df(1.f, 0.f, 0.f);
+    auto* env = m_shaderConstantCallBack->envMap();
+    GLExt::ActiveTexture(GL_TEXTURE0 + 12);
+    glBindTexture(GL_TEXTURE_2D, env ? env->getNativeHandle() : 0);
 
-    // Perspective projection matching the spotlight's cone.
-    // OuterCone is the half-angle in degrees — full FOV is OuterCone * 2.
-    // Near plane is small; far plane matches the light's attenuation radius.
-    const float fovRad   = lightData.OuterCone * 2.0f * irr::core::DEGTORAD;
-    const float farPlane = lightData.Radius > 0.0f ? lightData.Radius : 200.0f;
-    irr::core::matrix4 lightProj;
-    lightProj.buildProjectionMatrixPerspectiveFovLH(fovRad, 1.0f, 0.1f, farPlane);
+    GLExt::ActiveTexture(GL_TEXTURE0);
+}
+
+void RenderManager::drawShadowPass()
+{
+    m_shadowCount = 0;
+    for (int s = 0; s < 4; ++s)
+        m_shadowRects[s][3] = 0.0f;
+
+    if (m_shadowDepthMat < 0 || !m_shadowMapRTT || !m_shadowCamera || !m_clusteredLights)
+        return;
+
+    // Shadow casters were selected by ClusteredLightManager::update() (the four
+    // spotlights nearest the camera); their slot index is already baked into the
+    // clustered light data texture, so this pass must render exactly those
+    // lights into the matching atlas quadrants.
+    const int count = m_clusteredLights->shadowCasterCount();
+    if (count == 0)
+        return;
 
     // Save active camera so we can restore it after the shadow pass.
     irr::scene::ICameraSceneNode* prevCamera = m_sceneManager->getActiveCamera();
-
-    // Configure the shadow camera and make it active so drawAll() uses its transforms.
-    m_shadowCamera->setPosition(lightPos);
-    m_shadowCamera->setTarget(lightPos + lightDir);
-    m_shadowCamera->setUpVector(up);
-    m_shadowCamera->setProjectionMatrix(lightProj, false);  // false = perspective
-    m_sceneManager->setActiveCamera(m_shadowCamera);
 
     // Override all solid geometry with the depth-only shader.
     // Front-face culling renders only back faces — the floor can't shadow itself,
@@ -632,28 +680,198 @@ void RenderManager::drawShadowPass()
     om.EnablePasses = irr::scene::ESNRP_SOLID;
     om.Enabled      = true;
 
-    // Render scene depth from the light's POV into the shadow map RTT.
+    // Clear the whole atlas to "far" once, then render each caster into its quadrant.
     m_driver->setRenderTarget(m_shadowMapRTT, true, true, irr::video::SColor(0xFFFFFFFF));
-    m_sceneManager->drawAll();
+    const irr::s32 atlasSize = static_cast<irr::s32>(m_shadowMapRTT->getSize().Width);
+    const irr::s32 quad      = atlasSize / 2;
 
-    // Read back the view and projection matrices Irrlicht actually used for this draw.
-    // Irrlicht's camera computes its own view matrix internally during drawAll(), so we
-    // MUST use these post-draw values for m_lightProjView — building the matrix manually
-    // before drawAll() can diverge due to the camera needing an animation tick to settle.
-    irr::core::matrix4 usedProj = m_driver->getTransform(irr::video::ETS_PROJECTION);
-    irr::core::matrix4 usedView = m_driver->getTransform(irr::video::ETS_VIEW);
-    m_lightProjView = usedProj;
-    m_lightProjView *= usedView;
+    for (int s = 0; s < count && s < 4; ++s)
+    {
+        auto* ln = m_clusteredLights->shadowCaster(s);
+        if (!ln)
+            continue;
+
+        // Current-frame light transform — same derivation ClusteredLightManager
+        // used when it selected this caster.
+        ln->updateAbsolutePosition();
+        const irr::video::SLight& ld = ln->getLightData();
+        irr::core::vector3df lightPos = ln->getAbsolutePosition();
+        irr::core::vector3df lightDir(0.f, 0.f, 1.f);
+        ln->getAbsoluteTransformation().rotateVect(lightDir);
+        lightDir.normalize();
+
+        const irr::core::vector3df up = (fabsf(lightDir.Y) < 0.99f)
+            ? irr::core::vector3df(0.f, 1.f, 0.f)
+            : irr::core::vector3df(1.f, 0.f, 0.f);
+
+        // Perspective projection matching the spotlight's cone.
+        // OuterCone is the half-angle in degrees — full FOV is OuterCone * 2.
+        const float fovRad   = ld.OuterCone * 2.0f * irr::core::DEGTORAD;
+        const float farPlane = ld.Radius > 0.0f ? ld.Radius : 200.0f;
+        irr::core::matrix4 lightProj;
+        lightProj.buildProjectionMatrixPerspectiveFovLH(fovRad, 1.0f, 0.1f, farPlane);
+
+        m_shadowCamera->setPosition(lightPos);
+        m_shadowCamera->setTarget(lightPos + lightDir);
+        m_shadowCamera->setUpVector(up);
+        m_shadowCamera->setProjectionMatrix(lightProj, false);  // false = perspective
+        m_sceneManager->setActiveCamera(m_shadowCamera);
+
+        // Atlas quadrant: slot 0 = bottom-left, 1 = bottom-right, 2 = top-left,
+        // 3 = top-right (GL window coords, y up — matches shadowRect UVs below).
+        const irr::s32 qx = (s & 1) * quad;
+        const irr::s32 qy = (s >> 1) * quad;
+        m_driver->setViewPort(irr::core::rect<irr::s32>(qx, qy, qx + quad, qy + quad));
+
+        m_sceneManager->drawAll();
+
+        // Read back the view and projection matrices Irrlicht actually used for
+        // this draw — the camera recomputes its view matrix inside drawAll(), so
+        // post-draw values are the only ones guaranteed to match the depth data.
+        irr::core::matrix4 projView = m_driver->getTransform(irr::video::ETS_PROJECTION);
+        projView *= m_driver->getTransform(irr::video::ETS_VIEW);
+        m_shadowMats[s] = projView;
+
+        m_shadowRects[s][0] = static_cast<float>(qx) / atlasSize;
+        m_shadowRects[s][1] = static_cast<float>(qy) / atlasSize;
+        m_shadowRects[s][2] = static_cast<float>(quad) / atlasSize;
+        m_shadowRects[s][3] = 1.0f;
+        ++m_shadowCount;
+    }
 
     // Restore state.
     m_driver->getOverrideMaterial() = irr::video::SOverrideMaterial();
     m_sceneManager->setActiveCamera(prevCamera);
 
-    // Return to the scene RTT so the main pass continues normally.
+    // Return to the scene RTT so the main pass continues normally. Reset the
+    // viewport explicitly — setRenderTarget is not guaranteed to undo the
+    // quadrant viewport set above.
     if (m_sceneRTT)
+    {
         m_driver->setRenderTarget(m_sceneRTT, false, false);
+        auto sz = m_sceneRTT->getSize();
+        m_driver->setViewPort(irr::core::rect<irr::s32>(0, 0, (irr::s32)sz.Width, (irr::s32)sz.Height));
+    }
     else
+    {
         m_driver->setRenderTarget(nullptr, false, false);
+        auto sz = m_driver->getScreenSize();
+        m_driver->setViewPort(irr::core::rect<irr::s32>(0, 0, (irr::s32)sz.Width, (irr::s32)sz.Height));
+    }
+}
+
+void RenderManager::drawPrePass()
+{
+    if (m_prepassMat < 0 || !m_prepassRTT)
+        return;
+
+    // Clear to (0,0,0,0): depth channel 0 marks "no geometry" (sky) for SSAO.
+    m_driver->setRenderTarget(m_prepassRTT, true, true, irr::video::SColor(0, 0, 0, 0));
+
+    // Walk the scene graph and draw every opaque mesh buffer with the prepass
+    // material — same traversal as drawTransparentPass with the opposite
+    // filter. Runs after drawAll(), so camera transforms and animation poses
+    // are current, and hidden node lists (viewmodel/debug/LDR) are skipped via
+    // isVisible(). Sky, billboards, and particles never enter this pass.
+    std::vector<irr::scene::ISceneNode*> nodeStack;
+    nodeStack.push_back(m_sceneManager->getRootSceneNode());
+
+    while (!nodeStack.empty())
+    {
+        irr::scene::ISceneNode* node = nodeStack.back();
+        nodeStack.pop_back();
+
+        if (!node->isVisible())
+            continue;
+
+        for (auto* child : node->getChildren())
+            nodeStack.push_back(child);
+
+        if (node->isDebugObject())
+            continue;
+
+        irr::scene::IMesh* mesh = nullptr;
+        irr::scene::ESCENE_NODE_TYPE ntype = node->getType();
+        if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+            mesh = static_cast<irr::scene::IMeshSceneNode*>(node)->getMesh();
+        else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
+            if (animNode->getMesh())
+                mesh = animNode->getMesh()->getMesh(animNode->getFrameNr());
+        }
+        if (!mesh)
+            continue;
+
+        bool transformSet = false;
+        for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+        {
+            const irr::video::SMaterial& src = node->getMaterial(b);
+            if (src.Wireframe)   // editor markers — must not stamp AO boxes
+                continue;
+            irr::video::IMaterialRenderer* rnd = m_driver->getMaterialRenderer(src.MaterialType);
+            if (rnd && rnd->isTransparent())
+                continue;
+
+            if (!transformSet)
+            {
+                m_driver->setTransform(irr::video::ETS_WORLD, node->getAbsoluteTransformation());
+                transformSet = true;
+            }
+
+            irr::video::SMaterial pm;
+            pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
+            pm.Lighting         = false;
+            pm.BackfaceCulling  = src.BackfaceCulling;
+            pm.FrontfaceCulling = src.FrontfaceCulling;
+            m_driver->setMaterial(pm);
+            m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+        }
+    }
+}
+
+void RenderManager::drawSSAO()
+{
+    if (m_ssaoGenMat < 0 || m_ssaoBlurMat < 0 || !m_ssaoRTT[0] || !m_ssaoRTT[1] || !m_prepassRTT)
+        return;
+
+    // --- AO generation: prepass → half-res raw AO ---
+    m_driver->setRenderTarget(m_ssaoRTT[0], true, false, irr::video::SColor(0));
+    {
+        irr::video::SMaterial mat;
+        mat.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_ssaoGenMat);
+        mat.setTexture(0, m_prepassRTT);
+        mat.ZBuffer         = 0;
+        mat.ZWriteEnable    = false;
+        mat.Lighting        = false;
+        mat.BackfaceCulling = false;
+        m_driver->setMaterial(mat);
+        drawFullscreenQuad();
+    }
+
+    // --- Depth-aware blur: raw AO + prepass depth → blurred AO ---
+    m_driver->setRenderTarget(m_ssaoRTT[1], true, false, irr::video::SColor(0));
+    {
+        irr::video::SMaterial mat;
+        mat.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_ssaoBlurMat);
+        mat.setTexture(0, m_ssaoRTT[0]);
+        mat.setTexture(1, m_prepassRTT);
+        mat.ZBuffer         = 0;
+        mat.ZWriteEnable    = false;
+        mat.Lighting        = false;
+        mat.BackfaceCulling = false;
+        m_driver->setMaterial(mat);
+        drawFullscreenQuad();
+    }
+
+    // Bind the blurred AO to raw unit 13 for the ssao_apply chain pass
+    // (bilinear upsample to full res happens in the sampler).
+    if (GLExt::ActiveTexture)
+    {
+        GLExt::ActiveTexture(GL_TEXTURE0 + 13);
+        glBindTexture(GL_TEXTURE_2D, m_ssaoRTT[1]->getNativeHandle());
+        GLExt::ActiveTexture(GL_TEXTURE0);
+    }
 }
 
 void RenderManager::drawFullscreenQuad()
@@ -821,11 +1039,13 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     m_irrlichtParams.EventReceiver = &m_imguiEventReceiver;
     m_irrlichtParams.ZBufferBits = 32;
 
+    // ELL_WARNING (not ELL_NONE): GLSL compile/link failures are ELL_ERROR and
+    // were previously swallowed — a broken shader silently fell back to
+    // fixed-function rendering with no diagnostic anywhere.
 #ifdef DEBUG
-   // m_irrlichtParams.LoggingLevel = ELL_DEBUG;
-	m_irrlichtParams.LoggingLevel = ELL_NONE;
+	m_irrlichtParams.LoggingLevel = ELL_WARNING;
 #else
-	m_irrlichtParams.LoggingLevel = ELL_NONE;
+	m_irrlichtParams.LoggingLevel = ELL_WARNING;
 #endif
 
     m_irrlichtParams.DriverType = EDT_OPENGL;
@@ -843,6 +1063,29 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     {
         spdlog::error("Failed to initialize the graphics API");
     }
+
+    // Device creation made the GL context current — resolve modern entry points now.
+    GLExt::load();
+
+    // Clustered forward lighting. GL textures are created lazily on first
+    // update(); if the driver is below the GL 3.3 floor it self-disables and
+    // shaders keep using the legacy 8-light path.
+    m_clusteredLights = new ClusteredLightManager();
+
+    // Per-frame UBO — created once, permanently attached to binding point 0.
+    // Programs pick it up via the fork patch in COpenGLSLMaterialRenderer.
+    if (GLExt::GenBuffers && GLExt::BindBufferBase)
+    {
+        GLuint ubo = 0;
+        GLExt::GenBuffers(1, &ubo);
+        GLExt::BindBuffer(GL_UNIFORM_BUFFER, ubo);
+        GLExt::BufferData(GL_UNIFORM_BUFFER, sizeof(PerFrameData), nullptr, GL_DYNAMIC_DRAW);
+        GLExt::BindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+        GLExt::BindBuffer(GL_UNIFORM_BUFFER, 0);
+        m_perFrameUBO = ubo;
+    }
+    else
+        spdlog::error("RenderManager: UBO entry points unavailable — per-frame shader constants will be stale");
 
 	// After device creation:
 	irr::video::SExposedVideoData vd = m_device->getVideoDriver()->getExposedVideoData();
@@ -940,6 +1183,13 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 
     m_sceneManager->getParameters()->setAttribute(ALLOW_ZWRITE_ON_TRANSPARENT, true);
 
+    // Fork extension (see Include/irrlicht/PATCHES.md): drawAll() must not render
+    // mesh-based transparent buffers — drawTransparentPass() owns them. Without
+    // this they were drawn twice (once unsorted by drawAll, once sorted by us),
+    // making alpha surfaces more opaque and additive surfaces brighter than authored.
+    // Only set on the main scene manager; preview scene managers keep vanilla behavior.
+    m_sceneManager->getParameters()->setAttribute("Engine_SkipMeshTransparent", true);
+
     m_driver->getMaterial2D().TextureLayer[0].BilinearFilter = true;
     m_driver->getMaterial2D().TextureLayer[0].TrilinearFilter = true;
 
@@ -1005,10 +1255,20 @@ RenderManager::~RenderManager()
 	SPK::SPKFactory::getInstance().traceAll();
 	SPK::SPKFactory::getInstance().destroyAll();
 
-    if (m_sceneRTT) m_driver->removeTexture(m_sceneRTT);
-    if (m_ppRTT[0]) m_driver->removeTexture(m_ppRTT[0]);
-    if (m_ppRTT[1]) m_driver->removeTexture(m_ppRTT[1]);
-    if (m_lumRTT)   m_driver->removeTexture(m_lumRTT);
+    delete m_clusteredLights;
+    m_clusteredLights = nullptr;
+
+    if (m_sceneRTT)   m_driver->removeTexture(m_sceneRTT);
+    if (m_ppRTT[0])   m_driver->removeTexture(m_ppRTT[0]);
+    if (m_ppRTT[1])   m_driver->removeTexture(m_ppRTT[1]);
+    if (m_lumRTT)     m_driver->removeTexture(m_lumRTT);
+    if (m_prepassRTT) m_driver->removeTexture(m_prepassRTT);
+    if (m_ssaoRTT[0]) m_driver->removeTexture(m_ssaoRTT[0]);
+    if (m_ssaoRTT[1]) m_driver->removeTexture(m_ssaoRTT[1]);
+    delete m_prepassCallback;
+    delete m_ssaoGenCallback;
+    delete m_ssaoBlurCallback;
+    delete m_ssaoApplyCallback;
     delete m_blitCallback;
     delete m_fxaaCallback;
     delete m_bloomBrightCallback;
@@ -1068,9 +1328,25 @@ void RenderManager::draw(f32 dt)
 
     m_driver->beginScene(true, true, SColor(0xFF000000)/*m_backgroundColor*/);
 
+    // Build this frame's clustered light data (gather → froxel assignment →
+    // texture upload on units 8-10) before any scene pass runs.
+    if (m_clusteredLights)
+        m_clusteredLights->update(m_driver, m_sceneManager,
+            m_sceneRTT ? m_sceneRTT->getSize() : m_driver->getScreenSize());
+
+    // Fill the PerFrame UBO and bind the frame-constant textures (shadow map
+    // on unit 11, env map on unit 12) for all passes this frame.
+    const bool clustersOn = m_clusteredLights && m_clusteredLights->isEnabled();
+    updatePerFrameUBO(clustersOn);
+    bindPerFrameTextures();
+
     // --- Entity Builder / Particle Designer preview pass ---
     if (m_previewSM && m_previewRTT)
     {
+        // Preview draws use the legacy 8-light path (own camera + lights) —
+        // flip the UBO's useClusters off for the duration of the pass.
+        m_renderingPreview = true;
+        updatePerFrameUBO(false);
         m_driver->setRenderTarget(m_previewRTT, true, true, SColor(255, 40, 40, 40));
         m_previewSM->drawAll();
         // Render the particle preview directly while the RTT is bound.
@@ -1082,6 +1358,8 @@ void RenderManager::draw(f32 dt)
             m_previewParticle->render();
         }
         m_driver->setRenderTarget(nullptr, false, false);
+        m_renderingPreview = false;
+        updatePerFrameUBO(clustersOn);
     }
     // --- End preview pass ---
 
@@ -1125,8 +1403,12 @@ void RenderManager::draw(f32 dt)
         m_ldrEffectNodes[i]->setVisible(false);
     }
 
-    // Shadow depth pre-pass — renders the scene from the light's POV into m_shadowMapRTT.
+    // Shadow depth pre-pass — renders each assigned caster into its atlas quadrant.
     drawShadowPass();
+
+    // Refresh the UBO with this frame's shadow matrices/rects (the earlier fill
+    // ran before the shadow pass and carried last frame's).
+    updatePerFrameUBO(clustersOn);
 
     m_sceneManager->drawAll();
 
@@ -1137,18 +1419,16 @@ void RenderManager::draw(f32 dt)
     // before clearZBuffer() wipes it for the viewmodel pass.  The post-process
     // chain runs with depth-test and depth-write disabled, so this depth survives
     // untouched until the LDR effect nodes render after post-processing.
-    if (m_fnBindFramebuffer && m_fnBlitFramebuffer && m_sceneFBOId > 0)
+    if (GLExt::BindFramebuffer && GLExt::BlitFramebuffer && m_sceneFBOId > 0)
     {
-        using PFNBind = void(*)(unsigned int, unsigned int);
-        using PFNBlit = void(*)(int,int,int,int,int,int,int,int,unsigned int,unsigned int);
         auto sz = m_sceneRTT->getSize();
-        ((PFNBind)m_fnBindFramebuffer)(0x8CA8u /*GL_READ_FRAMEBUFFER*/, (unsigned int)m_sceneFBOId);
-        ((PFNBind)m_fnBindFramebuffer)(0x8CA9u /*GL_DRAW_FRAMEBUFFER*/, 0u);
-        ((PFNBlit)m_fnBlitFramebuffer)(0, 0, (int)sz.Width, (int)sz.Height,
-                                       0, 0, (int)sz.Width, (int)sz.Height,
-                                       0x00000100u /*GL_DEPTH_BUFFER_BIT*/, 0x2600u /*GL_NEAREST*/);
+        GLExt::BindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)m_sceneFBOId);
+        GLExt::BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0u);
+        GLExt::BlitFramebuffer(0, 0, (GLint)sz.Width, (GLint)sz.Height,
+                               0, 0, (GLint)sz.Width, (GLint)sz.Height,
+                               GL_DEPTH_BUFFER_BIT, GL_NEAREST);
         // Restore scene RTT as the active FBO — clearZBuffer() and viewmodel pass still write to it.
-        ((PFNBind)m_fnBindFramebuffer)(0x8D40u /*GL_FRAMEBUFFER*/, (unsigned int)m_sceneFBOId);
+        GLExt::BindFramebuffer(GL_FRAMEBUFFER, (GLuint)m_sceneFBOId);
     }
 
     // Clear depth so viewmodels render on top of all world geometry,
@@ -1197,6 +1477,19 @@ void RenderManager::draw(f32 dt)
     // Restore LDR effect node visibility for game logic / next frame
     for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
         m_ldrEffectNodes[i]->setVisible(ldrWasVisible[i]);
+
+    // Thin geometry pre-pass + SSAO. Runs AFTER visibility restore so viewmodels
+    // enter the prepass at their true depth (their subtree transforms were
+    // updated by the viewmodel pass above) — otherwise the gun inherits AO from
+    // the world geometry behind it. Transparent (LDR effects, trigger zones) and
+    // wireframe (editor markers) materials are skipped inside drawPrePass.
+    if (m_ssaoEnabled)
+    {
+        drawPrePass();
+        drawSSAO();
+        if (m_sceneRTT)
+            m_driver->setRenderTarget(m_sceneRTT, false, false);
+    }
 
     // Return to backbuffer and run the post-process chain (reads m_sceneRTT)
     if (m_sceneRTT)
@@ -1534,6 +1827,45 @@ void RenderManager::createDefaultShaders()
     }
 
 
+    // Thin geometry pre-pass — view-space normal + linear depth (SSAO input).
+    // Uses only GL built-in matrices, so the no-op depth callback suffices.
+    {
+        m_prepassCallback = new ShadowDepthCallback();
+        ShaderMaterial s("prepass");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/prepass.vert", "main", EVST_VS_2_0,
+            "content/shader/prepass.frag", "main", EPST_PS_2_0,
+            m_prepassCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        m_prepassMat = s.material;
+    }
+
+    // SSAO generation + blur — not chain passes; run explicitly by drawSSAO().
+    {
+        m_ssaoGenCallback = new SSAOGenCallback();
+        ShaderMaterial s("ssao_gen");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",     "main", EVST_VS_2_0,
+            "content/shader/ssao_gen.frag", "main", EPST_PS_2_0,
+            m_ssaoGenCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        m_ssaoGenMat = s.material;
+    }
+    {
+        m_ssaoBlurCallback = new SSAOBlurCallback();
+        ShaderMaterial s("ssao_blur");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",      "main", EVST_VS_2_0,
+            "content/shader/ssao_blur.frag", "main", EPST_PS_2_0,
+            m_ssaoBlurCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        m_ssaoBlurMat = s.material;
+    }
+
+    if (m_prepassMat < 0 || m_ssaoGenMat < 0 || m_ssaoBlurMat < 0)
+        spdlog::error("RenderManager: SSAO shader compile failure (prepass={}, gen={}, blur={}) — SSAO inactive",
+                      m_prepassMat, m_ssaoGenMat, m_ssaoBlurMat);
+
     // Post-process passes — blit (passthrough) and FXAA are mutually exclusive at startup.
     // Both shaders are always compiled; only one is enabled based on antialiasingFactor.
     // Use setPostProcessPassEnabled() to switch between them at runtime.
@@ -1598,6 +1930,20 @@ void RenderManager::createDefaultShaders()
             m_tonemapCallback, EMT_SOLID, 0, EGSL_DEFAULT);
         ShaderMaterialManager::add(s);
         registerPostProcessPass(PostProcessPass("tonemap", s.material, m_tonemapCallback, true));
+    }
+
+    // SSAO apply — directly AFTER tonemap (LDR space). Applied to the HDR scene
+    // instead, the filmic curve's shoulder at high exposure would compress the
+    // AO darkening into invisibility.
+    {
+        m_ssaoApplyCallback = new SSAOApplyCallback();
+        ShaderMaterial s("ssao_apply_pp");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",       "main", EVST_VS_2_0,
+            "content/shader/ssao_apply.frag", "main", EPST_PS_2_0,
+            m_ssaoApplyCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        registerPostProcessPass(PostProcessPass("ssao_apply", s.material, m_ssaoApplyCallback, m_ssaoEnabled));
     }
 
     // Color grading — saturation boost + tint + brightness (disabled by default; enable for Unreal mode).
@@ -2616,12 +2962,15 @@ void RenderManager::drawTransparentPass()
             // mesh buffer's baked-in type. The mesh file never knows about our custom shaders.
             irr::video::E_MATERIAL_TYPE nodeMatType = node->getMaterial(b).MaterialType;
 
-            // Check if this buffer uses a transparent or refraction material type
-            bool isTransparent =
-                nodeMatType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL         ||
-                nodeMatType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF      ||
-                nodeMatType == irr::video::EMT_TRANSPARENT_ADD_COLOR              ||
-                nodeMatType == irr::video::EMT_TRANSPARENT_VERTEX_ALPHA;
+            // Ask the material renderer, exactly like CSceneManager's transparent-pass
+            // registration does. This catches the built-in EMT_TRANSPARENT_* types AND
+            // custom GLSL shader materials created over a transparent base material
+            // (water, additive_color tracers, phong_perpixel_transparent crystal).
+            // Since the fork patch removed mesh nodes from drawAll()'s transparent
+            // pass, this pass is their only render path — the classification here
+            // must match what drawAll() would have accepted.
+            irr::video::IMaterialRenderer* rnd = m_driver->getMaterialRenderer(nodeMatType);
+            bool isTransparent = rnd && rnd->isTransparent();
 
             if (isTransparent)
             {

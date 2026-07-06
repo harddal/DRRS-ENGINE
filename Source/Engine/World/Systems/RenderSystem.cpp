@@ -110,6 +110,15 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 		RenderManager::Get()->manipulator()->recalculateNormals(meshComponent.node->getMesh(), true);
 	}
 
+	// Upload geometry to GPU buffers (VBOs). Without a mapping hint Irrlicht falls
+	// back to client-side vertex arrays and re-uploads every vertex on every draw.
+	// Skinned/animated meshes are skipped — they are CPU-deformed each frame.
+	if (!meshComponent.isAnimated &&
+		meshComponent.trimesh->getMeshType() != irr::scene::EAMT_SKINNED)
+	{
+		meshComponent.trimesh->setHardwareMappingHint(irr::scene::EHM_STATIC);
+	}
+
 	//RenderManager::Get()->driver()->addOcclusionQuery(meshComponent.node, meshComponent.trimesh);
 	
     if (!meshComponent.textures.empty())
@@ -156,7 +165,6 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 
     meshComponent.node->setParent(transform.node);
 
-    // No MSAA with deferred rendering
     meshComponent.node->setMaterialFlag(EMF_ANTI_ALIASING, true);
 
     // Gouraud shading is irrelevant when a GLSL shader is active — the shader
@@ -310,20 +318,6 @@ void RenderSystem::setMeshComponentData(Entity& entity)
     }
     meshComponent.node->setTriangleSelector(meshComponent.selector);
 
-	// Does it do anything? meshComponent.renderMaterial isnt currently used I don't think
-  /*  for (u32 i = 0; i < meshComponent.node->getMaterialCount(); i++) {
-        meshComponent.node->getMaterial(i).MaterialType = meshComponent.renderMaterial;
-    }*/
-
-#ifndef USE_MULTI_PASS_RENDER
-	if (!meshComponent.disableDeferredRendering || !meshComponent.transparent)
-	{
-		//RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(meshComponent.node);
-	}
-#else
-	RenderManager::Get()->effect()->addShadowToNode(meshComponent.node, E_FILTER_TYPE::EFT_8PCF, ESM_BOTH);
-#endif
-
 	if (meshComponent.isViewmodel)
 	{
 		RenderManager::Get()->registerViewmodelNode(meshComponent.node);
@@ -405,7 +399,6 @@ void RenderSystem::setDebugMeshComponentData(anax::Entity& entity)
     //meshComponent.node->setRotation(transform.rotation);
     //meshComponent.node->setScale(transform.scale);
 
-    // No MSAA with deferred rendering
     meshComponent.node->setMaterialFlag(EMF_ANTI_ALIASING, false);
 
     meshComponent.node->setMaterialFlag(EMF_WIREFRAME, true);
@@ -729,9 +722,6 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 	if (entity.hasComponent<MeshComponent>()) {
 		//RenderManager::Get()->driver()->removeOcclusionQuery(entity.getComponent<MeshComponent>().node);
 
-#ifdef USE_MULTI_PASS_RENDER
-		RenderManager::Get()->effect()->removeShadowFromNode(entity.getComponent<MeshComponent>().node);
-#endif
 		auto& mc = entity.getComponent<MeshComponent>();
 		if (mc.isViewmodel && mc.node)
 			RenderManager::Get()->unregisterViewmodelNode(mc.node);

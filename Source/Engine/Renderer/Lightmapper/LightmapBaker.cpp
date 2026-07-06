@@ -1005,6 +1005,10 @@ void LightmapBaker::applyLightmapUVsToNode(
     auto* animMesh = new scene::SAnimatedMesh(newMesh);
     newMesh->drop();
 
+    // Rebuilt mesh replaces the original (which had EHM_STATIC from RenderSystem);
+    // re-apply the hint so lightmapped geometry also renders from GPU buffers.
+    animMesh->setHardwareMappingHint(scene::EHM_STATIC);
+
     node->setMesh(animMesh);
     animMesh->drop();
 

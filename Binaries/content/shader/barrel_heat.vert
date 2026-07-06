@@ -1,3 +1,4 @@
+#version 330 compatibility
 // Barrel Heat Vertex Shader
 
 varying vec3 vViewPos;

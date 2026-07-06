@@ -1,3 +1,24 @@
+#version 330 compatibility
+
+// Per-frame constants — std140 block filled once per frame by RenderManager
+// (updatePerFrameUBO) and bound to binding point 0 by the fork patch in
+// COpenGLSLMaterialRenderer (see Include/irrlicht/PATCHES.md). Member names
+// match the old per-draw uniforms; layout must mirror struct PerFrameData in
+// RenderManager.cpp. fTime is engine time in MILLISECONDS; uTime is seconds.
+layout(std140) uniform PerFrame
+{
+    vec3  uAmbientColor;  float uHasShadow;
+    vec3  uFogColor;      float uFogDensity;
+    vec3  uCamRight;      float uFogStart;
+    vec3  uCamUp;         float uHasEnvMap;
+    vec3  uCamForward;    float uShadowBias;
+    vec4  uClusterParams; // (tileW_px, tileH_px, sliceScale, sliceBias)
+    float fTime;          float uTime;  float uUseClusters;  float uPerFramePad0;
+    mat4  uInvView;       // main camera view inverse — world-pos reconstruction
+    mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
+    vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active
+};
+
 // Hybrid PBR Fragment Shader
 // Diffuse: Lambert accumulation (identical brightness to old Blinn-Phong)
 // Specular: GGX NDF + Smith geometry + Schlick Fresnel (physically-correct highlights)
@@ -16,11 +37,9 @@ uniform sampler2D tDiffuse;
 uniform sampler2D tLightmap;
 uniform float     uHasLightmap; // 1.0 if a baked lightmap texture is bound, else 0.0
 
-uniform sampler2D tShadowMap;   // slot 3 — directional shadow map (R = depth in [0,1])
-uniform float     uHasShadow;   // 1.0 when a shadow map is bound for this frame
-uniform float     uShadowBias;  // depth bias to prevent self-shadowing acne
+uniform sampler2D tShadowMap;   // unit 11 — 4096 shadow ATLAS, four 2048 quadrants (R = depth)
 
-varying vec4 vShadowClip;       // light clip-space coords from vertex shader (pre-divide)
+varying vec4 vShadowClip[4];    // light clip-space coords per atlas slot (pre-divide)
 
 // Lights in VIEW SPACE
 uniform vec3  uLightPos[MAX_LIGHTS];
@@ -34,36 +53,35 @@ uniform float uLightIsSpot[MAX_LIGHTS];   // 1.0 = spotlight, 0.0 = point light
 uniform float uLightCosOuter[MAX_LIGHTS]; // cos(outerCone half-angle) — hard cutoff
 uniform float uLightCosInner[MAX_LIGHTS]; // cos(innerCone half-angle) — full brightness
 
+// Clustered lighting (ClusteredLightManager). When uUseClusters > 0.5, per-light
+// data comes from texelFetch textures on units 8-10 and the arrays above are
+// unused. Grid layout constants must match ClusteredLightManager (16x8x24 grid,
+// 4 texels per light, 256-wide index texture).
+uniform sampler2D tLightData;     // unit 8: t0=pos+radius, t1=color+cosInner, t2=dir+cosOuter(-2=point)
+uniform sampler2D tClusterGrid;   // unit 9: (offset, count) per froxel
+uniform sampler2D tLightIndices;  // unit 10: flat light index list
+
 // PBR material params (mapped from SMaterial in C++)
 //   uRoughness = 1 - sqrt(Shininess/128)   -- 0=mirror, 1=matte
 //   uMetallic  = SpecularColor.alpha/255    -- 0=plastic, 1=metal
 uniform float uRoughness;
 uniform float uMetallic;
-uniform vec3  uAmbientColor;
 
-uniform vec3  uFogColor;
-uniform float uFogDensity;
-uniform float uFogStart;
 
 uniform float uFresnelStrength; // 0.0 = disabled (default); >0 adds view-angle rim glow
 uniform float uFresnelPower;    // Schlick exponent (default 4.0)
 uniform float uAlpha;           // per-material opacity multiplier (1.0 = fully opaque)
 
 // UV animation — driven by MaterialTypeParams[4..7].  All zero = static (no cost).
-uniform float uTime;          // seconds
 uniform vec2  uTexScroll;     // UV offset per second; (0,0) = static
 uniform float uTexWarpAmp;    // sine warp amplitude in UV units; 0 = no warp
 uniform float uTexWarpSpeed;  // warp oscillation speed (radians/second)
 
 // Environment map (equirectangular) for ambient specular reflections
 uniform sampler2D tEnvMap;
-uniform float     uHasEnvMap;   // 1.0 when an env map is bound, else 0.0
 // Camera world-space basis vectors — used to convert the view-space reflection
 // vector to world space without any matrix convention ambiguity.
 // In OpenGL view space: X+=right, Y+=up, Z+=out-of-screen (-forward).
-uniform vec3 uCamRight;    // world-space direction for view-space X+
-uniform vec3 uCamUp;       // world-space direction for view-space Y+
-uniform vec3 uCamForward;  // world-space direction camera is pointing (into screen)
 
 // PBR texture maps — slots 4-7 (each optional; uHas* gates the sample)
 uniform sampler2D tNormalMap;
@@ -97,6 +115,41 @@ float G_SmithSchlick(float NdotV, float NdotL, float roughness)
 vec3 F_Schlick(float VdotH, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);
+}
+
+// 3x3 PCF against one shadow atlas quadrant. clip = light clip-space coords
+// (pre-divide — dividing in the vertex shader would double-divide during
+// varying interpolation); rect = (atlas offset.xy, scale, active). Returns
+// light visibility: 1.0 = lit, 0.3 = fully shadowed (0.7 max darkness so
+// ambient/baked light still reads inside shadows).
+float shadowFactorPCF(vec4 clip, vec4 rect)
+{
+    vec3 sc = clip.xyz / clip.w;
+    sc = sc * 0.5 + 0.5;
+    if (sc.x < 0.0 || sc.x > 1.0 || sc.y < 0.0 || sc.y > 1.0 || sc.z < 0.0 || sc.z > 1.0)
+        return 1.0;
+
+    // Slope-scale bias: the constant term covers precision noise; the
+    // derivative term grows the bias on surfaces at shallow angles to the
+    // light, eliminating triangular acne without adding Peter-Panning.
+    float slope = length(vec2(dFdx(sc.z), dFdy(sc.z)));
+    float bias  = uShadowBias + slope * 3.0;
+
+    // Clamp taps inside the quadrant (one-texel margin) so PCF never bleeds
+    // into a neighboring light's map.
+    float texel = 1.0 / 4096.0;
+    vec2  base  = rect.xy + sc.xy * rect.z;
+    vec2  lo    = rect.xy + vec2(texel);
+    vec2  hi    = rect.xy + vec2(rect.z - texel);
+
+    float shadowSum = 0.0;
+    for (int sx = -1; sx <= 1; ++sx)
+        for (int sy = -1; sy <= 1; ++sy)
+        {
+            vec2 auv = clamp(base + vec2(sx, sy) * texel, lo, hi);
+            shadowSum += (sc.z - bias > texture2D(tShadowMap, auv).r) ? 1.0 : 0.0;
+        }
+    return 1.0 - (shadowSum / 9.0) * 0.7;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,42 +196,82 @@ void main()
     // F0: base reflectance — dielectrics use 0.04, metals tint with albedo
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    // Separate accumulators for shadow-casting spotlight vs. all other lights.
-    // shadowFactor must only attenuate the spotlight's contribution — applying it
-    // to the full diffuseAccum would darken surfaces lit by non-shadow point lights
-    // that merely happen to fall inside the spotlight's frustum.
-    vec3 diffuseAccum  = vec3(0.0);   // point lights (unshadowed)
-    vec3 specularAccum = vec3(0.0);   // point lights specular (unshadowed)
-    vec3 spotDiffuse   = vec3(0.0);   // shadow-casting spotlight diffuse
-    vec3 spotSpecular  = vec3(0.0);   // shadow-casting spotlight specular
+    // Shadows are applied PER LIGHT inside the loop (each shadow-casting
+    // spotlight samples its own atlas quadrant), so plain accumulators suffice
+    // — a shadowed light only ever attenuates its own contribution.
+    vec3 diffuseAccum  = vec3(0.0);
+    vec3 specularAccum = vec3(0.0);
 
-    for (int i = 0; i < MAX_LIGHTS; i++)
+    // Light list source: clustered path fetches this fragment's froxel list;
+    // fallback path iterates the per-object uniform arrays (8 closest lights).
+    int lightOffset = 0;
+    int lightNum    = int(uLightCount);
+    if (uUseClusters > 0.5)
     {
-        if (float(i) >= uLightCount)
-            break;
+        ivec2 tile  = clamp(ivec2(gl_FragCoord.xy / uClusterParams.xy), ivec2(0), ivec2(15, 7));
+        int   slice = clamp(int(floor(log2(max(vViewPos.z, 0.01)) * uClusterParams.z + uClusterParams.w)), 0, 23);
+        vec2  oc    = texelFetch(tClusterGrid, ivec2(tile.x + tile.y * 16, slice), 0).xy;
+        lightOffset = int(oc.x);
+        lightNum    = int(oc.y);
+    }
 
-        vec3  toLight = uLightPos[i] - vViewPos;
+    for (int n = 0; n < lightNum; n++)
+    {
+        vec3  lightPos;
+        vec3  lightColor;
+        float lightRadius;
+        vec3  spotDir;
+        bool  isSpot;
+        float cosOuter, cosInner;
+        int   shadowSlot;
+
+        if (uUseClusters > 0.5)
+        {
+            int  fi = lightOffset + n;
+            int  li = int(texelFetch(tLightIndices, ivec2(fi & 255, fi >> 8), 0).x);
+            vec4 t0 = texelFetch(tLightData, ivec2(li * 4 + 0, 0), 0);
+            vec4 t1 = texelFetch(tLightData, ivec2(li * 4 + 1, 0), 0);
+            vec4 t2 = texelFetch(tLightData, ivec2(li * 4 + 2, 0), 0);
+            vec4 t3 = texelFetch(tLightData, ivec2(li * 4 + 3, 0), 0);
+            lightPos    = t0.xyz;  lightRadius = t0.w;
+            lightColor  = t1.xyz;  cosInner    = t1.w;
+            spotDir     = t2.xyz;  cosOuter    = t2.w;
+            isSpot      = (cosOuter > -1.5);   // -2 marks a point light
+            shadowSlot  = int(t3.x);           // -1 = casts no shadow
+        }
+        else
+        {
+            lightPos    = uLightPos[n];
+            lightColor  = uLightColor[n].rgb;
+            lightRadius = uLightRadius[n];
+            spotDir     = uLightDir[n];
+            isSpot      = uLightIsSpot[n] > 0.5;
+            cosOuter    = uLightCosOuter[n];
+            cosInner    = uLightCosInner[n];
+            shadowSlot  = -1;   // fallback path carries no shadow data
+        }
+
+        vec3  toLight = lightPos - vViewPos;
         float dist    = length(toLight);
         vec3  L       = toLight / dist;
 
         // Same quadratic attenuation as before
-        float atten = clamp(1.0 - (dist * dist) / (uLightRadius[i] * uLightRadius[i]), 0.0, 1.0);
+        float atten = clamp(1.0 - (dist * dist) / (lightRadius * lightRadius), 0.0, 1.0);
         if (atten <= 0.0) continue;  // fragment outside this light's radius — skip diffuse + GGX
 
         // Spotlight cone attenuation — zero outside the outer cone, smooth falloff
         // between outer and inner cone, full brightness inside the inner cone.
         // dot(-L, spotDir): -L points from light toward fragment; spotDir is the cone axis.
-        bool isSpot = uLightIsSpot[i] > 0.5;
         if (isSpot)
         {
-            float cosAngle = dot(-L, uLightDir[i]);
-            atten *= smoothstep(uLightCosOuter[i], uLightCosInner[i], cosAngle);
+            float cosAngle = dot(-L, spotDir);
+            atten *= smoothstep(cosOuter, cosInner, cosAngle);
             if (atten <= 0.0) continue;
         }
 
         float NdotL = max(dot(N, L), 0.0);
 
-        vec3 thisDiffuse  = uLightColor[i].rgb * NdotL * atten;
+        vec3 thisDiffuse  = lightColor * NdotL * atten;
         vec3 thisSpecular = vec3(0.0);
 
         // --- Specular (GGX Cook-Torrance) ---
@@ -194,20 +287,21 @@ void main()
             vec3  F   = F_Schlick(VdotH, F0);
 
             vec3 spec = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
-            thisSpecular = spec * uLightColor[i].rgb * NdotL * atten;
+            thisSpecular = spec * lightColor * NdotL * atten;
         }
 
-        // Route into shadow-caster bucket (first spotlight) or regular bucket.
-        if (isSpot)
+        // Per-light shadow — sample this light's atlas quadrant. Only applied
+        // to this light's direct contribution; ambient/baked light and other
+        // lights are unaffected.
+        if (shadowSlot >= 0 && uShadowRect[shadowSlot].w > 0.5)
         {
-            spotDiffuse  += thisDiffuse;
-            spotSpecular += thisSpecular;
+            float sf = shadowFactorPCF(vShadowClip[shadowSlot], uShadowRect[shadowSlot]);
+            thisDiffuse  *= sf;
+            thisSpecular *= sf;
         }
-        else
-        {
-            diffuseAccum  += thisDiffuse;
-            specularAccum += thisSpecular;
-        }
+
+        diffuseAccum  += thisDiffuse;
+        specularAccum += thisSpecular;
     }
 
     // Metallic surfaces have no diffuse — suppress it proportionally
@@ -253,45 +347,6 @@ void main()
         float ambientLum = dot(uAmbientColor, vec3(0.2126, 0.7152, 0.0722));
         specularAccum += envSample * envF * roughFade * smoothstep(0.0, 0.05, ambientLum);
     }
-
-    // 3x3 PCF shadow — only applied to direct diffuse, not ambient/baked floor.
-    // Perspective divide is done here (not in the vertex shader) so that OpenGL's
-    // perspective-correct varying interpolation does not introduce a second division,
-    // which would cause shadow offsets that grow as the light gets closer.
-    float shadowFactor = 1.0;
-    if (uHasShadow > 0.5)
-    {
-        vec3 shadowCoord = vShadowClip.xyz / vShadowClip.w;
-        shadowCoord      = shadowCoord * 0.5 + 0.5;
-
-        bool inFrustum = shadowCoord.x >= 0.0 && shadowCoord.x <= 1.0 &&
-                         shadowCoord.y >= 0.0 && shadowCoord.y <= 1.0 &&
-                         shadowCoord.z >= 0.0 && shadowCoord.z <= 1.0;
-        if (inFrustum)
-        {
-            // Slope-scale bias: the constant bias handles precision differences; the
-            // slope term (derivative of shadow depth across the screen) automatically
-            // increases bias for surfaces facing the light at a shallow angle, which
-            // eliminates the triangular acne pattern without increasing Peter Panning.
-            float slope = length(vec2(dFdx(shadowCoord.z), dFdy(shadowCoord.z)));
-            float bias  = uShadowBias + slope * 3.0;
-
-            vec2 texelSize = vec2(1.0 / 2048.0);
-            float shadowSum = 0.0;
-            for (int sx = -1; sx <= 1; ++sx)
-                for (int sy = -1; sy <= 1; ++sy)
-                {
-                    float closestDepth = texture2D(tShadowMap, shadowCoord.xy + vec2(sx, sy) * texelSize).r;
-                    shadowSum += (shadowCoord.z - bias > closestDepth) ? 1.0 : 0.0;
-                }
-            // 0.7 = max shadow darkness; ambient still reaches shadowed areas
-            shadowFactor = 1.0 - (shadowSum / 9.0) * 0.7;
-        }
-    }
-
-    // Merge: point-light diffuse is never shadowed; spotlight diffuse + specular are.
-    diffuseAccum  += spotDiffuse  * shadowFactor;
-    specularAccum += spotSpecular * shadowFactor;
 
     vec3 color = albedo * max(bakedLight, diffuseAccum) * diffuseFactor
                + specularAccum;

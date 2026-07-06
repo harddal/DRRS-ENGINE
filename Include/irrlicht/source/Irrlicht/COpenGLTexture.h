@@ -80,6 +80,9 @@ public:
 	//! return open gl texture name
 	GLuint getOpenGLTextureName() const;
 
+	//! ENGINE FORK: native GPU handle (the GL texture name).
+	virtual u32 getNativeHandle() const { return TextureName; }
+
 	//! return whether this texture has mipmaps
 	virtual bool hasMipMaps() const;
 

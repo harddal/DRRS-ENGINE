@@ -137,6 +137,8 @@
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpUtils.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Particle\ParticleManager.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Particle\ParticleSystemLoader.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\ClusteredLightManager.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\GLExt.cpp" />
     <ClCompile Include="Source\Engine\Renderer\RenderManager.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_BufferHandler.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Spark\src\Core\SPK_DEF.cpp" />
@@ -442,6 +444,8 @@
     <ClInclude Include="Source\Engine\Interface\ImGuiExtensions.h" />
     <ClInclude Include="Source\Engine\Interface\ImTransformControl.h" />
     <ClInclude Include="Source\Engine\Physics\PhysicsManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\ClusteredLightManager.h" />
+    <ClInclude Include="Source\Engine\Renderer\GLExt.h" />
     <ClInclude Include="Source\Engine\Renderer\RenderManager.h" />
     <ClInclude Include="Source\Engine\Resource\FilePaths.h" />
     <ClInclude Include="Source\Engine\Resource\MaterialBuilder.h" />

@@ -185,7 +185,8 @@ CSceneManager::CSceneManager(video::IVideoDriver* driver, io::IFileSystem* fs,
 : ISceneNode(0, 0), Driver(driver), FileSystem(fs), GUIEnvironment(gui),
 	CursorControl(cursorControl), CollisionManager(0),
 	ActiveCamera(0), ShadowColor(150,0,0,0), AmbientLight(0,0,0,0),
-	MeshCache(cache), CurrentRendertime(ESNRP_NONE), LightManager(0),
+	MeshCache(cache), CurrentRendertime(ESNRP_NONE),
+	SkipMeshTransparentRegistration(false), LightManager(0),
 	IRR_XML_FORMAT_SCENE(L"irr_scene"), IRR_XML_FORMAT_NODE(L"node"), IRR_XML_FORMAT_NODE_ATTR_TYPE(L"type")
 {
 	#ifdef _DEBUG
@@ -1272,6 +1273,15 @@ u32 CSceneManager::registerNodeForRendering(ISceneNode* node, E_SCENE_NODE_RENDE
 	case ESNRP_TRANSPARENT:
 		if (!isCulled(node))
 		{
+			// ENGINE FORK: mesh-based transparents are rendered by the engine's
+			// own sorted per-buffer pass — skip the built-in pass for them.
+			// Billboards, particles and custom effect nodes still go through.
+			if (SkipMeshTransparentRegistration &&
+				(node->getType() == ESNT_MESH ||
+				 node->getType() == ESNT_OCTREE ||
+				 node->getType() == ESNT_ANIMATED_MESH))
+				break;
+
 			TransparentNodeList.push_back(TransparentNodeEntry(node, camWorldPos));
 			taken = 1;
 		}
@@ -1366,6 +1376,9 @@ void CSceneManager::drawAll()
 
 	// TODO: This should not use an attribute here but a real parameter when necessary (too slow!)
 	Driver->setAllowZWriteOnTransparent(Parameters.getAttributeAsBool( ALLOW_ZWRITE_ON_TRANSPARENT) );
+
+	// ENGINE FORK: cache once per frame — read during node registration below.
+	SkipMeshTransparentRegistration = Parameters.getAttributeAsBool("Engine_SkipMeshTransparent");
 
 	// do animations and other stuff.
 	OnAnimate(os::Timer::getTime());

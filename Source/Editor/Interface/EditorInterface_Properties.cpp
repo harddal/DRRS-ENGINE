@@ -12,6 +12,7 @@
 #include "Game/Components.h"
 
 #include "Engine/Navigation/NavigationManager.h"
+#include "Engine/Renderer/ClusteredLightManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
 #include "Engine/Prop/PropManager.h"
 
@@ -810,6 +811,36 @@ void EditorInterface::draw_window_prop_scene()
 		ImGui::PushID("FG_STR");
 		ImGui::SliderFloat("Strength", &RenderManager::Get()->filmGrainCallback()->strength, 0.0f, 0.2f, "%.3f");
 		ImGui::PopID();
+
+		// ---- Lighting path (A/B toggle: clustered froxel textures vs. legacy 8-light gather) ----
+		if (auto* clm = RenderManager::Get()->clusteredLights())
+		{
+			bool clustered = clm->isEnabled();
+			if (ImGui::Checkbox("Clustered Lighting", &clustered))
+				clm->setEnabled(clustered);
+			if (clustered)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("(%d lights)", clm->lightCount());
+			}
+		}
+
+		// ---- SSAO (prepass + half-res AO applied before bloom/tonemap) ----
+		{
+			bool ssaoOn = RenderManager::Get()->isSSAOEnabled();
+			if (ImGui::Checkbox("SSAO", &ssaoOn))
+				RenderManager::Get()->setSSAOEnabled(ssaoOn);
+			if (ssaoOn)
+			{
+				auto* cb = RenderManager::Get()->ssaoGenCallback();
+				ImGui::PushID("SSAO_RADIUS");
+				ImGui::SliderFloat("Radius", &cb->radius, 0.1f, 5.0f, "%.2f");
+				ImGui::PopID();
+				ImGui::PushID("SSAO_INTENSITY");
+				ImGui::SliderFloat("Intensity", &cb->intensity, 0.0f, 2.0f, "%.2f");
+				ImGui::PopID();
+			}
+		}
 
 		//ImGui::Text("Lightmaps:");
 
