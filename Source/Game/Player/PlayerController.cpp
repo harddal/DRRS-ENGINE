@@ -287,11 +287,17 @@ void PlayerController::update(float dt)
 	float fxY = 0.0f;
 	if (!m_isDead)
 	{
-		float fxPitch = 0.0f, fxYaw = 0.0f, fxRoll = 0.0f;
-		g_CameraFX.tick(dt, fxPitch, fxYaw, fxRoll, fxY);
+		float fxPitch = 0.0f, fxYaw = 0.0f, fxRoll = 0.0f, fxFovDeg = 0.0f;
+		g_CameraFX.tick(dt, fxPitch, fxYaw, fxRoll, fxY, fxFovDeg);
 		cameraRotation.X += fxPitch;
 		cameraRotation.Y += fxYaw;
 		cameraRotation.Z += fxRoll;
+
+		// FOV kick — fire punch widens, nearby explosions crunch in.
+		// Base FOV captured once before any kick is ever applied; nothing else
+		// in the engine calls setFOV, so PlayerController owns it from here.
+		static const float s_baseFov = camera.camera->getFOV();
+		camera.camera->setFOV(s_baseFov + fxFovDeg * irr::core::DEGTORAD);
 
 		// Clamp after FX to prevent extremes.
 		if (cameraRotation.X > g_bottomAngle) cameraRotation.X = g_bottomAngle;

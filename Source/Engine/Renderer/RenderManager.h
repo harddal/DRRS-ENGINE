@@ -494,6 +494,21 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices*, irr::s32) override {}
 };
 
+// Soft particles — fades SPARK quads near scene geometry using prepass depth.
+class SoftParticleCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float softDistance = 0.5f;   // world units over which the fade ramps
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override
+    {
+        int texSlot = 0, prepassSlot = 14;
+        services->setPixelShaderConstant("tDiffuse",  &texSlot,      1);
+        services->setPixelShaderConstant("tPrepass",  &prepassSlot,  1);
+        services->setPixelShaderConstant("uSoftDist", &softDistance, 1);
+    }
+};
+
 // SSAO generation — hemisphere sampling against the prepass buffer (half res).
 class SSAOGenCallback : public irr::video::IShaderConstantSetCallBack
 {
@@ -538,6 +553,7 @@ public:
 };
 
 class ClusteredLightManager;
+class DecalManager;
 
 class RenderManager
 {
@@ -788,6 +804,17 @@ public:
         if (it != m_ldrEffectNodes.end()) m_ldrEffectNodes.erase(it);
     }
 
+    // Scene-teardown safety net: drops all viewmodel/LDR-effect registrations.
+    // Called from Engine::clearScene() after entities are killed — any entry
+    // still present at that point references a node that is being (or has been)
+    // deleted with the scene, and dereferencing it in the render loop crashes.
+    // Owners that survive teardown must re-register on their next init.
+    void clearEffectNodeRegistrations()
+    {
+        m_viewmodelNodes.clear();
+        m_ldrEffectNodes.clear();
+    }
+
     void registerPostProcessPass(PostProcessPass pass) { m_postProcessPasses.push_back(std::move(pass)); }
     void setPostProcessPassEnabled(const std::string& name, bool enabled)
     {
@@ -840,6 +867,8 @@ public:
     // Clustered forward lighting — per-frame light/froxel textures replacing the
     // per-draw-call gatherClosestLights path. Null until the constructor runs.
     ClusteredLightManager* clusteredLights() const { return m_clusteredLights; }
+    // Screen-space decals (bullet holes, scorch marks) — spawn from game code.
+    DecalManager* decals() const { return m_decalManager; }
     // True while the Entity Builder / Particle Designer preview scene renders;
     // the preview uses its own camera + lights, so shaders fall back to the
     // legacy 8-light path for those draws.
@@ -854,6 +883,10 @@ public:
     }
     bool isSSAOEnabled() const { return m_ssaoEnabled; }
     SSAOGenCallback* ssaoGenCallback() const { return m_ssaoGenCallback; }
+    SoftParticleCallback* softParticleCallback() const { return m_softParticleCallback; }
+    // False when launched with -nosoftparticles: ParticleSystemLoader keeps the
+    // original fixed-function particle materials (A/B isolation switch).
+    bool softParticleShaderEnabled() const { return m_softParticleShaderEnabled; }
 
     // Adaptive (auto) exposure — eye-adaptation effect.
     // When enabled, manual tonemapCallback()->exposure is overridden each frame.
@@ -979,6 +1012,8 @@ private:
     SSAOGenCallback*      m_ssaoGenCallback  = nullptr;
     SSAOBlurCallback*     m_ssaoBlurCallback = nullptr;
     SSAOApplyCallback*    m_ssaoApplyCallback = nullptr;
+    SoftParticleCallback* m_softParticleCallback = nullptr;
+    bool m_softParticleShaderEnabled = true;
     bool                  m_ssaoEnabled     = true;
 
     // Shadow mapping — 4096x4096 R32F atlas, four 2048x2048 quadrants.
@@ -994,6 +1029,9 @@ private:
     // Clustered lighting
     ClusteredLightManager* m_clusteredLights  = nullptr;
     bool                   m_renderingPreview = false;
+
+    // Screen-space decals
+    DecalManager*          m_decalManager     = nullptr;
 
     // Per-frame UBO (std140 "PerFrame" block, binding point 0). Holds time,
     // camera basis, fog, ambient, shadow params, cluster params — everything

@@ -247,6 +247,7 @@ public:
     void setCVar(const std::string& name, const std::string& value);
     void removeCVar(const std::string& name);
     void clearCVars();
+    const std::vector<GlobalCVar>& getCVars() const { return m_globalCVarList; } // console cvarlist/completion
 
     anax::World* world() { return &m_gameWorld; }
 

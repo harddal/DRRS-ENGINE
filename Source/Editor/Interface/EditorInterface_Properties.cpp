@@ -13,6 +13,7 @@
 
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Renderer/ClusteredLightManager.h"
+#include "Engine/Renderer/Particle/ParticleManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
 #include "Engine/Prop/PropManager.h"
 
@@ -838,6 +839,20 @@ void EditorInterface::draw_window_prop_scene()
 				ImGui::PopID();
 				ImGui::PushID("SSAO_INTENSITY");
 				ImGui::SliderFloat("Intensity", &cb->intensity, 0.0f, 2.0f, "%.2f");
+				ImGui::PopID();
+			}
+		}
+
+		// ---- Soft particles (checkbox = shader on/off; slider = fade distance) ----
+		if (auto* spc = RenderManager::Get()->softParticleCallback())
+		{
+			static bool s_softParticles = RenderManager::Get()->softParticleShaderEnabled();
+			if (ImGui::Checkbox("Soft Particles", &s_softParticles))
+				ParticleManager::Get()->setSoftParticleShader(s_softParticles);
+			if (s_softParticles)
+			{
+				ImGui::PushID("SOFT_PART");
+				ImGui::SliderFloat("Fade Dist", &spc->softDistance, 0.0f, 2.0f, "%.2f");
 				ImGui::PopID();
 			}
 		}

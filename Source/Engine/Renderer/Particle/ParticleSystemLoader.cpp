@@ -167,6 +167,19 @@ static IRRQuadRenderer* buildRenderer(const ParticleRendererDef& def,
     renderer->setBlending(blendingFromString(def.blending));
     renderer->enableRenderingHint(DEPTH_WRITE, def.depthWrite);
 
+    // Soft particles: swap the fixed-function blend material for the GLSL
+    // variant that fades quads near scene geometry (prepass depth, unit 14).
+    // The soft material's base is EMT_ONETEXTURE_BLEND — the same type
+    // setBlending() just configured — so the packed blend factors it left in
+    // MaterialTypeParam keep driving the blend; only the shading changes.
+    // "none" blending keeps fixed-function (opaque particles are rare/odd).
+    if (def.blending != "none" && RenderManager::Get()->softParticleShaderEnabled())
+    {
+        auto soft = ShaderMaterialManager::get("soft_particle");
+        if (soft != irr::video::EMT_SOLID)
+            renderer->getMaterialRW().MaterialType = soft;
+    }
+
     if (def.alphaTest)
     {
         renderer->enableRenderingHint(ALPHA_TEST, true);
@@ -200,6 +213,13 @@ static Group* buildGroup(const ParticleGroupDef& def,
 
     Group* group = Group::create(model, def.capacity);
     group->setRenderer(renderer);
+
+    // Alpha-blended groups (smoke etc.) need back-to-front particle sorting or
+    // overlapping quads composite in creation order. Additive groups are
+    // order-independent and skip the sort cost. Requires the camera position
+    // feed in ParticleManager::update().
+    if (def.renderer.blending != "add" && def.renderer.blending != "none")
+        group->enableSorting(true);
     group->setGravity(Vector3D(def.gravityX, def.gravityY, def.gravityZ));
     group->setFriction(def.friction);
 

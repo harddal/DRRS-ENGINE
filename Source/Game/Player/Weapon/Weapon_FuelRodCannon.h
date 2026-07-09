@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../WeaponData.h"
+#include "WeaponEffects.h"
 
 #include <set>
 #include <vector>
@@ -36,10 +37,8 @@ private:
 
 	float m_pointDamage = 120.0f;
 
-	irr::video::E_MATERIAL_TYPE      m_muzzleFlashMaterialType = irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL;
-	irr::scene::IBillboardSceneNode* m_muzzleStarNode          = nullptr;
-	float                            m_muzzleFlashTime         = 0.0f;
-	const float                      m_muzzleFlashDuration     = 60.0f;
+	// Shared muzzle flash VFX (flash-only desc — projectiles/zones stay bespoke)
+	WeaponEffects m_effects;
 
 	irr::video::E_MATERIAL_TYPE m_particleTrailMaterialType = irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL;
 
@@ -69,9 +68,10 @@ private:
 
 	void spawnProjectile();
 	void updateProjectiles(float dt);
-	void detonateAt(const irr::core::vector3df& pos, entityid directHitID);
-	void createMuzzleFlash();
-	void updateMuzzleFlash(float dt);
+	// surfaceNormal: impact normal for contact detonations (scorch orientation);
+	// zero vector for timer detonations (floor probe fallback)
+	void detonateAt(const irr::core::vector3df& pos, entityid directHitID,
+		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f));
 	void spawnZone(const irr::core::vector3df& pos, bool secondary);
 	void updateZones(float dt);
 };

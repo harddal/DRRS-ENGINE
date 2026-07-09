@@ -640,7 +640,7 @@ void GameplaySystem::destroy()
 	
 }
 
-void GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type)
+HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type)
 {
 	auto& entities = getEntities();
 	for (auto i = 0U; i < entities.size(); i++)
@@ -649,16 +649,31 @@ void GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE 
 		{
 			if (entities[i].hasComponent<DamageReceiverComponent>())
 			{
+				auto& desc  = entities[i].getComponent<DescriptorComponent>();
 				auto& dcomp = entities[i].getComponent<DamageReceiverComponent>();
+
+				// Was it lethally damaged before this hit? (update() may not have
+				// flipped isAlive yet — mirror its health rule so same-frame
+				// follow-up hits on a dying entity don't double-report the kill)
+				bool pendingDead = !dcomp.invulnerable && !dcomp.buddha &&
+					(dcomp.threshold - dcomp.damageReceived) <= 0;
 
 				dcomp.damageReceived += damage;
 				dcomp.lastReceivedType = type;
 				dcomp.receivedDamage = true;
 
-				return;
+				if (!desc.isAlive || pendingDead)
+					return HIT_RESULT::NONE; // corpse — damage recorded, no feedback
+
+				bool willDie = !dcomp.invulnerable && !dcomp.buddha &&
+					(dcomp.threshold - dcomp.damageReceived) <= 0;
+
+				return willDie ? HIT_RESULT::KILL : HIT_RESULT::HIT;
 			}
+			return HIT_RESULT::NONE;
 		}
 	}
+	return HIT_RESULT::NONE;
 }
 
 void GameplaySystem::healEntity(entityid id, unsigned int heal)

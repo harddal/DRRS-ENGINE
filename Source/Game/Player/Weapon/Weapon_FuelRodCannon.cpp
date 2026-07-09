@@ -1,4 +1,4 @@
-#include "Weapon_FuelRodCannon.h"
+﻿#include "Weapon_FuelRodCannon.h"
 
 #include "Engine/Engine.h"
 
@@ -108,6 +108,19 @@ void Weapon_FuelRodCannon::init()
 	m_mesh.node->setVisible(false);
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/2x/crosshair131.png");
+
+	// Character sheet: radioactive green blast flash, no tracers/shells/impacts (projectile weapon)
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName = "FIRESPOT";
+	fx.flashColor      = irr::video::SColor(255, 80, 220, 80);
+	fx.flashSize       = 0.9f;
+	fx.flashDuration   = 60.0f;
+	fx.flashLight      = false;
+	fx.tracerPoolSize  = 0;
+	fx.shellPoolSize   = 0;
+	fx.impactParticle  = nullptr;
+	fx.impactDecal     = nullptr;
+	m_effects.init(m_mesh.node, fx);
 }
 
 void Weapon_FuelRodCannon::destroy()
@@ -198,7 +211,7 @@ void Weapon_FuelRodCannon::persist()
 	float dt = Engine::Get()->getDeltaTime();
 
 	updateProjectiles(dt);
-	updateMuzzleFlash(dt);
+	m_effects.update(dt);
 	updateZones(dt);
 }
 
@@ -268,8 +281,8 @@ void Weapon_FuelRodCannon::spawnProjectile()
 	muzzleBone->updateAbsolutePosition();
 	irr::core::vector3df spawnPos = muzzleBone->getAbsolutePosition();
 
-	irr::core::vector3df target    = camera.camera->getTarget();
-	irr::core::vector3df direction = (target - spawnPos).normalize();
+	// Converge on the crosshair's world hit point, then apply the lob on top
+	irr::core::vector3df direction = getAimDirection(spawnPos);
 
 	direction.Y += m_lobAngle;
 	direction.normalize();
@@ -331,12 +344,22 @@ void Weapon_FuelRodCannon::spawnProjectile()
 
 	m_projectiles.emplace_back(proj);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/fuel_rod_cannon/fire.wav", false);
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/fuel_rod_cannon/fire", 0.05f);
 
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(81, 89);
 
-	createMuzzleFlash();
+	m_effects.muzzleFlash();
+
+	// Heaviest kick in the arsenal — slow fire rate earns a violent shove
+	g_CameraFX.addRecoil(-4.0f, Engine::Get()->rng()->getFloat(-0.4f, 0.4f));
+	g_CameraFX.addShake(1.2f, 200.0f);
+	g_CameraFX.addFovKick(2.0f);
+	addViewKick(
+		irr::core::vector3df(0.0f, 0.04f, -0.18f),
+		irr::core::vector3df(7.0f,
+			Engine::Get()->rng()->getFloat(-1.0f, 1.0f),
+			Engine::Get()->rng()->getFloat(-1.8f, 1.8f)));
 }
 
 void Weapon_FuelRodCannon::updateProjectiles(float dt)
@@ -414,6 +437,7 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 		bool hitSomething               = false;
 		irr::scene::ISceneNode* hitNode = nullptr;
 		irr::core::vector3df hitPoint   = currentPos;
+		irr::core::vector3df hitNormal(0.0f, 0.0f, 0.0f);
 
 		if (raycastResult.hit && raycastResult.node)
 		{
@@ -434,6 +458,7 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 							hitSomething = true;
 							hitNode      = raycastResult.node;
 							hitPoint     = raycastResult.point;
+							hitNormal    = raycastResult.normal;
 						}
 					}
 				}
@@ -448,7 +473,7 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
 				hitEntityID != it->entity.getComponent<DescriptorComponent>().id)
 			{
-				detonateAt(hitPoint, hitEntityID);
+				detonateAt(hitPoint, hitEntityID, hitNormal);
 				shouldRemove = true;
 			}
 		}
@@ -515,39 +540,24 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 	}
 }
 
-void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid directHitID)
+void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
+	const irr::core::vector3df& surfaceNormal)
 {
-	SoundManager::Get()->sound()->play3D("content/sound/effect/explosion2.wav", pos);
+	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.05f);
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
 
-	anax::Entity& playerEnt = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (playerEnt.isValid() && playerEnt.hasComponent<TransformComponent>())
-	{
-		const float maxShakeDist = 7.0f;
-		const float peakShake    = 5.0f;
-		const float shakeDurMs   = 400.0f;
+	// Radioactive green flash + scorch (oriented to the hit surface) + proximity
+	// feedback — the biggest blast in the arsenal
+	m_effects.explosionAt(pos,
+		irr::video::SColorf(0.3f, 1.0f, 0.3f), 11.0f, 5.0f, 7.0f, 400.0f,
+		surfaceNormal);
 
-		float dist      = (pos - playerEnt.getComponent<TransformComponent>().getPosition()).getLength();
-		float intensity = std::max(0.0f, 1.0f - dist / maxShakeDist) * peakShake;
-
-		if (intensity > 0.05f)
-			g_CameraFX.addShake(intensity, shakeDurMs);
-	}
-
-	// Point damage on direct hit
+	// Point damage on direct hit — through the chokepoint for hitmarker/kill feedback.
+	// Radiation-zone DoT ticks intentionally do NOT feed the hitmarker (spam).
 	if (directHitID != _entity_null_value)
 	{
-		auto entities = WorldManager::Get()->managerSystem()->getEntities();
-		for (auto& entity : entities)
-		{
-			if (entity.hasComponent<DescriptorComponent>() &&
-				entity.getComponent<DescriptorComponent>().id == directHitID)
-			{
-				if (entity.hasComponent<DamageReceiverComponent>())
-					entity.getComponent<DamageReceiverComponent>().damageReceived += (int)m_pointDamage;
-				break;
-			}
-		}
+		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
+			directHitID, static_cast<unsigned int>(m_pointDamage)));
 	}
 
 	// The zone does all ongoing damage; no instant splash
@@ -745,62 +755,3 @@ void Weapon_FuelRodCannon::updateZones(float dt)
 	}
 }
 
-void Weapon_FuelRodCannon::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	m_mesh.node->updateAbsolutePosition();
-
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("FIRESPOT");
-	if (!muzzleBone)
-	{
-		spdlog::warn("Muzzle bone not found on weapon model");
-		return;
-	}
-
-	muzzleBone->updateAbsolutePosition();
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			muzzleBone,
-			irr::core::dimension2df(0.9f, 0.9f),
-			irr::core::vector3df(0.0f, 0.0f, 0.0f)
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING,       false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE,  false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
-	}
-
-	auto* starTex = RenderManager::Get()->driver()->getTexture("content/texture/particle/star_05.png");
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-	m_muzzleStarNode->updateAbsolutePosition();
-
-	m_muzzleStarNode->setColor(irr::video::SColor(255, 80, 220, 80));
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_FuelRodCannon::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		m_muzzleStarNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		m_muzzleStarNode->setColor(irr::video::SColor(alpha, 80, 220, 80));
-	}
-}

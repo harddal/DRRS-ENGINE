@@ -1,3 +1,4 @@
+#include "Engine/Renderer/DecalManager.h"
 #include "Game/Behavior/Classes/TurretBehavior.h"
 
 #include "Engine/Engine.h"
@@ -291,9 +292,16 @@ void TurretBehavior::fire(const vector3df& muzzlePos, const vector3df& dir)
                     hitEntity.getComponent<DamageReceiverComponent>().damageReceived += m_damage;
 
                 if (hitDesc.type != ET_PLAYER)
+                {
                     ParticleManager::Get()->setScale(
                         ParticleManager::Get()->spawn("spark", irr2spk(result.point)),
                         m_entityScale);
+
+                    // Bullet hole — screen-space decal along the surface normal
+                    RenderManager::Get()->decals()->spawn(
+                        result.point, result.normal, 0.2f,
+                        "content/texture/fx/bullet_hole.png");
+                }
             }
         }
     }

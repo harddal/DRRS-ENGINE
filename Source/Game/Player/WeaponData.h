@@ -7,6 +7,8 @@
 
 #include "Engine/Resource/FilePaths.h"
 
+#include "Game/Components/DamageReceiverComponent.h"
+
 #define _weapon_crosshair_size 64
 #define _weapon_crosshair2x_size 128
 #define _weapon_crosshair3x_size 256
@@ -92,8 +94,34 @@ public:
 	virtual void startUnequip() { unequip(); }
 	virtual bool isUnequipping() const { return false; }
 
-	// Helper method for weapon sway - call this from derived class update()
+	// Composes sway + view kick and writes the viewmodel node transform once per
+	// frame. Called by WeaponController after update(); weapons must not write
+	// m_mesh.node position/rotation themselves or the two will fight.
 	virtual void updateWeaponSway(float dt);
+
+	// Instant viewmodel kick (position snap-back / rotation punch) recovered by an
+	// exponential spring inside updateWeaponSway(). Call from fire()/swing paths.
+	void addViewKick(const irr::core::vector3df& posKick, const irr::core::vector3df& rotKick);
+	void resetViewKick();
+
+	// Hit-confirmation feedback. Weapons pass the HIT_RESULT from
+	// GameplaySystem::damageEntity(); HIT flashes the hitmarker + plays a tick
+	// (rate-limited), KILL shows a larger red marker + kill sound. NONE is a no-op.
+	static void registerHitFeedback(HIT_RESULT result);
+
+	// Draws the fading hitmarker over the crosshair. Called once per frame by
+	// WeaponController::update() — weapons never call this themselves.
+	static void drawHitFeedback();
+
+	// World point under the crosshair: camera-center ray hit, or the ray's far end.
+	irr::core::vector3df getCrosshairAimPoint(float maxRange = 1000.0f);
+
+	// Converging-aim direction: from 'origin' (typically the muzzle bone, which sits
+	// below-right of screen centre) toward the crosshair aim point, so muzzle-origin
+	// rays/projectiles land on the crosshair instead of running parallel to the
+	// camera ray. Falls back to camera forward when the aim point is too close to
+	// converge on safely.
+	irr::core::vector3df getAimDirection(const irr::core::vector3df& origin, float maxRange = 1000.0f);
 
 	// Debug accessors for the viewmodel positioning tool in WeaponController
 	irr::core::vector3df& debugViewPositionOffset() { return m_viewPositionOffset; }
@@ -116,8 +144,15 @@ protected:
 
 	// Weapon sway variables
 	irr::core::vector3df m_lastCameraRotation;
+	irr::core::vector3df m_swayOffset;       // smoothed sway displacement (lags camera)
 	float m_swayAmount = 0.02f;
 	float m_swaySmoothing = 0.1f;
+
+	// View kick spring state (shared by all weapons)
+	irr::core::vector3df m_kickPos;          // positional kick offset
+	irr::core::vector3df m_kickRot;          // rotational kick offset (degrees)
+	float m_kickPosRecovery = 15.0f;         // spring rate, per second
+	float m_kickRotRecovery = 10.0f;         // spring rate, per second
 
 };
 

@@ -44,3 +44,27 @@ GL texture name in `COpenGLTexture`. The engine uses it to bind frame-constant
 textures (shadow map RTT → unit 11, env map → unit 12) to raw texture units
 above Irrlicht's 8 material slots, replacing the old pattern of smuggling them
 in through material texture layers via `setMaterial()` inside shader callbacks.
+
+## 4. Re-apply base material on MaterialTypeParam change (2026-07)
+
+**File:** `source/Irrlicht/COpenGLSLMaterialRenderer.cpp` (`OnSetMaterial`)
+
+`COpenGLSLMaterialRenderer::OnSetMaterial` only invoked the base material's
+state setup when the material *type* changed. Shader materials built over
+`EMT_ONETEXTURE_BLEND` carry their blend factors packed in `MaterialTypeParam`
+(the engine's soft-particle material: SPARK packs additive vs alpha per group),
+so consecutive draws sharing the shader type but differing in params silently
+kept the previous draw's blend state. The condition now also compares
+`MaterialTypeParam` — mirroring why vanilla `ONETEXTURE_BLEND`'s own change
+check is commented out upstream.
+
+**Ordering amendment (2026-07):** the vanilla function tail ran
+`setBasicRenderStates(material, lastMaterial, …)` *after* the base material's
+`OnSetMaterial`. Its `BlendOperation` branch (`COpenGLDriver.cpp` ~3005) issues
+`glDisable(GL_BLEND)` when transitioning `EBO_x → EBO_NONE` — so a draw whose
+material sets `EMF_BLEND_OPERATION` (e.g. a muzzle-flash billboard) followed by
+a GLSL-over-blend-base draw (SPARK soft particles, `BlendOperation` default
+`EBO_NONE`) had its blending disabled *after* the base material enabled it:
+particles rendered opaque for as long as a flash was visible. The function now
+applies textures + `setBasicRenderStates` **first** and the base material's
+blend state **last**, mirroring the builtin renderers' ordering.

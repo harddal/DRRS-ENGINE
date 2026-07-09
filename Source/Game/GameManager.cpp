@@ -88,7 +88,12 @@ void GameManager::destroy()
 		g_FreeCameraController.reset();
 	}
 
-	if (g_PlayerController && WorldManager::Get()->managerSystem()->getEntityByName("player").isValid())
+	// Always tear down the player controller when it exists — its destroy() path
+	// unregisters weapon viewmodel/LDR-effect nodes from the RenderManager.
+	// The old player-entity-valid guard skipped this when the player had died,
+	// leaving those registrations dangling after clearScene() deleted the nodes
+	// (access violation in the LDR pass on game→edit transitions).
+	if (g_PlayerController)
 	{
 		g_PlayerController->destroy();
 		g_PlayerController.reset();

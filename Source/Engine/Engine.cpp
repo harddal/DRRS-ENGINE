@@ -3,6 +3,7 @@
 #include <IMGUI/imgui.h>
 
 #include "Debug/DebugState.h"
+#include "Engine/Renderer/DecalManager.h"
 #include "Editor/EditorState.h"
 #include "Editor/EditorGameState.h"
 #include "Game/IntroState.h"
@@ -40,6 +41,13 @@ Engine::Engine(const std::string& name, const std::string& args) :
 			m_EnableDebugConsole = true;
 			m_EnableGameDebugFeatures = true;
 		}
+	}
+	else
+	{
+		// The editor is a dev environment — the in-game debug console (tilde)
+		// is always available when playtesting via EditorGameState. Input
+		// blocking while it is open is handled in update() (consoleBlocking).
+		m_EnableDebugConsole = true;
 	}
 
     if (s_Instance)
@@ -107,9 +115,21 @@ void Engine::update()
 		
 		// Store variable frame time for UI updates (used after fixed loop)
 		float variableDeltaMs = frameTime * 1000.0f;
-		
-		// Add frame time to accumulator
-		m_accumulator += frameTime;
+
+		// --- Time scale ---------------------------------------------------
+		// The hit-stop countdown runs on REAL frame time (outside the scaled
+		// world clock) so a near-zero freeze always recovers on schedule.
+		float effectiveScale = m_timeScale;
+		if (m_hitStopRemainingMs > 0.0f)
+		{
+			m_hitStopRemainingMs -= frameTime * 1000.0f;
+			effectiveScale = m_hitStopScale < m_timeScale ? m_hitStopScale : m_timeScale;
+		}
+
+		// Add (scaled) frame time to accumulator — fewer fixed steps per real
+		// second slows logic + PhysX + simulation time coherently; rendering
+		// below stays at full rate
+		m_accumulator += frameTime * effectiveScale;
 		
 		// Initialization queue for new states
 		if (m_stateManager.isNewState())
@@ -132,25 +152,37 @@ void Engine::update()
 				if (m_EnableDebugConsole)
 				{
 					static auto tilde_released = false;
-					if (m_inputManager.getKeyRelease(KEY_TILDE, &tilde_released, true)) 
+					if (m_inputManager.getKeyRelease(KEY_TILDE, &tilde_released, true))
 					{
 						m_drawConsole = !m_drawConsole;
 
 						InputManager::Get()->centerMouse();
-						
-						m_debugConsole.clearInputBuffer();
+
+						// Software cursor while the console is open (scrollback wheel/drag)
+						ImGui::GetIO().MouseDrawCursor = m_drawConsole;
+
+						m_gameConsole.clearInputBuffer();
 					}
 				}
 
-                if (m_drawConsole)
-                {
-					m_debugConsole.draw(m_deltaTime);
-                }
-				else
+				// Draw every frame (not just while open) so the slide-out
+				// animation can finish after the console is toggled closed
+				m_gameConsole.setOpen(m_drawConsole);
+				m_gameConsole.draw(m_deltaTime);
+
+				if (!m_drawConsole)
 				{
 					m_debugConsole.draw_stats();
 				}
             }
+			else if (m_drawConsole)
+			{
+				// Left game mode (e.g. ESC back to the editor) with the console
+				// open — close it so its state and cursor don't leak into the editor
+				m_drawConsole = false;
+				m_gameConsole.setOpen(false);
+				ImGui::GetIO().MouseDrawCursor = false;
+			}
         }
 
 		// Prepare write buffer for this frame's logic updates
@@ -402,7 +434,19 @@ void Engine::clearScene()
 {
 	ParticleManager::Get()->clear();
 
+	if (RenderManager::Get()->decals())
+		RenderManager::Get()->decals()->clear();
+
 	WorldManager::Get()->killAllEntities();
+
+	// Safety net: any viewmodel/LDR-effect registration still alive here points
+	// at a node deleted with the scene — drop them before the next render pass.
+	RenderManager::Get()->clearEffectNodeRegistrations();
+
+	// Mode-switch safety: never carry bullet time or an active hit-stop across scenes
+	m_timeScale = 1.0f;
+	m_hitStopRemainingMs = 0.0f;
+
 	WorldManager::Get()->clearCVars();
 
 	SoundManager::Get()->sound()->soloud().stopAll();

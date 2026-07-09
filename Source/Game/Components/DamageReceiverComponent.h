@@ -10,6 +10,15 @@ enum class DAMAGE_TYPE
 	DEFAULT
 };
 
+// Result of a GameplaySystem::damageEntity() call — lets attackers drive
+// hit-confirmation feedback (hitmarkers, hit/kill sounds).
+enum class HIT_RESULT
+{
+	NONE = 0,   // no damageable entity, or it was already dead
+	HIT  = 1,   // damage landed
+	KILL = 2    // this damage will kill it (health crosses zero this tick)
+};
+
 struct DamageReceiverComponent : anax::Component
 {
 	bool invulnerable, buddha;

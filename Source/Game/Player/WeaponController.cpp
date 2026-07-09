@@ -106,6 +106,9 @@ void WeaponController::update()
 
 	current_weapon->update();
 
+	// Hitmarker overlay — driven by registerHitFeedback() from any weapon's damage
+	PlayerWeapon::drawHitFeedback();
+
 	for (auto i = 0U; i < WEAP_COUNT; i++)
 	{
 		m_player_weapon.at(i)->persist();

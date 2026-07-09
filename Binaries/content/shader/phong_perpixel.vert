@@ -16,7 +16,7 @@ layout(std140) uniform PerFrame
     vec3  uCamUp;         float uHasEnvMap;
     vec3  uCamForward;    float uShadowBias;
     vec4  uClusterParams; // (tileW_px, tileH_px, sliceScale, sliceBias)
-    float fTime;          float uTime;  float uUseClusters;  float uPerFramePad0;
+    float fTime;          float uTime;  float uUseClusters;  float uPrepassValid;
     mat4  uInvView;       // main camera view inverse — world-pos reconstruction
     mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
     vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active

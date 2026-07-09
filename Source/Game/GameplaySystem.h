@@ -18,7 +18,7 @@ public:
     void update();
 	void destroy();
 
-	void damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type = DAMAGE_TYPE::DEFAULT);
+	HIT_RESULT damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type = DAMAGE_TYPE::DEFAULT);
 	void healEntity(entityid id, unsigned int heal);
 	void setInvulnerable(entityid id, bool set = true);
 	void setBuddha(entityid id, bool set = true);

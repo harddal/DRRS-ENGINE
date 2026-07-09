@@ -23,6 +23,10 @@ struct CameraFX
 	float shakeDuration = 0.0f;   // Total duration of current shake event (ms)
 	float shakeTimer    = 0.0f;   // Elapsed time since shake started (ms)
 
+	// ---- FOV kick ---------------------------------------------------------
+	float fovKick       = 0.0f;   // Current FOV offset (degrees; + = wider punch, - = crunch-in)
+	float fovDecaySpeed = 9.0f;   // Exponential decay rate (multiplier per second)
+
 	// ---- Landing bob (damped spring) -------------------------------------
 	// Pitch: positive = pitched down. k=200/c=16 → ζ≈0.57, returns in ~270ms
 	// with a small upward overshoot — reads as a soft spring, not a hard jolt.
@@ -64,6 +68,15 @@ struct CameraFX
 	}
 
 	// ------------------------------------------------------------------
+	// FOV punch: positive widens the view (fire recoil), negative crunches
+	// in (nearby explosion). Recovers exponentially like recoil.
+	// ------------------------------------------------------------------
+	void addFovKick(float degrees)
+	{
+		fovKick += degrees;
+	}
+
+	// ------------------------------------------------------------------
 	// Call from a weapon on impact to trigger screen shake.
 	// Only upgrades an existing shake if the new one is stronger.
 	// amount   : peak shake magnitude in degrees
@@ -81,10 +94,11 @@ struct CameraFX
 
 	// ------------------------------------------------------------------
 	// Called by PlayerController::update() every frame.
-	// Outputs X (pitch), Y (yaw), and Z (roll) offsets in degrees.
+	// Outputs X (pitch), Y (yaw), Z (roll) offsets in degrees, camera Y
+	// displacement in units, and a FOV offset in degrees.
 	// dt : delta time in milliseconds
 	// ------------------------------------------------------------------
-	void tick(float dt, float& outPitchOffset, float& outYawOffset, float& outRollOffset, float& outYOffset)
+	void tick(float dt, float& outPitchOffset, float& outYawOffset, float& outRollOffset, float& outYOffset, float& outFovOffsetDeg)
 	{
 		float dtSec = dt / 1000.0f;
 
@@ -94,6 +108,10 @@ struct CameraFX
 
 		if (fabsf(recoilPitch) < 0.01f) recoilPitch = 0.0f;
 		if (fabsf(recoilYaw)   < 0.01f) recoilYaw   = 0.0f;
+
+		// --- Decay FOV kick (exponential) -----------------------------------
+		fovKick -= fovKick * fovDecaySpeed * dtSec;
+		if (fabsf(fovKick) < 0.01f) fovKick = 0.0f;
 
 		// --- Compute shake offset ------------------------------------------
 		float shakeX = 0.0f;
@@ -139,10 +157,11 @@ struct CameraFX
 		// Y dip: k=200, c=20 — near-critically damped, no vertical bounce
 		integrateSpring(landingDipPos, landingDipVel, 200.0f, 20.0f, 0.0001f, 0.001f);
 
-		outPitchOffset = recoilPitch + shakeX + landingBobPos;
-		outYawOffset   = recoilYaw;
-		outRollOffset  = shakeZ;
-		outYOffset     = landingDipPos;
+		outPitchOffset  = recoilPitch + shakeX + landingBobPos;
+		outYawOffset    = recoilYaw;
+		outRollOffset   = shakeZ;
+		outYOffset      = landingDipPos;
+		outFovOffsetDeg = fovKick;
 	}
 };
 

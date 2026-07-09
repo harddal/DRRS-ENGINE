@@ -192,7 +192,25 @@ void COpenGLSLMaterialRenderer::OnSetMaterial(const video::SMaterial& material,
 				bool resetAllRenderstates,
 				video::IMaterialRendererServices* services)
 {
-	if (material.MaterialType != lastMaterial.MaterialType || resetAllRenderstates)
+	// ENGINE FORK: also re-run the base material when MaterialTypeParam changes.
+	// Shader materials over EMT_ONETEXTURE_BLEND carry their blend factors packed
+	// in MaterialTypeParam (e.g. SPARK particle groups: additive vs alpha); with
+	// the vanilla type-only check, consecutive draws sharing the shader type but
+	// differing in params kept the previous draw's blend state.
+	//
+	// ENGINE FORK (ordering): setBasicRenderStates must run BEFORE the base
+	// material applies its blend state — mirroring the builtin renderers. The
+	// vanilla tail ran it LAST, and its BlendOperation branch (EBO_x -> EBO_NONE,
+	// e.g. an EMF_BLEND_OPERATION muzzle flash followed by a SPARK draw) issued
+	// glDisable(GL_BLEND) AFTER the base material's glEnable — particles rendered
+	// opaque for as long as a flash was visible.
+	for (u32 i=0; i<MATERIAL_MAX_TEXTURES; ++i)
+		Driver->setActiveTexture(i, material.getTexture(i));
+	Driver->setBasicRenderStates(material, lastMaterial, resetAllRenderstates);
+
+	if (material.MaterialType != lastMaterial.MaterialType ||
+		material.MaterialTypeParam != lastMaterial.MaterialTypeParam ||
+		resetAllRenderstates)
 	{
 		if (Program2)
 			Driver->extGlUseProgram(Program2);
@@ -206,10 +224,6 @@ void COpenGLSLMaterialRenderer::OnSetMaterial(const video::SMaterial& material,
 	//let callback know used material
 	if (CallBack)
 		CallBack->OnSetMaterial(material);
-
-	for (u32 i=0; i<MATERIAL_MAX_TEXTURES; ++i)
-		Driver->setActiveTexture(i, material.getTexture(i));
-	Driver->setBasicRenderStates(material, lastMaterial, resetAllRenderstates);
 }
 
 

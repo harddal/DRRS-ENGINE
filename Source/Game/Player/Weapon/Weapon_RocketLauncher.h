@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../WeaponData.h"
+#include "WeaponEffects.h"
 
 #include <vector>
 
@@ -37,11 +38,8 @@ private:
 	float m_splashForce  = 1.0f;      // Peak impulse magnitude applied to dynamic PhysX objects at the epicentre
 	float m_projectileSpeed = 35.0f;
 
-	// Muzzle flash
-	irr::video::E_MATERIAL_TYPE m_muzzleFlashMaterialType = irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL;
-	irr::scene::IBillboardSceneNode* m_muzzleStarNode = nullptr;  // Billboard facing camera
-	float m_muzzleFlashTime = 0.0f;
-	const float m_muzzleFlashDuration = 50.0f; // 50ms flash
+	// Shared muzzle flash VFX (flash-only desc — trails/explosions stay bespoke)
+	WeaponEffects m_effects;
 
 	// Particle trail shader
 	irr::video::E_MATERIAL_TYPE m_particleTrailMaterialType = irr::video::E_MATERIAL_TYPE::EMT_TRANSPARENT_ALPHA_CHANNEL;
@@ -62,7 +60,5 @@ private:
 	void renderNPCLockIndicators(irr::scene::ICameraSceneNode* cam);
 	void spawnProjectile(bool useTracking = false);
 	void updateProjectiles(float dt);
-	void createMuzzleFlash();
-	void updateMuzzleFlash(float dt);
 	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID);
 };

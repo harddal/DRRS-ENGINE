@@ -21,6 +21,7 @@
 #include "EngineState.h"
 
 #include "Engine/Interface/DebugConsole.h"
+#include "Engine/Interface/GameConsole.h"
 
 class Engine
 {
@@ -139,6 +140,32 @@ public:
     irr::u32 getCurrentTime() const { return static_cast<irr::u32>(m_simulationTime); }
     irr::f32 getDeltaTime() const { return m_deltaTime; }
 
+	// ------------------------------------------------------------------
+	// Time scale — scales the fixed-timestep accumulator feed, slowing the
+	// whole simulation coherently (logic, PhysX step frequency, particles,
+	// getCurrentTime()) while rendering and audio run at real time.
+	//
+	// setTimeScale : persistent world speed (bullet time). Clamped to
+	//                [0.1, 2.0] — a persistent near-zero scale would starve
+	//                the fixed loop of input sampling and softlock the game.
+	// requestHitStop : temporary near-freeze layered on top; effective scale
+	//                is min(hitStopScale, timeScale) while active. Counts
+	//                down on the REAL clock, so it always recovers even at
+	//                scale ~0. Extends (never shortens) an active stop.
+	// ------------------------------------------------------------------
+	void setTimeScale(float scale)
+	{
+		m_timeScale = scale < 0.1f ? 0.1f : (scale > 2.0f ? 2.0f : scale);
+	}
+	float getTimeScale() const { return m_timeScale; }
+
+	void requestHitStop(float durationMs, float scale = 0.05f)
+	{
+		if (durationMs > m_hitStopRemainingMs)
+			m_hitStopRemainingMs = durationMs;
+		m_hitStopScale = scale;
+	}
+
     bool isGameMode() const { return m_isGameMode; }
     void setGameMode(bool mode = true) { m_isGameMode = mode; }
 
@@ -192,6 +219,11 @@ private:
 	const float m_maxFrameTime = 0.25f;          // Spiral of death protection (250ms max)
     float m_simulationTime = 0.0f;               // Actual simulation time in milliseconds (increments each fixed step)
 
+	// Time scale state (see setTimeScale/requestHitStop)
+	float m_timeScale = 1.0f;                    // Persistent world speed (bullet time)
+	float m_hitStopRemainingMs = 0.0f;           // Real-time countdown of the active hit-stop
+	float m_hitStopScale = 0.05f;                // Scale used while a hit-stop is active
+
 	irr::f32 m_currentPhysicsTick, m_physicsTime;
 	irr::f32 m_currentRenderTick, m_renderTime;
 
@@ -210,6 +242,7 @@ private:
 
 	RNG m_rng;
 
-    DebugConsole m_debugConsole;
+    DebugConsole m_debugConsole; // stats overlay only — console UI replaced by GameConsole
+    GameConsole  m_gameConsole;
     StateManager m_stateManager;
 };

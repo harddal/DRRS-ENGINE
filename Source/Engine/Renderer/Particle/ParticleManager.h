@@ -30,6 +30,12 @@ public:
     // Returns false if the file cannot be loaded.
     bool precache(const std::string& name, const std::string& path);
 
+    // Runtime toggle between the GLSL soft-particle material and the original
+    // fixed-function EMT_ONETEXTURE_BLEND on every cached template and live
+    // instance. Renderers are shared between templates and their SPK_Copy
+    // clones, so the flip is immediate and idempotent.
+    void setSoftParticleShader(bool enabled);
+
     // Register an in-memory def directly, bypassing file I/O.
     // Always overwrites any existing entry under 'name' (intended for "_preview").
     void precacheFromDef(const std::string& name, const ParticleSystemDef& def);

@@ -30,6 +30,20 @@ public:
         return m_entries;
     }
 
+    // Incremental drain for consumers that mirror the log (e.g. GameConsole):
+    // appends entries with sequence >= 'seq' to out, returns the next sequence
+    // to pass. Handles the ring evicting old entries (seq gaps are skipped).
+    uint64_t entriesSince(uint64_t seq, std::vector<ImGuiLogEntry>& out)
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        uint64_t first = m_totalPushed - m_entries.size(); // sequence of m_entries[0]
+        if (seq < first)
+            seq = first;
+        for (size_t i = static_cast<size_t>(seq - first); i < m_entries.size(); ++i)
+            out.push_back(m_entries[i]);
+        return m_totalPushed;
+    }
+
     void clear()
     {
         std::lock_guard<std::mutex> lk(mutex_);
@@ -44,10 +58,12 @@ protected:
         if (m_entries.size() >= k_maxEntries)
             m_entries.erase(m_entries.begin());
         m_entries.push_back({ msg.level, std::string(buf.begin(), buf.end()) });
+        m_totalPushed++;
     }
 
     void flush_() override {}
 
 private:
     std::vector<ImGuiLogEntry> m_entries;
+    uint64_t m_totalPushed = 0; // monotonic — drives entriesSince()
 };

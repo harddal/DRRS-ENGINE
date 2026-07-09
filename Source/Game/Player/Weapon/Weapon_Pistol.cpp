@@ -1,6 +1,7 @@
-#include "Weapon_Pistol.h"
+﻿#include "Weapon_Pistol.h"
 
 #include "Engine/Engine.h"
+#include "Engine/Renderer/DecalManager.h"
 
 #undef MB_RIGHT
 
@@ -108,57 +109,26 @@ void Weapon_Pistol::init()
 
 	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
 	if (!m_muzzleNode)
-		spdlog::warn("Weapon_PulseRifle: 'FIRESPOT' joint not found");
-
-	m_muzzleFlashMaterialType = irr::video::EMT_TRANSPARENT_ADD_COLOR;
+		spdlog::warn("Weapon_Pistol: 'FIRESPOT' joint not found");
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair038.png");
 
-	// Pre-build shell casing pool (no per-shot alloc/PhysX cost)
-	auto* shellMesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/shellsmall.obj");
-	auto* shellTex = RenderManager::Get()->driver()->getTexture("content/mesh/prop/shells/shellsColor.png");
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		m_shellPool[i].node = RenderManager::Get()->sceneManager()->addMeshSceneNode(shellMesh);
-		if (m_shellPool[i].node)
-		{
-			m_shellPool[i].node->setMaterialTexture(0, shellTex);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
-			m_shellPool[i].node->setRotation(irr::core::vector3df(0.0f, 180.0f, 0.0f));
-			m_shellPool[i].node->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
-			m_shellPool[i].node->setMaterialType(perpixelMat);
-			m_shellPool[i].node->setVisible(false);
-		}
-		m_shellPool[i].active = false;
-	}
-
+	// Character sheet: small sharp flash, brass shells right off the slide, every-3rd tracer
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName = "FIRESPOT";
+	fx.flashColor      = irr::video::SColor(255, 255, 204, 76);
+	fx.flashSize       = 0.3f;
+	fx.lightColor      = irr::video::SColorf(1.0f, 0.8f, 0.2f);
+	fx.tracerFrequency = 3;
+	fx.shellMesh       = "content/mesh/prop/shells/shellsmall.obj";
+	fx.shellEjectJoint = "BRASS";
+	fx.shellPoolSize   = 80;
+	m_effects.init(m_mesh.node, fx);
 }
 
 void Weapon_Pistol::destroy()
 {
-	// Clean up shell casing pool
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		if (m_shellPool[i].node)
-		{
-			m_shellPool[i].node->remove();
-			m_shellPool[i].node = nullptr;
-		}
-	}
-
-	// Clean up all tracer beams
-	for (auto& tracer : m_tracerBeams)
-	{
-		if (tracer.node)
-		{
-			tracer.node->remove();
-		}
-	}
-	m_tracerBeams.clear();
-
-	if (m_muzzleStarNode)
-		RenderManager::Get()->unregisterLDREffectNode(m_muzzleStarNode);
+	m_effects.destroy();
 
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
 	m_mesh.node->remove();
@@ -172,13 +142,12 @@ void Weapon_Pistol::update()
 		return;
 
 	float currentTime = Engine::Get()->getCurrentTime();
-	float dt = Engine::Get()->getDeltaTime();
-	float dt_s = dt / 1000.0f;
 
 	// Consume animation-end signal once per frame to avoid double-reads
 	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
 
 	// State: unequip animation → hide (WeaponController completes switch next frame)
+	// Kick spring recovery + transform are handled by updateWeaponSway().
 	if (m_isUnequipping)
 	{
 		if (animEnded)
@@ -186,11 +155,6 @@ void Weapon_Pistol::update()
 			m_isUnequipping = false;
 			m_mesh.node->setVisible(false);
 		}
-		// Apply spring recovery but skip all input processing
-		m_kickPos -= m_kickPos * (15.0f * dt_s);
-		m_kickRot -= m_kickRot * (10.0f * dt_s);
-		m_mesh.node->setPosition(m_viewPositionOffset + m_kickPos);
-		m_mesh.node->setRotation(m_viewRotationOffset + m_kickRot);
 		return;
 	}
 
@@ -204,12 +168,23 @@ void Weapon_Pistol::update()
 			m_mesh.node->setFrameLoop(20, 50);
 		}
 	}
-	// State: fire/reload animation → idle
-	else if (m_isAnimating)
+	// State: reload animation → idle
+	else if (m_isReloading)
 	{
 		if (animEnded)
 		{
-			m_isAnimating = false;
+			m_isReloading = false;
+			m_mesh.node->setLoopMode(true);
+			m_mesh.node->setFrameLoop(20, 50);
+		}
+	}
+	// State: fire animation → idle. Firing is NOT blocked while this plays —
+	// fire() restarts the frame loop so fast taps land at m_minFireInterval.
+	else if (m_isFireAnim)
+	{
+		if (animEnded)
+		{
+			m_isFireAnim = false;
 			m_mesh.node->setLoopMode(true);
 			m_mesh.node->setFrameLoop(20, 50);
 		}
@@ -222,7 +197,7 @@ void Weapon_Pistol::update()
 
 	bool canFire = lmbPressed
 		&& !m_firedThisPress
-		&& !m_isAnimating
+		&& !m_isReloading
 		&& !m_isEquipping
 		&& (currentTime - m_lastFireTime) >= m_minFireInterval;
 
@@ -237,37 +212,21 @@ void Weapon_Pistol::update()
 	static bool r = false;
 	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
 	{
-		if (!m_isAnimating && !m_isEquipping)
+		if (!m_isReloading && !m_isEquipping)
 		{
 			m_mesh.node->setLoopMode(false);
 			m_mesh.node->setFrameLoop(96, 179);
-			m_isAnimating = true;
+			m_isReloading = true;
+			m_isFireAnim = false;
 		}
 	}
-
-	// Exponential spring recovery for programmatic kick (k=15 pos, k=10 rot, per second)
-	m_kickPos -= m_kickPos * (15.0f * dt_s);
-	m_kickRot -= m_kickRot * (10.0f * dt_s);
-
-	m_mesh.node->setPosition(m_viewPositionOffset + m_kickPos);
-	m_mesh.node->setRotation(m_viewRotationOffset + m_kickRot);
 
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
 void Weapon_Pistol::persist()
 {
-	float dt = Engine::Get()->getDeltaTime();
-
-	// Update muzzle flash effect
-	updateMuzzleFlash(dt);
-
-	// Update tracer beams
-	updateTracers(dt);
-
-	// Update shell casings
-	updateShells(dt);
-
+	m_effects.update(Engine::Get()->getDeltaTime());
 }
 
 void Weapon_Pistol::equip()
@@ -280,16 +239,17 @@ void Weapon_Pistol::equip()
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(1, 20);
 	m_isEquipping = true;
-	m_isAnimating = false;
+	m_isFireAnim = false;
+	m_isReloading = false;
 	m_firedThisPress = false;
-	m_kickPos = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-	m_kickRot = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	resetViewKick();
 }
 
 void Weapon_Pistol::unequip()
 {
 	m_isUnequipping = false;
-	m_isAnimating = false;
+	m_isFireAnim = false;
+	m_isReloading = false;
 	m_isEquipping = false;
 	m_mesh.node->setVisible(false);
 }
@@ -297,7 +257,8 @@ void Weapon_Pistol::unequip()
 void Weapon_Pistol::startUnequip()
 {
 	m_isUnequipping = true;
-	m_isAnimating = false;
+	m_isFireAnim = false;
+	m_isReloading = false;
 	m_isEquipping = false;
 	m_firedThisPress = true; // block fire input during unequip
 
@@ -325,16 +286,16 @@ void Weapon_Pistol::fire()
 		return;
 	}
 
-	// Trigger skeletal fire animation (5 frames, ~167ms at 30fps)
+	// Trigger skeletal fire animation (restarts if already playing — keeps taps snappy)
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(81, 89);
-	m_isAnimating = true;
+	m_isFireAnim = true;
 
-	// Programmatic kick layered on top — instant snap, spring recovers in update()
-	m_kickPos.Z -= 0.05f;                                             // push back into screen
-	m_kickPos.Y += 0.02f;                                             // subtle rise
-	m_kickRot.X += 5.0f;                                              // muzzle pitches up
-	m_kickRot.Z += Engine::Get()->rng()->getFloat(-0.8f, 0.8f);       // micro roll variation
+	// Programmatic kick layered on top — instant snap, spring recovers in updateWeaponSway()
+	addViewKick(
+		irr::core::vector3df(0.0f, 0.02f, -0.05f),                    // subtle rise, push back into screen
+		irr::core::vector3df(5.0f, 0.0f,                              // muzzle pitches up
+			Engine::Get()->rng()->getFloat(-0.8f, 0.8f)));            // micro roll variation
 
 	auto& camera = player.getComponent<CameraComponent>();
 
@@ -355,8 +316,9 @@ void Weapon_Pistol::fire()
 	irr::core::vector3df right = forward.crossProduct(up).normalize();
 	irr::core::vector3df down = right.crossProduct(forward).normalize();
 
-	// Calculate direction from camera to crosshair (screen center)
-	irr::core::vector3df direction = forward;
+	// Converge on the crosshair aim point — the muzzle sits below-right of screen
+	// centre, so a plain camera-forward ray would land offset from the crosshair
+	irr::core::vector3df direction = getAimDirection(muzzlePos);
 
 	// Apply random offset in right and down directions
 	float spreadRight = Engine::Get()->rng()->getFloat(-m_spread, m_spread);
@@ -386,44 +348,29 @@ void Weapon_Pistol::fire()
 			// Only register collision with static or dynamic entities
 			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
 			{
-				// Deal damage if entity can receive it
-				if (hitEntity.hasComponent<DamageReceiverComponent>())
-				{
-					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += m_damage;
-				}
+				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
+				registerHitFeedback(
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
 
-				// Create impact spark particles at hit position with surface normal
-				ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+				// Sparks fanned off the surface + bullet-hole decal
+				m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 	}
 
-	// Increment shot counter for tracer logic
-	m_shotCounter++;
-	bool isTracerRound = (m_shotCounter % m_tracerFrequency == 0);
+	// Tracer segment toward the hit point (module fires every Nth shot)
+	irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ?
+		raycastResult.point : (muzzlePos + direction * 1000.0f);
+	m_effects.spawnTracer(muzzlePos, tracerEnd);
 
-	// Create tracer beam for every Nth shot
-	if (isTracerRound)
-	{
-		// Determine tracer end point (hit point or max range)
-		irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ?
-			raycastResult.point : (muzzlePos + direction * 1000.0f);
-
-		createTracerBeam(muzzlePos, tracerEnd);
-	}
-
-	// Create muzzle flash effect
-	createMuzzleFlash();
-
-	// Eject shell casing
-	ejectShell();
+	m_effects.muzzleFlash();
+	m_effects.ejectShell();
 
 	// Hard camera kick -- conveys weight on each shot
 	float recoilYaw = Engine::Get()->rng()->getFloat(-0.12f, 0.12f);
 	g_CameraFX.addRecoil(-1.5f, recoilYaw);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/pistol/fire1.wav");
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/pistol/fire", 0.06f, 4, -1.0f, "pistol_fire");
 }
 
 void Weapon_Pistol::reload()
@@ -431,384 +378,4 @@ void Weapon_Pistol::reload()
 
 }
 
-
-void Weapon_Pistol::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	m_mesh.node->updateAbsolutePosition();
-
-	if (!m_muzzleNode)
-		return;
-
-	m_muzzleNode->updateAbsolutePosition();
-
-	irr::core::vector3df flashOffset(0, 0, 0.0f);
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			m_muzzleNode,
-			irr::core::dimension2df(0.3f, 0.3f),
-			flashOffset
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
-
-		// Composite onto the tonemapped LDR backbuffer so additive blending is
-		// not crushed by the Uncharted2 tonemap S-curve.
-		RenderManager::Get()->registerLDREffectNode(m_muzzleStarNode);
-
-		// Bind depth texture (texture unit 1)
-		//m_muzzleStarNode->getMaterial(0).setTexture(1, RenderManager::Get()->renderer()->getMRT(2));
-	}
-
-	std::string starPath = "content/texture/particle/star_05.png";
-	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-
-	// Force immediate position update to prevent lag during fast camera movement
-	m_muzzleStarNode->updateAbsolutePosition();
-
-	// Tint star yellow-orange for effect
-	m_muzzleStarNode->setColor(irr::video::SColor(255, 255, 204, 76));
-
-	// Create/show blue point light at muzzle if not exists
-	if (!m_muzzleLightNode)
-	{
-		m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
-			m_muzzleNode,
-			flashOffset,  // Same position as flash
-			irr::video::SColorf(1.0f, 1.0f, 0.0f),  // Blue light
-			3.0f  // Small radius
-		);
-	}
-	if (m_muzzleLightNode)
-	{
-		m_muzzleLightNode->setVisible(true);
-		// Force immediate position update for light as well
-		m_muzzleLightNode->updateAbsolutePosition();
-	}
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_Pistol::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		if (m_muzzleStarNode)
-			m_muzzleStarNode->setVisible(false);
-		if (m_muzzleLightNode)
-			m_muzzleLightNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		if (m_muzzleStarNode)
-		{
-			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 255, 204, 76));
-		}
-	}
-}
-
-void Weapon_Pistol::createTracerBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
-{
-	// Calculate beam properties
-	irr::core::vector3df direction = (end - start);
-	float distance = direction.getLength();
-
-	if (distance < 0.1f)
-		return; // Too short to render
-
-	direction.normalize();
-
-	// Create a plane mesh for the tracer beam
-	irr::scene::IMesh* planeMesh = RenderManager::Get()->sceneManager()->getGeometryCreator()->createPlaneMesh(
-		irr::core::dimension2df(0.1f, distance), // Width x Length
-		irr::core::dimension2du(1, 1)
-	);
-
-	irr::scene::IMeshSceneNode* tracerNode = RenderManager::Get()->sceneManager()->addMeshSceneNode(planeMesh);
-
-	if (!tracerNode)
-	{
-		spdlog::warn("Failed to create tracer beam mesh");
-		return;
-	}
-
-	// Position at start point
-	tracerNode->setPosition(start);
-
-	// Rotate to align with beam direction
-	// The plane is created facing +Y, we need to align it with the beam direction
-	irr::core::vector3df targetDirection = direction;
-
-	// Calculate rotation to align plane with beam
-	// Default plane normal is (0, 1, 0), we want it to point along the beam
-	irr::core::vector3df rotation;
-	rotation.Y = atan2f(targetDirection.X, targetDirection.Z) * (180.0f / 3.14159265f);
-	rotation.X = -asinf(targetDirection.Y) * (180.0f / 3.14159265f);
-	rotation.Z = 0;
-
-	tracerNode->setRotation(rotation);
-
-	// Offset position to center the beam (since plane starts at one end)
-	irr::core::vector3df offset = direction * (distance * 0.5f);
-	tracerNode->setPosition(start + offset);
-
-	// Load tracer texture (glowing line)
-	auto* tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/particle/trace_07.png");
-	if (!tracerTexture)
-	{
-		// Fallback to a simple particle texture
-		tracerTexture = RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png");
-	}
-
-	tracerNode->setMaterialTexture(0, tracerTexture);
-
-	// Bind depth texture (texture unit 1) for depth-aware rendering
-	//tracerNode->setMaterialTexture(1, RenderManager::Get()->renderer()->getMRT(2));
-
-	// Configure material for glowing effect
-	tracerNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-	tracerNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-	tracerNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false); // Render both sides
-	tracerNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-
-	// Use the same muzzle flash shader for depth-aware transparency
-	tracerNode->setMaterialType(m_muzzleFlashMaterialType);
-
-	// Set bright yellow/orange color for tracer via vertex color (material colors ignored by additive blend)
-	{
-		irr::video::SColor tracerColor(255, 255, 200, 100);
-		irr::scene::IMesh* mesh = tracerNode->getMesh();
-		for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
-		{
-			irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
-			for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
-				static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = tracerColor;
-			buf->setDirty(irr::scene::EBT_VERTEX);
-		}
-	}
-
-	// Store tracer for update/cleanup
-	TracerBeam tracer;
-	tracer.node = tracerNode;
-	tracer.spawnTime = Engine::Get()->getCurrentTime();
-	m_tracerBeams.push_back(tracer);
-}
-
-void Weapon_Pistol::ejectShell()
-{
-	if (!m_mesh.node)
-		return;
-
-	// Find a free slot in the pool
-	ShellCasing* shell = nullptr;
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		if (!m_shellPool[i].active)
-		{
-			shell = &m_shellPool[i];
-			break;
-		}
-	}
-	if (!shell || !shell->node)
-		return; // Pool exhausted, skip
-
-	// Sync weapon hierarchy so eject bone is at the correct world position
-	{
-		anax::Entity& pl = WorldManager::Get()->managerSystem()->getEntityByName("player");
-		if (pl.isValid() && pl.hasComponent<CameraComponent>())
-			pl.getComponent<CameraComponent>().camera->updateAbsolutePosition();
-	}
-	m_mesh.node->updateAbsolutePosition();
-	m_mesh.node->animateJoints();
-
-	irr::scene::IBoneSceneNode* ejectBone = m_mesh.node->getJointNode("BRASS");
-	if (!ejectBone)
-	{
-		spdlog::warn("BRASS bone not found on pistol model - cannot eject shell");
-		return;
-	}
-	ejectBone->updateAbsolutePosition();
-
-	irr::core::vector3df ejectPosition = ejectBone->getAbsolutePosition()
-		+ irr::core::vector3df(0.0f, Engine::Get()->rng()->getFloat(-0.1f, 0.1f), 0.0f);
-
-	// Derive ejection vectors from current camera orientation
-	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (!player.isValid() || !player.hasComponent<CameraComponent>())
-		return;
-
-	auto& camera = player.getComponent<CameraComponent>();
-	irr::core::vector3df target = camera.camera->getTarget();
-	irr::core::vector3df camPos = camera.camera->getAbsolutePosition();
-	irr::core::vector3df forward = (target - camPos).normalize();
-
-	irr::core::vector3df worldUp(0, 1, 0);
-	irr::core::vector3df right = forward.crossProduct(worldUp).normalize();
-	irr::core::vector3df localUp = right.crossProduct(forward).normalize();
-
-	irr::core::vector3df randomOffset(
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f),
-		Engine::Get()->rng()->getFloat(-0.3f, 0.3f)
-	);
-	irr::core::vector3df ejectionDir = (-right + localUp + randomOffset).normalize();
-	float randomSpeed = m_shellEjectionSpeed * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
-
-	// Orient shell to match camera yaw/pitch
-	float yaw = atan2f(forward.X, forward.Z) * (180.0f / 3.14159265f);
-	float pitch = asinf(irr::core::clamp(forward.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
-
-	// Activate this pool slot � immediate, no frame delay
-	shell->node->setPosition(ejectPosition);
-	shell->rotation = irr::core::vector3df(-pitch, yaw, 0.0f);
-	shell->node->setRotation(shell->rotation);
-	shell->velocity = ejectionDir * randomSpeed;
-	shell->angularVelocity = irr::core::vector3df(
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f)
-	);
-	shell->spawnTime = static_cast<float>(Engine::Get()->getCurrentTime());
-	shell->active = true;
-	shell->physicsActive = true;
-	shell->bounceCount = 0;
-	shell->node->setVisible(true);
-}
-
-void Weapon_Pistol::updateTracers(float dt)
-{
-	float currentTime = Engine::Get()->getCurrentTime();
-
-	// Update and remove expired tracers
-	for (auto it = m_tracerBeams.begin(); it != m_tracerBeams.end();)
-	{
-		float elapsed = currentTime - it->spawnTime;
-
-		if (elapsed >= it->lifetime)
-		{
-			// Remove expired tracer
-			if (it->node)
-			{
-				it->node->remove();
-			}
-			it = m_tracerBeams.erase(it);
-		}
-		else
-		{
-			// Update fade based on lifetime
-			float fadeProgress = elapsed / it->lifetime;
-			irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-			if (it->node)
-			{
-				irr::video::SColor tracerColor(alpha, 255, 200, 100);
-				irr::scene::IMesh* mesh = it->node->getMesh();
-				for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); b++)
-				{
-					irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(b);
-					for (irr::u32 v = 0; v < buf->getVertexCount(); v++)
-						static_cast<irr::video::S3DVertex*>(buf->getVertices())[v].Color = tracerColor;
-					buf->setDirty(irr::scene::EBT_VERTEX);
-				}
-			}
-
-			++it;
-		}
-	}
-}
-
-void Weapon_Pistol::updateShells(float dt)
-{
-	const float dt_s = dt * 0.001f; // ms -> seconds
-	const float currentTime = static_cast<float>(Engine::Get()->getCurrentTime());
-	const float shellLifetime = 10000.0f; // ms
-
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		ShellCasing& shell = m_shellPool[i];
-		if (!shell.active)
-			continue;
-
-		// Lifetime expiry � return slot to pool
-		if (currentTime - shell.spawnTime >= shellLifetime)
-		{
-			shell.active = false;
-			shell.node->setVisible(false);
-			continue;
-		}
-
-		if (!shell.physicsActive)
-			continue;
-
-		// Gravity
-		shell.velocity.Y -= m_shellGravity * dt_s;
-
-		// Candidate new position
-		irr::core::vector3df pos = shell.node->getPosition();
-		irr::core::vector3df newPos = pos + shell.velocity * dt_s;
-
-		// Cast ray along direction of travel � detects floors, walls, ceilings, ramps
-		float speed = shell.velocity.getLength();
-		if (speed > 0.001f)
-		{
-			irr::core::vector3df travelDir = shell.velocity / speed; // manual normalize (avoid mutate-in-place)
-			irr::core::vector3df rayStart = pos;
-			irr::core::vector3df rayEnd = newPos + travelDir * 0.1f; // small look-ahead past new pos
-			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(rayStart, rayEnd, true);
-
-			if (hit.hit)
-			{
-				// Reflect velocity off surface normal: v' = v - 2(v�n)n
-				irr::core::vector3df n = hit.normal;
-				float dot = shell.velocity.dotProduct(n);
-				shell.velocity = (shell.velocity - n * (2.0f * dot)) * 0.45f;
-				shell.angularVelocity *= 0.5f;
-
-				// Place shell just off the surface so it doesn't tunnel next frame
-				newPos = hit.point + n * 0.05f;
-
-				// Bounce sound � throttled so rapid shell cascades don't stack up
-				if (shell.bounceCount < 2 && (currentTime - m_lastShellBounceSound) >= m_shellBounceSoundInterval)
-				{
-					std::string soundFile = "content/sound/prop/shell"
-						+ std::to_string(Engine::Get()->rng()->getInt(1, 2)) + ".wav";
-					SoundManager::Get()->sound()->play3D(soundFile.c_str(), shell.node->getPosition(), false, false, true, 0, 0.5f);
-					m_lastShellBounceSound = currentTime;
-				}
-
-				shell.bounceCount++;
-
-				// After 3 bounces the shell has settled � stop simulating
-				if (shell.bounceCount >= 3)
-				{
-					shell.physicsActive = false;
-					shell.velocity = irr::core::vector3df(0, 0, 0);
-				}
-			}
-		}
-
-		shell.node->setPosition(newPos);
-
-		// Spin
-		shell.rotation += shell.angularVelocity * dt_s;
-		shell.node->setRotation(shell.rotation);
-	}
-}
 

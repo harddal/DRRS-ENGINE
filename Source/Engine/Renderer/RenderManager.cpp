@@ -15,6 +15,7 @@
 #include "Extensions/CBloodShader.h"
 #include "Engine/Renderer/GLExt.h"
 #include "Engine/Renderer/ClusteredLightManager.h"
+#include "Engine/Renderer/DecalManager.h"
 
 #include <IMGUI/backends/imgui_impl_opengl3.h>
 
@@ -51,7 +52,7 @@ struct PerFrameData
     float camUp[3];        float hasEnvMap;
     float camForward[3];   float shadowBias;
     float clusterParams[4];
-    float timeMs; float timeSec; float useClusters; float pad0;
+    float timeMs; float timeSec; float useClusters; float prepassValid;
     float invView[16];        // main camera view inverse — world-pos reconstruction
     float shadowMat[4][16];   // lightProj*lightView per atlas slot
     float shadowRect[4][4];   // xy = atlas offset, z = scale, w = slot active
@@ -624,6 +625,9 @@ void RenderManager::updatePerFrameUBO(bool useClusters)
     d.timeMs      = static_cast<float>(Engine::Get()->getCurrentTime());
     d.timeSec     = d.timeMs / 1000.0f;
     d.useClusters = useClusters ? 1.0f : 0.0f;
+    // Prepass depth is only valid for the main scene; preview scenes must not
+    // let soft particles / decals sample it.
+    d.prepassValid = m_renderingPreview ? 0.0f : 1.0f;
 
     GLExt::BindBuffer(GL_UNIFORM_BUFFER, m_perFrameUBO);
     GLExt::BufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(d), &d);
@@ -645,6 +649,11 @@ void RenderManager::bindPerFrameTextures()
     auto* env = m_shaderConstantCallBack->envMap();
     GLExt::ActiveTexture(GL_TEXTURE0 + 12);
     glBindTexture(GL_TEXTURE_2D, env ? env->getNativeHandle() : 0);
+
+    // Prepass (normal + depth) for soft particles and decals. The texture ID is
+    // stable across frames; contents update in place when drawPrePass renders.
+    GLExt::ActiveTexture(GL_TEXTURE0 + 14);
+    glBindTexture(GL_TEXTURE_2D, m_prepassRTT ? m_prepassRTT->getNativeHandle() : 0);
 
     GLExt::ActiveTexture(GL_TEXTURE0);
 }
@@ -1067,6 +1076,11 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     // Device creation made the GL context current — resolve modern entry points now.
     GLExt::load();
 
+    // A/B isolation switch: restore pre-soft-particle fixed-function materials.
+    m_softParticleShaderEnabled = !Utility::GetCmdlOptionExists(args, "nosoftparticles");
+    if (!m_softParticleShaderEnabled)
+        spdlog::info("RenderManager: soft particle shader disabled via -nosoftparticles");
+
     // Clustered forward lighting. GL textures are created lazily on first
     // update(); if the driver is below the GL 3.3 floor it self-disables and
     // shaders keep using the legacy 8-light path.
@@ -1234,6 +1248,9 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     recreatePostProcessRTTs(m_irrlichtParams.WindowSize.Width, m_irrlichtParams.WindowSize.Height);
     createShadowResources();
 
+    // Screen-space decals — needs gpu() + the shader files, both ready by now.
+    m_decalManager = new DecalManager();
+
 	if (m_configuration.antialiasingFactor == 1)
 	{
 		setPostProcessPassEnabled("fxaa", true);
@@ -1254,6 +1271,9 @@ RenderManager::~RenderManager()
 {
 	SPK::SPKFactory::getInstance().traceAll();
 	SPK::SPKFactory::getInstance().destroyAll();
+
+    delete m_decalManager;
+    m_decalManager = nullptr;
 
     delete m_clusteredLights;
     m_clusteredLights = nullptr;
@@ -1483,13 +1503,11 @@ void RenderManager::draw(f32 dt)
     // updated by the viewmodel pass above) — otherwise the gun inherits AO from
     // the world geometry behind it. Transparent (LDR effects, trigger zones) and
     // wireframe (editor markers) materials are skipped inside drawPrePass.
+    drawPrePass();   // always — consumed by SSAO, soft particles, and decals
     if (m_ssaoEnabled)
-    {
-        drawPrePass();
         drawSSAO();
-        if (m_sceneRTT)
-            m_driver->setRenderTarget(m_sceneRTT, false, false);
-    }
+    if (m_sceneRTT)
+        m_driver->setRenderTarget(m_sceneRTT, false, false);
 
     // Return to backbuffer and run the post-process chain (reads m_sceneRTT)
     if (m_sceneRTT)
@@ -1556,6 +1574,14 @@ void RenderManager::draw(f32 dt)
     else
     {
         runPostProcessChain();
+    }
+
+    // Screen-space decals — modulate-blended onto the tonemapped backbuffer,
+    // projected against the geometry prepass (raw unit 14).
+    if (m_decalManager)
+    {
+        m_decalManager->update(dt * 0.001f);   // dt is in ms; decal lifetimes are in seconds
+        m_decalManager->render();
     }
 
     // Draw debug nodes directly to the backbuffer after post-processing so
@@ -1865,6 +1891,26 @@ void RenderManager::createDefaultShaders()
     if (m_prepassMat < 0 || m_ssaoGenMat < 0 || m_ssaoBlurMat < 0)
         spdlog::error("RenderManager: SSAO shader compile failure (prepass={}, gen={}, blur={}) — SSAO inactive",
                       m_prepassMat, m_ssaoGenMat, m_ssaoBlurMat);
+
+    // Soft particle material — SPARK renderers are swapped onto this by
+    // ParticleSystemLoader. Base is EMT_ONETEXTURE_BLEND: SPARK's setBlending()
+    // packs its blend factors (SRC_ALPHA/ONE for add, SRC_ALPHA/INV_SRC_ALPHA
+    // for alpha) into MaterialTypeParam, and the base renderer keeps honoring
+    // them — the shader only adds the depth fade. Do NOT base this on
+    // EMT_TRANSPARENT_* types: they ignore vertex alpha (breaking SPARK's
+    // per-particle fade) or misread the packed param as an alpha-test ref.
+    {
+        auto* softCb = new SoftParticleCallback();
+        m_softParticleCallback = softCb;
+        ShaderMaterial s("soft_particle");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/soft_particle.vert", "main", EVST_VS_2_0,
+            "content/shader/soft_particle.frag", "main", EPST_PS_2_0,
+            softCb, EMT_ONETEXTURE_BLEND, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        if (s.material < 0)
+            spdlog::error("RenderManager: soft particle shader compile failure");
+    }
 
     // Post-process passes — blit (passthrough) and FXAA are mutually exclusive at startup.
     // Both shaders are always compiled; only one is enabled based on antialiasingFactor.

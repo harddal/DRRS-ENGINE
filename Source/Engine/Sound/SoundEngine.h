@@ -63,12 +63,21 @@ public:
 	//   from clipping, e.g. 0.35f with maxConcurrent=3 keeps the sum near 1.0.
 	// poolGroup: optional shared-pool name. Voices from different source files that share the same
 	//   group count against one concurrent limit (e.g. fire1/2/3.wav treated as a single pool).
-	SoundHandle play2D(const char*   file,   bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false);
-	SoundHandle play2D(SoundSource* source,  bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false);
+	// playbackSpeed: relative play speed (1.0 = normal). Doubles as a pitch shift — 1.05 is ~a
+	//   semitone up. Use small scatter (±0.03–0.08) to de-machine-gun repeated samples.
+	SoundHandle play2D(const char*   file,   bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false, float playbackSpeed = 1.0f);
+	SoundHandle play2D(SoundSource* source,  bool loop = false, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, bool startPaused = false, float playbackSpeed = 1.0f);
 
 	// 3D (positional) playback — 'track' parameter accepted but ignored (always returns handle)
-	SoundHandle play3D(const char*   file,   irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
-	SoundHandle play3D(SoundSource* source,  irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
+	SoundHandle play3D(const char*   file,   irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, float playbackSpeed = 1.0f);
+	SoundHandle play3D(SoundSource* source,  irr::core::vector3df pos, bool loop = false, bool startPaused = false, bool track = true, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr, float playbackSpeed = 1.0f);
+
+	// Randomized variant playback. 'basePath' has NO extension: "…/pistol/fire" plays a random
+	// one of fire1.wav..fireN.wav (contiguous scan from 1, discovered once and cached), falling
+	// back to plain fire.wav when no numbered variants exist. The previous pick is re-rolled
+	// once so back-to-back repeats are rare. pitchJitter scatters playback speed by ±jitter.
+	SoundHandle playRandomized2D(const char* basePath, float pitchJitter = 0.05f, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
+	SoundHandle playRandomized3D(const char* basePath, irr::core::vector3df pos, float pitchJitter = 0.05f, int maxConcurrent = 0, float volume = -1.0f, const char* poolGroup = nullptr);
 
 	// Source management — same file is only loaded once
 	SoundSource* getSoundSource(const char* file, bool preload = false);
@@ -103,8 +112,19 @@ private:
 	void enforceVoiceLimit(SoundSource* source, int maxConcurrent);
 	void enforceGroupVoiceLimit(const char* group, int maxConcurrent);
 
+	// Discovered numbered-variant sets, keyed by extensionless base path
+	struct VariantSet
+	{
+		std::vector<SoundSource*> sources;
+		int lastIndex = -1;   // avoid immediate repeats
+	};
+	VariantSet& getVariantSet(const char* basePath);
+	SoundSource* pickVariant(const char* basePath);
+	static float jitteredSpeed(float pitchJitter);
+
 	SoLoud::Soloud m_soloud;
 	std::unordered_map<std::string, std::unique_ptr<SoundSource>> m_sources;
 	std::unordered_map<SoundSource*, std::vector<SoLoud::handle>>  m_voicePool;
 	std::unordered_map<std::string,  std::vector<SoLoud::handle>>  m_groupPool;
+	std::unordered_map<std::string,  VariantSet>                   m_variantSets;
 };

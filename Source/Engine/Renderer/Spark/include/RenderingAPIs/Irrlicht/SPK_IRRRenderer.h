@@ -134,6 +134,14 @@ namespace IRR
 		*/
 		IRRMaterialProxy getMaterialProxy() { return IRRMaterialProxy(material); }
 
+		/**
+		* @brief ENGINE: mutable access to the underlying Irrlicht material
+		*
+		* Used by ParticleSystemLoader to swap the fixed-function blend material
+		* for the engine's GLSL soft-particle material after setBlending().
+		*/
+		irr::video::SMaterial& getMaterialRW() { return material; }
+
 		virtual bool isRenderingHintEnabled(RenderingHint renderingHint) const;
 
 		///////////////

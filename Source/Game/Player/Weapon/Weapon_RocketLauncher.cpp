@@ -110,6 +110,17 @@ void Weapon_RocketLauncher::init()
 	m_lockwaitIcon = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/rocket_launcher/lockwaitpip.png");
 	m_lockIcon     = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/rocket_launcher/lockpip.png");
 
+	// Character sheet: big cool-blue backblast flash, no tracers/shells/impacts (projectile weapon)
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName = "FIRESPOT";
+	fx.flashColor      = irr::video::SColor(255, 100, 150, 255);
+	fx.flashSize       = 1.2f;
+	fx.flashLight      = false;
+	fx.tracerPoolSize  = 0;
+	fx.shellPoolSize   = 0;
+	fx.impactParticle  = nullptr;
+	fx.impactDecal     = nullptr;
+	m_effects.init(m_mesh.node, fx);
 }
 
 void Weapon_RocketLauncher::destroy()
@@ -222,9 +233,7 @@ void Weapon_RocketLauncher::persist()
 	// Update all active projectiles
 	updateProjectiles(dt);
 
-	// Update muzzle flash effect
-	updateMuzzleFlash(dt);
-
+	m_effects.update(dt);
 }
 
 void Weapon_RocketLauncher::equip()
@@ -445,79 +454,6 @@ void Weapon_RocketLauncher::renderNPCLockIndicators(irr::scene::ICameraSceneNode
 	}
 }
 
-void Weapon_RocketLauncher::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	// CRITICAL: Force immediate update of weapon hierarchy to prevent lag
-	m_mesh.node->updateAbsolutePosition();
-
-	// Get the Muzzle bone scene node from the weapon
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("FIRESPOT");
-	if (!muzzleBone)
-	{
-		spdlog::warn("Muzzle bone not found on weapon model");
-		return;
-	}
-
-	// Force update muzzle bone to get current frame position
-	muzzleBone->updateAbsolutePosition();
-
-	// Position offset from bone (adjust this to move flash forward/back/up/down)
-	irr::core::vector3df flashOffset(0.0f, 0.0f, 0.0f);
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			muzzleBone,
-			irr::core::dimension2df(1.2f, 1.2f),
-			flashOffset
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
-	}
-
-	std::string starPath = "content/texture/particle/star_05.png";
-	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-
-	// Force immediate position update to prevent lag during fast camera movement
-	m_muzzleStarNode->updateAbsolutePosition();
-
-	m_muzzleStarNode->setColor(irr::video::SColor(255, 100, 150, 255));
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_RocketLauncher::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		if (m_muzzleStarNode)
-			m_muzzleStarNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		if (m_muzzleStarNode)
-		{
-			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 100, 150, 255));
-		}
-	}
-}
-
 void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 {
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
@@ -554,8 +490,9 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 	irr::core::vector3df right = forward.crossProduct(up).normalize();
 	irr::core::vector3df down = right.crossProduct(forward).normalize();
 
-	// Calculate direction from muzzle position to crosshair (screen center)
-	irr::core::vector3df direction = (target - spawnPos).normalize();
+	// Converge on the crosshair's actual world hit point (camera->getTarget() is an
+	// arbitrary near point, not where the crosshair lands)
+	irr::core::vector3df direction = getAimDirection(spawnPos);
 
 	auto spreadDist = Engine::Get()->rng()->getFloat(-m_recoil, m_recoil);
 
@@ -646,18 +583,23 @@ void Weapon_RocketLauncher::spawnProjectile(bool useTracking)
 	m_projectiles.emplace_back(proj);
 
 	// Play fire sound
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/rocket_launcher/fire.wav", false);
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/rocket_launcher/fire", 0.04f);
 
 	// Trigger fire animation
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(81, 89);
 
-	// Create muzzle flash effect
-	createMuzzleFlash();
+	m_effects.muzzleFlash();
 
-	// Camera recoil kick — random yaw drift for a natural, unsteady feel
-	//auto recoilYaw = Engine::Get()->rng()->getFloat(-0.3f, 0.3f);
-	//g_CameraFX.addRecoil(-0.5f, recoilYaw);
+	// Heavy launch kick — a rocket leaving the tube should shove the whole view
+	g_CameraFX.addRecoil(-3.5f, Engine::Get()->rng()->getFloat(-0.4f, 0.4f));
+	g_CameraFX.addShake(1.0f, 150.0f);
+	g_CameraFX.addFovKick(1.5f);
+	addViewKick(
+		irr::core::vector3df(0.0f, 0.03f, -0.15f),
+		irr::core::vector3df(6.0f,
+			Engine::Get()->rng()->getFloat(-1.0f, 1.0f),
+			Engine::Get()->rng()->getFloat(-1.5f, 1.5f)));
 }
 
 void Weapon_RocketLauncher::updateProjectiles(float dt)
@@ -828,46 +770,23 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 				// Hit something other than ourselves
 				hitSomethingReal = true;
 
-				SoundManager::Get()->sound()->play3D("content/sound/effect/explosion2.wav", hitPoint);
+				SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", hitPoint, 0.06f);
 
 				// Always spawn the explosion and apply splash damage at the impact point,
 				// regardless of whether the hit surface is a tracked entity or static geometry
 				ParticleManager::Get()->spawn("explosion", SPK::IRR::irr2spk(hitPoint));
 				applySplashDamage(hitPoint, hitEntityID);
 
-				// Screen shake — scaled by proximity to the blast
-				{
-					anax::Entity& playerEnt = WorldManager::Get()->managerSystem()->getEntityByName("player");
-					if (playerEnt.isValid() && playerEnt.hasComponent<TransformComponent>())
-					{
-						const float maxShakeDist = 5.0f; // units — beyond this, no shake felt
-						const float peakShake    = 4.5f;  // degrees at point-blank
-						const float shakeDurMs   = 350.0f;
+				// Light flash + scorch (oriented to the hit surface) + smoke +
+				// proximity shake/shove/FOV crunch
+				m_effects.explosionAt(hitPoint,
+					irr::video::SColorf(1.0f, 0.75f, 0.35f), 10.0f, 4.5f, 5.0f, 350.0f,
+					hitNormal);
 
-						irr::core::vector3df playerPos = playerEnt.getComponent<TransformComponent>().getPosition();
-						float dist = (hitPoint - playerPos).getLength();
-						float intensity = std::max(0.0f, 1.0f - dist / maxShakeDist) * peakShake;
-
-						if (intensity > 0.05f)
-							g_CameraFX.addShake(intensity, shakeDurMs);
-					}
-				}
-
-				// Additionally deal direct point damage to the entity that was directly struck
-				auto entities = WorldManager::Get()->managerSystem()->getEntities();
-				for (auto& entity : entities)
-				{
-					if (entity.hasComponent<DescriptorComponent>() &&
-						entity.getComponent<DescriptorComponent>().id == hitEntityID)
-					{
-						if (entity.hasComponent<DamageReceiverComponent>())
-						{
-							auto& damageComp = entity.getComponent<DamageReceiverComponent>();
-							damageComp.damageReceived += m_pointDamage;
-						}
-						break;
-					}
-				}
+				// Direct point damage to the entity that was struck — through the
+				// gameplay chokepoint so it drives hitmarker/kill feedback
+				registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
+					hitEntityID, static_cast<unsigned int>(m_pointDamage)));
 
 				// Mark for removal on hit
 				shouldRemove = true;
@@ -1037,6 +956,9 @@ void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicen
 	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
 		return;
 
+	// One feedback event per detonation regardless of how many entities it caught
+	HIT_RESULT bestResult = HIT_RESULT::NONE;
+
 	auto& entities = WorldManager::Get()->managerSystem()->getEntities();
 	for (auto& entity : entities)
 	{
@@ -1062,9 +984,14 @@ void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicen
 		float falloff = 1.0f - (dist / m_splashRadius);
 		float damage  = m_splashDamage * falloff;
 
-		if (damage > 0.0f && entity.hasComponent<DamageReceiverComponent>())
+		if (damage >= 1.0f)
 		{
-			entity.getComponent<DamageReceiverComponent>().damageReceived += damage;
+			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(
+				desc.id, static_cast<unsigned int>(damage));
+
+			// Splash-damaging yourself is not a hit confirm
+			if (desc.name != "player" && static_cast<int>(r) > static_cast<int>(bestResult))
+				bestResult = r;
 		}
 
 		// Apply outward explosion impulse to dynamic (non-kinematic) PhysX actors
@@ -1087,4 +1014,6 @@ void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicen
 			}
 		}
 	}
+
+	registerHitFeedback(bestResult);
 }

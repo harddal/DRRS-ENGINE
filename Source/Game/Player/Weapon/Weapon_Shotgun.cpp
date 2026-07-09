@@ -1,4 +1,4 @@
-#include "Weapon_Shotgun.h"
+﻿#include "Weapon_Shotgun.h"
 
 #include "Engine/Engine.h"
 #include "../CameraFX.h"
@@ -94,37 +94,31 @@ void Weapon_Shotgun::init()
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair001.png");
 
-	// Pre-build shell casing pool (no per-shot alloc)
-	auto* shellMesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/prop/shells/slug.obj");
-	auto* shellTex  = RenderManager::Get()->driver()->getTexture("content/mesh/prop/shells/shellsColor.png");
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		m_shellPool[i].node = RenderManager::Get()->sceneManager()->addMeshSceneNode(shellMesh);
-		if (m_shellPool[i].node)
-		{
-			m_shellPool[i].node->setMaterialTexture(0, shellTex);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
-			m_shellPool[i].node->setMaterialFlag(irr::video::EMF_TRILINEAR_FILTER, true);
-			m_shellPool[i].node->setRotation(irr::core::vector3df(0.0f, 180.0f, 0.0f));
-			m_shellPool[i].node->setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
-			m_shellPool[i].node->setMaterialType(perpixelMat);
-			m_shellPool[i].node->setVisible(false);
-		}
-		m_shellPool[i].active = false;
-	}
+	// Character sheet: big smoky blast (first muzzle flash this weapon has ever had),
+	// slug shells out the side port, smoke-heavy pellet impacts, no tracers
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName      = "FIRESPOT"; // falls back to weapon node + offset if the model lacks it
+	fx.muzzleFallbackOffset = irr::core::vector3df(0.0f, 0.05f, 0.9f);
+	fx.flashColor      = irr::video::SColor(255, 255, 214, 110);
+	fx.flashSize       = 1.0f;
+	fx.flashDuration   = 60.0f;
+	fx.lightColor      = irr::video::SColorf(1.0f, 0.8f, 0.3f);
+	fx.lightRadius     = 4.0f;
+	fx.tracerPoolSize  = 0;
+	fx.shellMesh       = "content/mesh/prop/shells/slug.obj";
+	fx.shellEjectJoint = nullptr; // offset-mode eject port (right, up, forward)
+	fx.shellEjectOffset = irr::core::vector3df(0.15f, 0.05f, -0.1f);
+	fx.shellSpeed      = 6.0f;
+	fx.shellPoolSize   = 32;
+	fx.shellBounceSoundBase = "content/sound/prop/shotgunshell";
+	fx.impactParticle  = "spark_smoke";
+	fx.impactDecalSize = 0.15f; // smaller per-pellet holes, clustered
+	m_effects.init(m_mesh.node, fx);
 }
 
 void Weapon_Shotgun::destroy()
 {
-	// Clean up shell casing pool
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		if (m_shellPool[i].node)
-		{
-			m_shellPool[i].node->remove();
-			m_shellPool[i].node = nullptr;
-		}
-	}
+	m_effects.destroy();
 
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
 	m_mesh.node->remove();
@@ -135,7 +129,8 @@ void Weapon_Shotgun::update()
 {
 	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
 
-	// Unequip: wait for anim to finish, then hide
+	// Unequip: wait for anim to finish, then hide.
+	// Kick recovery keeps ticking via updateWeaponSway() in WeaponController.
 	if (m_isUnequipping)
 	{
 		if (animEnded)
@@ -143,20 +138,6 @@ void Weapon_Shotgun::update()
 			m_isUnequipping = false;
 			m_mesh.node->setVisible(false);
 		}
-
-		// Recoil recovery still ticks during unequip
-		float dt = Engine::Get()->getDeltaTime() / 1000.0f;
-		float recovery = m_recoilRecoverySpeed * dt;
-		if (m_currentRecoilRotation > 0.0f)
-			m_currentRecoilRotation -= std::min(recovery, m_currentRecoilRotation);
-		else
-			m_currentRecoilRotation += std::min(recovery, -m_currentRecoilRotation);
-		if (m_currentRecoilHorizontal > 0.0f)
-			m_currentRecoilHorizontal -= std::min(recovery, m_currentRecoilHorizontal);
-		else
-			m_currentRecoilHorizontal += std::min(recovery, -m_currentRecoilHorizontal);
-		m_currentRecoilPosition -= std::min(recovery * 0.005f, m_currentRecoilPosition);
-
 		return;
 	}
 
@@ -198,41 +179,24 @@ void Weapon_Shotgun::update()
 	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_R, &r))
 		reload();
 
-	// Recoil recovery
-	{
-		float dt = Engine::Get()->getDeltaTime() / 1000.0f;
-		float recovery = m_recoilRecoverySpeed * dt;
-
-		if (m_currentRecoilRotation > 0.0f)
-			m_currentRecoilRotation -= std::min(recovery, m_currentRecoilRotation);
-		else
-			m_currentRecoilRotation += std::min(recovery, -m_currentRecoilRotation);
-
-		if (m_currentRecoilHorizontal > 0.0f)
-			m_currentRecoilHorizontal -= std::min(recovery, m_currentRecoilHorizontal);
-		else
-			m_currentRecoilHorizontal += std::min(recovery, -m_currentRecoilHorizontal);
-
-		m_currentRecoilPosition -= std::min(recovery * 0.005f, m_currentRecoilPosition);
-
-		irr::core::vector3df pos = m_viewPositionOffset;
-		irr::core::vector3df rot = m_viewRotationOffset;
-		pos.Y += m_currentRecoilPosition;
-		rot.X -= m_currentRecoilRotation;
-		rot.Y += m_currentRecoilHorizontal;
-		m_mesh.node->setPosition(pos);
-		m_mesh.node->setRotation(rot);
-	}
+	// Recoil recovery + node transform are handled by updateWeaponSway()
 
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
 void Weapon_Shotgun::persist()
 {
-	float dt = Engine::Get()->getDeltaTime();
+	m_effects.update(Engine::Get()->getDeltaTime());
 
-	updateShells(dt);
-
+	// Pump-rack mechanical layer — the second half of the fire sound
+	if (m_pumpPending && Engine::Get()->getCurrentTime() >= m_pumpTime)
+	{
+		m_pumpPending = false;
+		SoundManager::Get()->sound()->play2D(
+			"content/sound/weapon/shotgun/Shotgun_Quick Pump_01.wav",
+			false, 0, -1.0f, nullptr, false,
+			1.0f + Engine::Get()->rng()->getFloat(-0.03f, 0.03f));
+	}
 }
 
 void Weapon_Shotgun::equip()
@@ -242,9 +206,7 @@ void Weapon_Shotgun::equip()
 	m_isUnequipping = false;
 	m_isAnimating   = false;
 	m_firedThisPress = false;
-	m_currentRecoilRotation   = 0.0f;
-	m_currentRecoilHorizontal = 0.0f;
-	m_currentRecoilPosition   = 0.0f;
+	resetViewKick();
 
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(1, 20);
@@ -258,6 +220,7 @@ void Weapon_Shotgun::unequip()
 	m_isEquipping   = false;
 	m_isUnequipping = false;
 	m_isAnimating   = false;
+	m_pumpPending   = false;
 	m_mesh.node->setVisible(false);
 }
 
@@ -266,6 +229,7 @@ void Weapon_Shotgun::startUnequip()
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
 	m_isUnequipping  = true;
 	m_isAnimating    = false;
+	m_pumpPending    = false;
 	m_firedThisPress = true; // block fire during transition
 
 	m_mesh.node->setLoopMode(false);
@@ -313,6 +277,9 @@ void Weapon_Shotgun::fire()
 
 	const float spreadRad = m_spreadAngle * 3.14159f / 180.0f;
 
+	// Aggregate pellet results so a blast produces ONE feedback event, not eight
+	HIT_RESULT bestResult = HIT_RESULT::NONE;
+
 	for (int i = 0; i < m_pelletCount; i++)
 	{
 		float rx = ((rand() / (float)RAND_MAX) * 2.0f - 1.0f) * spreadRad;
@@ -329,29 +296,38 @@ void Weapon_Shotgun::fire()
 		{
 			entityid hitID = raycastResult.node->getID();
 
-			WorldManager::Get()->gameplaySystem()->damageEntity(hitID, static_cast<unsigned int>(m_damagePerPellet));
+			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(hitID, static_cast<unsigned int>(m_damagePerPellet));
+			if (static_cast<int>(r) > static_cast<int>(bestResult))
+				bestResult = r;
 
-			// Spark impact effect at hit point
-			ParticleManager::Get()->spawn("spark_smoke", IRR::irr2spk(raycastResult.point));
+			// Smoke-heavy impact fanned off the surface + per-pellet bullet hole
+			m_effects.impact(raycastResult.point, raycastResult.normal);
 		}
 	}
 
-	// Eject shell casing
-	ejectShell();
+	registerHitFeedback(bestResult);
+
+	m_effects.muzzleFlash();
+	m_effects.ejectShell();
 
 	// Heavy recoil kick
-	float verticalRecoil   = m_recoilAmount + ((rand() / (float)RAND_MAX) * 2.0f - 1.0f) * m_recoilRandomnessVertical;
-	float horizontalRecoil = ((rand() / (float)RAND_MAX) * 2.0f - 1.0f) * m_recoilRandomnessHorizontal;
+	float verticalRecoil   = m_recoilAmount + Engine::Get()->rng()->getFloat(-m_recoilRandomnessVertical, m_recoilRandomnessVertical);
+	float horizontalRecoil = Engine::Get()->rng()->getFloat(-m_recoilRandomnessHorizontal, m_recoilRandomnessHorizontal);
 
-	m_currentRecoilRotation   += verticalRecoil;
-	m_currentRecoilHorizontal += horizontalRecoil;
-	m_currentRecoilPosition   += m_recoilPositionKick;
+	addViewKick(
+		irr::core::vector3df(0.0f, m_recoilPositionKick, 0.0f),
+		irr::core::vector3df(-verticalRecoil, horizontalRecoil, 0.0f));
 
-	// Camera shake for the big kick
+	// Camera shake + FOV punch for the big kick
 	g_CameraFX.addRecoil(verticalRecoil * 0.4f, horizontalRecoil * 0.2f);
 	g_CameraFX.addShake(1.5f, 120.0f);
+	g_CameraFX.addFovKick(2.0f);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/shotgun/fire.wav");
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/shotgun/fire", 0.04f);
+
+	// Queue the pump-rack mechanical layer for ~400ms after the blast (mid fire-anim)
+	m_pumpPending = true;
+	m_pumpTime    = currentTime + m_pumpDelay;
 }
 
 void Weapon_Shotgun::reload()
@@ -359,154 +335,8 @@ void Weapon_Shotgun::reload()
 	if (m_isAnimating)
 		return;
 
-	m_currentRecoilRotation   = 0.0f;
-	m_currentRecoilHorizontal = 0.0f;
-	m_currentRecoilPosition   = 0.0f;
-
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(96, 179);
 	m_isAnimating = true;
 }
 
-void Weapon_Shotgun::ejectShell()
-{
-	if (!m_mesh.node)
-		return;
-
-	// Find a free slot in the pool
-	ShellCasing* shell = nullptr;
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		if (!m_shellPool[i].active)
-		{
-			shell = &m_shellPool[i];
-			break;
-		}
-	}
-	if (!shell || !shell->node)
-		return; // Pool exhausted, skip
-
-	// Derive ejection vectors from current camera orientation
-	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (!player.isValid() || !player.hasComponent<CameraComponent>())
-		return;
-
-	auto& camera = player.getComponent<CameraComponent>();
-	irr::core::vector3df target  = camera.camera->getTarget();
-	irr::core::vector3df camPos  = camera.camera->getAbsolutePosition();
-	irr::core::vector3df forward = (target - camPos).normalize();
-
-	irr::core::vector3df worldUp(0, 1, 0);
-	irr::core::vector3df right   = forward.crossProduct(worldUp).normalize();
-	irr::core::vector3df localUp = right.crossProduct(forward).normalize();
-
-	// Eject port is to the right of the weapon, slightly behind and above.
-	// In Irrlicht's left-handed system, forward.crossProduct(worldUp) points left,
-	// so negate right to get the actual rightward direction.
-	m_mesh.node->updateAbsolutePosition();
-	irr::core::vector3df ejectPosition = m_mesh.node->getAbsolutePosition()
-		+ (-right) * 0.15f
-		+ localUp  * 0.05f
-		+ forward  * (-0.1f);
-
-	irr::core::vector3df randomOffset(
-		Engine::Get()->rng()->getFloat(-0.2f, 0.2f),
-		Engine::Get()->rng()->getFloat(-0.2f, 0.2f),
-		Engine::Get()->rng()->getFloat(-0.2f, 0.2f)
-	);
-	irr::core::vector3df ejectionDir = (-right + localUp * 0.5f + randomOffset).normalize();
-	float randomSpeed = m_shellEjectionSpeed * Engine::Get()->rng()->getFloat(0.75f, 1.25f);
-
-	// Orient shell to match camera yaw/pitch
-	float yaw   = atan2f(forward.X, forward.Z) * (180.0f / 3.14159265f);
-	float pitch = asinf(irr::core::clamp(forward.Y, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
-
-	shell->node->setPosition(ejectPosition);
-	shell->rotation = irr::core::vector3df(-pitch, yaw, 0.0f);
-	shell->node->setRotation(shell->rotation);
-	shell->velocity = ejectionDir * randomSpeed;
-	shell->angularVelocity = irr::core::vector3df(
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
-		Engine::Get()->rng()->getFloat(-300.0f, 300.0f)
-	);
-	shell->spawnTime     = static_cast<float>(Engine::Get()->getCurrentTime());
-	shell->active        = true;
-	shell->physicsActive = true;
-	shell->bounceCount   = 0;
-	shell->node->setVisible(true);
-}
-
-void Weapon_Shotgun::updateShells(float dt)
-{
-	const float dt_s = dt * 0.001f; // ms -> seconds
-	const float currentTime = static_cast<float>(Engine::Get()->getCurrentTime());
-	const float shellLifetime = 10000.0f; // ms
-
-	for (int i = 0; i < SHELL_POOL_SIZE; i++)
-	{
-		ShellCasing& shell = m_shellPool[i];
-		if (!shell.active)
-			continue;
-
-		// Lifetime expiry — return slot to pool
-		if (currentTime - shell.spawnTime >= shellLifetime)
-		{
-			shell.active = false;
-			shell.node->setVisible(false);
-			continue;
-		}
-
-		if (!shell.physicsActive)
-			continue;
-
-		// Gravity
-		shell.velocity.Y -= m_shellGravity * dt_s;
-
-		// Candidate new position
-		irr::core::vector3df pos    = shell.node->getPosition();
-		irr::core::vector3df newPos = pos + shell.velocity * dt_s;
-
-		// Cast ray along direction of travel — detects floors, walls, ceilings, ramps
-		float speed = shell.velocity.getLength();
-		if (speed > 0.001f)
-		{
-			irr::core::vector3df travelDir = shell.velocity / speed;
-			irr::core::vector3df rayEnd    = newPos + travelDir * 0.1f;
-			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(pos, rayEnd, true);
-
-			if (hit.hit)
-			{
-				// Reflect velocity off surface normal: v' = v - 2(v·n)n
-				irr::core::vector3df n = hit.normal;
-				float dot = shell.velocity.dotProduct(n);
-				shell.velocity = (shell.velocity - n * (2.0f * dot)) * 0.45f;
-				shell.angularVelocity *= 0.5f;
-
-				newPos = hit.point + n * 0.05f;
-
-				// Bounce sound — throttled so rapid cascades don't stack
-				if (shell.bounceCount < 2 && (currentTime - m_lastShellBounceSound) >= m_shellBounceSoundInterval)
-				{
-					SoundManager::Get()->sound()->play3D("content/sound/prop/shotgunshell.wav", shell.node->getPosition(), false, false, true, 0, 0.5f);
-					m_lastShellBounceSound = currentTime;
-				}
-
-				shell.bounceCount++;
-
-				// After 3 bounces the shell has settled — stop simulating
-				if (shell.bounceCount >= 3)
-				{
-					shell.physicsActive = false;
-					shell.velocity = irr::core::vector3df(0, 0, 0);
-				}
-			}
-		}
-
-		shell.node->setPosition(newPos);
-
-		// Spin
-		shell.rotation += shell.angularVelocity * dt_s;
-		shell.node->setRotation(shell.rotation);
-	}
-}

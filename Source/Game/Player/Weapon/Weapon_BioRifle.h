@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../WeaponData.h"
+#include "WeaponEffects.h"
 
 #include <vector>
 
@@ -56,11 +57,8 @@ private:
 	SoundHandle              m_sprayLoopHandle = nullptr;
 	std::vector<MistBurst>   m_mistBursts;
 
-	// --- Muzzle flash ---
-	irr::video::E_MATERIAL_TYPE      m_muzzleFlashMat      = irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL;
-	irr::scene::IBillboardSceneNode* m_muzzleStarNode      = nullptr;
-	float                            m_muzzleFlashTime     = 0.0f;
-	const float                      m_muzzleFlashDuration = 50.0f;
+	// Shared muzzle flash VFX (flash-only desc — globs/mist stay bespoke)
+	WeaponEffects m_effects;
 
 	bool m_isEquipping   = false;
 	bool m_isUnequipping = false;
@@ -69,8 +67,9 @@ private:
 
 	void spawnGlob();
 	void updateGlobs(float dt);
-	void detonateAt(const irr::core::vector3df& pos, entityid directHitID);
+	// surfaceNormal: impact normal for contact detonations (scorch orientation);
+	// zero vector for timer detonations (floor probe fallback)
+	void detonateAt(const irr::core::vector3df& pos, entityid directHitID,
+		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f));
 	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitID);
-	void createMuzzleFlash();
-	void updateMuzzleFlash(float dt);
 };

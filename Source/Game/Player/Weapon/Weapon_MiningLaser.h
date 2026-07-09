@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../WeaponData.h"
+#include "WeaponEffects.h"
 
 #include <vector>
 
@@ -37,17 +38,11 @@ private:
 	// Cached bone/scene nodes
 	irr::scene::ISceneNode* m_muzzleNode = nullptr;
 
-	void createMuzzleFlash();
-	void updateMuzzleFlash(float dt);
 	void createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end);
 	void updateLaserBeam(float dt);
 
-	// Muzzle flash
-	irr::video::E_MATERIAL_TYPE m_muzzleFlashMaterialType;
-	irr::scene::IBillboardSceneNode* m_muzzleStarNode = nullptr;
-	irr::scene::ILightSceneNode* m_muzzleLightNode = nullptr;
-	float m_muzzleFlashTime = 0.0f;
-	const float m_muzzleFlashDuration = 50.0f;
+	// Shared muzzle flash VFX (flash-only desc — persistent laser beam stays bespoke)
+	WeaponEffects m_effects;
 
 	// Continuous laser beam — single persistent node repositioned each shot
 	irr::scene::IMeshSceneNode* m_laserNode = nullptr;

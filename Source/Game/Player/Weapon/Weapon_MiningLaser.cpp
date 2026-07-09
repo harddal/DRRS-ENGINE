@@ -131,9 +131,24 @@ void Weapon_MiningLaser::init()
 	if (!m_muzzleNode)
 		spdlog::warn("Weapon_MiningLaser: 'FIRESPOT' joint not found");
 
-	m_muzzleFlashMaterialType = ShaderMaterialManager::get("additive_color");
+	auto additiveMat = ShaderMaterialManager::get("additive_color");
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair038.png");
+
+	// Character sheet: small hot red glow on the emitter, custom additive shader
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName = "FIRESPOT";
+	fx.flashColor      = irr::video::SColor(255, 255, 30, 30);
+	fx.flashSize       = 0.5f;
+	fx.flashSizeVariance = 0.15f; // fire() refreshes at 20Hz — keep the shimmer subtle
+	fx.flashTexture    = "content/texture/particle/star_06.png";
+	fx.flashMaterial   = additiveMat;
+	fx.lightColor      = irr::video::SColorf(1.0f, 0.0f, 0.0f);
+	fx.tracerPoolSize  = 0;
+	fx.shellPoolSize   = 0;
+	fx.impactParticle  = nullptr; // fire() spawns "laser_impact" itself (no decal yet)
+	fx.impactDecal     = nullptr;
+	m_effects.init(m_mesh.node, fx);
 
 	// Create persistent laser beam node (unit plane stretched per-shot in createLaserBeam)
 	{
@@ -150,7 +165,7 @@ void Weapon_MiningLaser::init()
 			m_laserNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
 			m_laserNode->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, false);
 			m_laserNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-			m_laserNode->setMaterialType(m_muzzleFlashMaterialType);
+			m_laserNode->setMaterialType(additiveMat);
 			{
 				irr::video::SColor laserColor(255, 255, 30, 30);
 				irr::scene::IMesh* lmesh = m_laserNode->getMesh();
@@ -170,6 +185,8 @@ void Weapon_MiningLaser::init()
 void Weapon_MiningLaser::destroy()
 {
 	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
+
+	m_effects.destroy();
 
 	// Clean up laser beam node
 	if (m_laserNode)
@@ -247,12 +264,9 @@ void Weapon_MiningLaser::persist()
 
 	bool fireHeld = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
 
-	// While firing, reset the flash timer so updateMuzzleFlash keeps it at full brightness
-	if (fireHeld && m_muzzleStarNode && m_muzzleStarNode->isVisible())
-		m_muzzleFlashTime = 0.0f;
-
-	// Update muzzle flash effect (fades when timer is not being reset)
-	updateMuzzleFlash(dt);
+	// Flash stays lit while firing: fire() refreshes it every 50ms, faster than
+	// the 50ms flash duration, so it only fades once the trigger is released.
+	m_effects.update(dt);
 
 	// Drive the laser beam every frame while the fire button is held
 	if (fireHeld && m_mesh.node && m_mesh.node->isVisible() && m_muzzleNode)
@@ -271,8 +285,9 @@ void Weapon_MiningLaser::persist()
 			m_muzzleNode->updateAbsolutePosition();
 			irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
-			irr::core::vector3df forward = (camera.camera->getTarget() - camera.camera->getAbsolutePosition()).normalize();
-			irr::core::vector3df rayEnd = muzzlePos + forward * 1000.0f;
+			// Visual beam converges on the crosshair like the damage ray in fire()
+			irr::core::vector3df beamDir = getAimDirection(muzzlePos);
+			irr::core::vector3df rayEnd = muzzlePos + beamDir * 1000.0f;
 
 			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(muzzlePos, rayEnd, true);
 			createLaserBeam(muzzlePos, hit.hit ? hit.point : rayEnd);
@@ -350,10 +365,8 @@ void Weapon_MiningLaser::fire()
 	m_muzzleNode->updateAbsolutePosition();
 	irr::core::vector3df muzzlePos = m_muzzleNode->getAbsolutePosition();
 
-	// Get camera target for aiming direction
-	irr::core::vector3df target = camera.camera->getTarget();
-	irr::core::vector3df cameraPos = camera.camera->getAbsolutePosition();
-	irr::core::vector3df direction = (target - cameraPos).normalize();
+	// Converge on the crosshair aim point so the muzzle-origin beam lands on centre
+	irr::core::vector3df direction = getAimDirection(muzzlePos);
 
 	// Perform raycast from muzzle position in aim direction
 	// Cast ray a long distance (1000 units)
@@ -378,12 +391,10 @@ void Weapon_MiningLaser::fire()
 			// Only register collision with static or dynamic entities
 			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
 			{
-				// Deal damage if entity can receive it
-				if (hitEntity.hasComponent<DamageReceiverComponent>())
-				{
-					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += m_damage;
-				}
+				// Damage through the gameplay chokepoint; hit ticks are rate-limited
+				// inside registerHitFeedback so the 50ms beam cadence doesn't spam
+				registerHitFeedback(
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
 
 				// Create impact spark particles at hit position with surface normal
 				ParticleManager::Get()->spawn("laser_impact", SPK::IRR::irr2spk(raycastResult.point));
@@ -391,8 +402,14 @@ void Weapon_MiningLaser::fire()
 		}
 	}
 
-	// Create muzzle flash effect
-	createMuzzleFlash();
+	m_effects.muzzleFlash();
+
+	// Continuous low-amplitude shiver while the beam is cutting (fire() runs
+	// every 50 ms while held, so these tiny impulses read as a sustained hum)
+	g_CameraFX.addRecoil(-0.06f, Engine::Get()->rng()->getFloat(-0.03f, 0.03f));
+	addViewKick(
+		irr::core::vector3df(0.0f, 0.0f, -0.004f),
+		irr::core::vector3df(0.15f, 0.0f, Engine::Get()->rng()->getFloat(-0.1f, 0.1f)));
 }
 
 void Weapon_MiningLaser::reload()
@@ -406,94 +423,6 @@ void Weapon_MiningLaser::reload()
 	}
 }
 
-
-void Weapon_MiningLaser::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	m_mesh.node->updateAbsolutePosition();
-
-	if (!m_muzzleNode)
-		return;
-
-	m_muzzleNode->updateAbsolutePosition();
-
-	irr::core::vector3df flashOffset(0, 0, 0.0f);
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			m_muzzleNode,
-			irr::core::dimension2df(0.5f, 0.5f),
-			flashOffset
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION, true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMaterialType);
-
-		// Bind depth texture (texture unit 1)
-		//m_muzzleStarNode->getMaterial(0).setTexture(1, RenderManager::Get()->renderer()->getMRT(2));
-	}
-
-	std::string starPath = "content/texture/particle/star_06.png";
-	auto* starTex = RenderManager::Get()->driver()->getTexture(starPath.c_str());
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-	
-	// Force immediate position update to prevent lag during fast camera movement
-	m_muzzleStarNode->updateAbsolutePosition();
-
-	// Tint star red for laser effect
-	m_muzzleStarNode->setColor(irr::video::SColor(255, 255, 30, 30));
-
-	// Create/show red point light at muzzle if not exists
-	if (!m_muzzleLightNode)
-	{
-		m_muzzleLightNode = RenderManager::Get()->sceneManager()->addLightSceneNode(
-			m_muzzleNode,
-			flashOffset,
-			irr::video::SColorf(1.0f, 0.0f, 0.0f),  // Red light
-			3.0f
-		);
-	}
-	if (m_muzzleLightNode)
-	{
-		m_muzzleLightNode->setVisible(true);
-		// Force immediate position update for light as well
-		m_muzzleLightNode->updateAbsolutePosition();
-	}
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_MiningLaser::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		if (m_muzzleStarNode)
-			m_muzzleStarNode->setVisible(false);
-		if (m_muzzleLightNode)
-			m_muzzleLightNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		if (m_muzzleStarNode)
-		{
-			m_muzzleStarNode->setColor(irr::video::SColor(alpha, 255, 30, 30));
-		}
-	}
-}
 
 void Weapon_MiningLaser::createLaserBeam(const irr::core::vector3df& start, const irr::core::vector3df& end)
 {

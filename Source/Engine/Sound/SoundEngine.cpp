@@ -1,6 +1,8 @@
 #include "Engine/Sound/SoundEngine.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <random>
 #include <spdlog/spdlog.h>
 
 // --- SoundHandle ---
@@ -129,14 +131,14 @@ void SoundEngine::enforceGroupVoiceLimit(const char* group, int maxConcurrent)
 	}
 }
 
-SoundHandle SoundEngine::play2D(const char* file, bool loop, int maxConcurrent, float volume, const char* poolGroup, bool startPaused)
+SoundHandle SoundEngine::play2D(const char* file, bool loop, int maxConcurrent, float volume, const char* poolGroup, bool startPaused, float playbackSpeed)
 {
 	SoundSource* src = loadOrGetSource(file);
 	if (!src) return {};
-	return play2D(src, loop, maxConcurrent, volume, poolGroup, startPaused);
+	return play2D(src, loop, maxConcurrent, volume, poolGroup, startPaused, playbackSpeed);
 }
 
-SoundHandle SoundEngine::play2D(SoundSource* source, bool loop, int maxConcurrent, float volume, const char* poolGroup, bool startPaused)
+SoundHandle SoundEngine::play2D(SoundSource* source, bool loop, int maxConcurrent, float volume, const char* poolGroup, bool startPaused, float playbackSpeed)
 {
 	if (!source) return {};
 
@@ -147,6 +149,7 @@ SoundHandle SoundEngine::play2D(SoundSource* source, bool loop, int maxConcurren
 
 	SoLoud::handle h = m_soloud.play(source->wav, volume, 0.0f, startPaused);
 	if (loop) m_soloud.setLooping(h, true);
+	if (playbackSpeed != 1.0f) m_soloud.setRelativePlaySpeed(h, playbackSpeed);
 
 	if (maxConcurrent > 0)
 	{
@@ -159,14 +162,14 @@ SoundHandle SoundEngine::play2D(SoundSource* source, bool loop, int maxConcurren
 	return SoundHandle(h, this);
 }
 
-SoundHandle SoundEngine::play3D(const char* file, irr::core::vector3df pos, bool loop, bool startPaused, bool track, int maxConcurrent, float volume, const char* poolGroup)
+SoundHandle SoundEngine::play3D(const char* file, irr::core::vector3df pos, bool loop, bool startPaused, bool track, int maxConcurrent, float volume, const char* poolGroup, float playbackSpeed)
 {
 	SoundSource* src = loadOrGetSource(file);
 	if (!src) return {};
-	return play3D(src, pos, loop, startPaused, track, maxConcurrent, volume, poolGroup);
+	return play3D(src, pos, loop, startPaused, track, maxConcurrent, volume, poolGroup, playbackSpeed);
 }
 
-SoundHandle SoundEngine::play3D(SoundSource* source, irr::core::vector3df pos, bool loop, bool startPaused, bool track, int maxConcurrent, float volume, const char* poolGroup)
+SoundHandle SoundEngine::play3D(SoundSource* source, irr::core::vector3df pos, bool loop, bool startPaused, bool track, int maxConcurrent, float volume, const char* poolGroup, float playbackSpeed)
 {
 	if (!source) return {};
 
@@ -180,6 +183,7 @@ SoundHandle SoundEngine::play3D(SoundSource* source, irr::core::vector3df pos, b
 		volume,
 		startPaused);
 	if (loop) m_soloud.setLooping(h, true);
+	if (playbackSpeed != 1.0f) m_soloud.setRelativePlaySpeed(h, playbackSpeed);
 
 	if (maxConcurrent > 0)
 	{
@@ -190,6 +194,93 @@ SoundHandle SoundEngine::play3D(SoundSource* source, irr::core::vector3df pos, b
 	}
 
 	return SoundHandle(h, this);
+}
+
+// --- Randomized variant playback ---
+
+// Quiet existence probe — matches SoLoud's stdio loading, avoids the
+// loadOrGetSource() warning while scanning for variants that may not exist.
+static bool fileExists(const std::string& path)
+{
+	FILE* f = fopen(path.c_str(), "rb");
+	if (!f) return false;
+	fclose(f);
+	return true;
+}
+
+SoundEngine::VariantSet& SoundEngine::getVariantSet(const char* basePath)
+{
+	auto it = m_variantSets.find(basePath);
+	if (it != m_variantSets.end())
+		return it->second;
+
+	VariantSet set;
+
+	// Contiguous scan: base1.wav, base2.wav, ... stop at the first gap
+	for (int i = 1;; i++)
+	{
+		std::string candidate = std::string(basePath) + std::to_string(i) + ".wav";
+		if (!fileExists(candidate))
+			break;
+		if (SoundSource* src = loadOrGetSource(candidate.c_str()))
+			set.sources.push_back(src);
+	}
+
+	// No numbered variants — fall back to the plain un-numbered file
+	if (set.sources.empty())
+	{
+		std::string plain = std::string(basePath) + ".wav";
+		if (SoundSource* src = fileExists(plain) ? loadOrGetSource(plain.c_str()) : nullptr)
+			set.sources.push_back(src);
+		else
+			spdlog::warn("SoundEngine: no variants or fallback found for '{}'", basePath);
+	}
+	else if (set.sources.size() > 1)
+	{
+		spdlog::info("SoundEngine: '{}' -> {} variants", basePath, set.sources.size());
+	}
+
+	return m_variantSets.emplace(basePath, std::move(set)).first->second;
+}
+
+SoundSource* SoundEngine::pickVariant(const char* basePath)
+{
+	VariantSet& set = getVariantSet(basePath);
+	if (set.sources.empty())
+		return nullptr;
+
+	static std::mt19937 rng{ std::random_device{}() };
+	int index = (int)(rng() % set.sources.size());
+
+	// Re-roll once to make back-to-back repeats rare
+	if ((int)set.sources.size() > 1 && index == set.lastIndex)
+		index = (int)(rng() % set.sources.size());
+
+	set.lastIndex = index;
+	return set.sources[index];
+}
+
+float SoundEngine::jitteredSpeed(float pitchJitter)
+{
+	if (pitchJitter <= 0.0f)
+		return 1.0f;
+	static std::mt19937 rng{ std::random_device{}() };
+	std::uniform_real_distribution<float> dist(-pitchJitter, pitchJitter);
+	return 1.0f + dist(rng);
+}
+
+SoundHandle SoundEngine::playRandomized2D(const char* basePath, float pitchJitter, int maxConcurrent, float volume, const char* poolGroup)
+{
+	SoundSource* src = pickVariant(basePath);
+	if (!src) return {};
+	return play2D(src, false, maxConcurrent, volume, poolGroup, false, jitteredSpeed(pitchJitter));
+}
+
+SoundHandle SoundEngine::playRandomized3D(const char* basePath, irr::core::vector3df pos, float pitchJitter, int maxConcurrent, float volume, const char* poolGroup)
+{
+	SoundSource* src = pickVariant(basePath);
+	if (!src) return {};
+	return play3D(src, pos, false, false, true, maxConcurrent, volume, poolGroup, jitteredSpeed(pitchJitter));
 }
 
 void SoundEngine::setSoundVolume(float volume)
@@ -221,4 +312,8 @@ void SoundEngine::removeAllSoundSources()
 {
 	m_soloud.stopAll();
 	m_sources.clear();
+	// These hold raw SoundSource* / voice handles into the sources we just freed
+	m_variantSets.clear();
+	m_voicePool.clear();
+	m_groupPool.clear();
 }

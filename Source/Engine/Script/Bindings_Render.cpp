@@ -369,6 +369,11 @@ static bool AS_Engine_IsGame()   { return Engine::Get()->stateManager()->current
 static bool AS_Engine_IsEditor() { return Engine::Get()->stateManager()->current() == ESID_EDITOR || Engine::Get()->stateManager()->current() == ESID_EDITORGAME; }
 static int  AS_Engine_GetState() { return static_cast<int>(Engine::Get()->stateManager()->current()); }
 
+// TIME SCALE (bullet time) — clamped [0.1, 2.0] inside Engine; resets to 1 on scene clear
+static void  AS_Engine_SetTimeScale(float scale) { Engine::Get()->setTimeScale(scale); }
+static float AS_Engine_GetTimeScale()            { return Engine::Get()->getTimeScale(); }
+static void  AS_Engine_HitStop(float durationMs) { Engine::Get()->requestHitStop(durationMs); }
+
 void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 {
     engine->SetDefaultNamespace("render");
@@ -460,6 +465,10 @@ void ScriptBindings::RegisterRender(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("bool isGame()",   asFUNCTION(AS_Engine_IsGame),   asCALL_CDECL);
 		engine->RegisterGlobalFunction("bool isEditor()", asFUNCTION(AS_Engine_IsEditor), asCALL_CDECL);
 		engine->RegisterGlobalFunction("int  getState()", asFUNCTION(AS_Engine_GetState), asCALL_CDECL);
+
+		engine->RegisterGlobalFunction("void  setTimeScale(float)",   asFUNCTION(AS_Engine_SetTimeScale), asCALL_CDECL);
+		engine->RegisterGlobalFunction("float getTimeScale()",        asFUNCTION(AS_Engine_GetTimeScale), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void  hitStop(float)",        asFUNCTION(AS_Engine_HitStop),      asCALL_CDECL);
 	}
 
     engine->SetDefaultNamespace("");

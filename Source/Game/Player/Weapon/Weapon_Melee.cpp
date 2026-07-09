@@ -2,6 +2,8 @@
 
 #include "Engine/Engine.h"
 
+#include "../CameraFX.h"
+
 #undef MB_RIGHT
 
 using namespace SPK;
@@ -104,17 +106,59 @@ void Weapon_Melee::destroy()
 
 void Weapon_Melee::update()
 {
-	if (m_mesh.animation_call_back->hasAnimationEnded())
+	if (!m_mesh.node || !m_mesh.node->isVisible())
+		return;
+
+	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
+
+	if (m_isSwinging)
 	{
-		this->idle();
+		// The strike lands when the blade visually reaches the target
+		if (!m_damageDone && m_mesh.node->getFrameNr() >= static_cast<irr::f32>(m_contactFrame))
+		{
+			m_damageDone = true;
+			performStrike();
+		}
+
+		if (animEnded)
+		{
+			m_isSwinging = false;
+			idle();
+		}
+
+		// Committed to the swing — no new attacks until it finishes
+		return;
 	}
 
-	this->fire();
+	// Re-loop the idle animation when it runs out
+	if (animEnded)
+		idle();
+
+	// Attack input
+	static bool ml = false, mr = false;
+	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_LEFT, &ml))
+	{
+		// Light attack — two swing variants
+		if (Engine::Get()->rng()->getInt(0, 1) == 0)
+			startSwing(266, 273, 270, 10);
+		else
+			startSwing(276, 282, 279, 10);
+	}
+	else if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_RIGHT, &mr))
+	{
+		// Heavy attack — longer wind-up, heavier hit
+		startSwing(296, 308, 303, 25);
+	}
 }
 
 void Weapon_Melee::equip()
 {
 	m_mesh.node->setVisible(true);
+
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+	m_isSwinging = false;
+	m_damageDone = false;
+	idle();
 }
 
 void Weapon_Melee::unequip()
@@ -135,35 +179,32 @@ void Weapon_Melee::move()
 
 void Weapon_Melee::fire()
 {
+
+}
+
+void Weapon_Melee::startSwing(int startFrame, int endFrame, int contactFrame, unsigned int damage)
+{
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+
 	m_mesh.node->setLoopMode(false);
+	m_mesh.node->setFrameLoop(startFrame, endFrame);
 
-	bool didAttack = false;
-	static bool ml = false, mr = false;
-	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_LEFT, &ml))
-	{
-		switch (rand() % 2)
-		{
-		case 0:
-			m_mesh.node->setFrameLoop(266, 273);
-			break;
-		case 1:
-			m_mesh.node->setFrameLoop(276, 282);
-			break;
-		default:
-			m_mesh.node->setFrameLoop(266, 273);
-			break;
-		}
-		didAttack = true;
-	}
-	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_RIGHT, &mr))
-	{
-		m_mesh.node->setFrameLoop(296, 308);
-		didAttack = true;
-	}
+	m_isSwinging   = true;
+	m_damageDone   = false;
+	m_contactFrame = contactFrame;
+	m_attackDamage = damage;
 
-	if (!didAttack)
-		return;
+	// Anticipation: whoosh + forward lunge at swing START — the payoff
+	// (damage/impact) comes later, on the contact frame
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/sword/fire", 0.08f);
+	g_CameraFX.addRecoil(0.8f, Engine::Get()->rng()->getFloat(-0.2f, 0.2f));
+	addViewKick(
+		irr::core::vector3df(0.0f, -0.01f, 0.05f),
+		irr::core::vector3df(-2.0f, 0.0f, Engine::Get()->rng()->getFloat(-1.0f, 1.0f)));
+}
 
+void Weapon_Melee::performStrike()
+{
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 	if (!player.isValid() || !player.hasComponent<CameraComponent>())
 		return;
@@ -188,15 +229,27 @@ void Weapon_Melee::fire()
 			// Only register collision with static or dynamic entities
 			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
 			{
-				// Deal damage if entity can receive it
-				if (hitEntity.hasComponent<DamageReceiverComponent>())
-				{
-					auto& damageComp = hitEntity.getComponent<DamageReceiverComponent>();
-					damageComp.damageReceived += 10;
-				}
+				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
+				HIT_RESULT result = WorldManager::Get()->gameplaySystem()->damageEntity(
+					hitDescriptor.id, m_attackDamage);
+				registerHitFeedback(result);
 
-				// Create impact spark particles at hit position with surface normal
+				// Create impact spark particles at hit position
 				ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+
+				if (result != HIT_RESULT::NONE)
+				{
+					// Connect crunch: impact thunk (placeholder — pitched-down
+					// whoosh until sword/impact1..N.wav exists), camera bite,
+					// and the hit-stop payoff
+					SoundManager::Get()->sound()->play2D(
+						"content/sound/weapon/sword/fire.wav",
+						false, 0, 0.5f, nullptr, false, 0.7f);
+					g_CameraFX.addShake(0.8f, 100.0f);
+					g_CameraFX.addRecoil(0.6f, 0.0f);
+
+					Engine::Get()->requestHitStop(result == HIT_RESULT::KILL ? 70.0f : 35.0f);
+				}
 			}
 		}
 	}

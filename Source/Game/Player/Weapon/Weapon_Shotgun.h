@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../WeaponData.h"
+#include "WeaponEffects.h"
 
 class Weapon_Shotgun : public PlayerWeapon
 {
@@ -33,36 +34,19 @@ private:
 	float m_damagePerPellet = 30.0f;
 	float m_spreadAngle = 3.0f; // degrees half-angle cone
 
-	// Recoil animation
+	// Delayed pump-rack sound layer (checked in persist())
+	bool  m_pumpPending = false;
+	float m_pumpTime    = 0.0f;      // absolute ms timestamp
+	const float m_pumpDelay = 400.0f; // ms after the blast
+
+	// Recoil animation (delivered through the shared PlayerWeapon view-kick spring)
 	float m_recoilAmount = 8.0f;
 	float m_recoilRandomnessVertical = 1.0f;
 	float m_recoilRandomnessHorizontal = 2.5f;
-	float m_currentRecoilRotation = 0.0f;
-	float m_currentRecoilHorizontal = 0.0f;
-	float m_currentRecoilPosition = 0.0f;
 	float m_recoilPositionKick = 0.07f;
-	float m_recoilRecoverySpeed = 20.0f;
+
+	// Shared muzzle flash / shell / impact VFX
+	WeaponEffects m_effects;
 
 	irr::video::ITexture* m_crosshair = nullptr;
-
-	// Shell ejection system - pooled fake physics, no ECS/PhysX
-	static constexpr int SHELL_POOL_SIZE = 32;
-	struct ShellCasing {
-		irr::scene::IMeshSceneNode* node = nullptr;
-		irr::core::vector3df velocity;        // units/second
-		irr::core::vector3df angularVelocity; // degrees/second
-		irr::core::vector3df rotation;
-		float spawnTime = 0.0f;
-		bool active = false;
-		bool physicsActive = true;
-		int bounceCount = 0;
-	};
-	ShellCasing m_shellPool[SHELL_POOL_SIZE];
-	const float m_shellEjectionSpeed = 6.0f;
-	const float m_shellGravity = 9.81f;
-	const float m_shellBounceSoundInterval = 150.0f; // ms between bounce sounds
-	float m_lastShellBounceSound = 0.0f;
-
-	void ejectShell();
-	void updateShells(float dt);
 };

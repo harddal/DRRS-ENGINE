@@ -1,4 +1,6 @@
 #include "Engine/Renderer/Particle/ParticleManager.h"
+
+#include "Engine/Renderer/RenderManager.h"
 #include "Engine/Renderer/Particle/ParticleSystemLoader.h"
 #include "Engine/Renderer/Particle/ParticleSystemDef.h"
 
@@ -113,8 +115,42 @@ void ParticleManager::destroy(uint32_t handle)
     }
 }
 
+void ParticleManager::setSoftParticleShader(bool enabled)
+{
+    const auto softType = ShaderMaterialManager::get("soft_particle");
+    if (softType == irr::video::EMT_SOLID)
+        return; // shader failed to compile at startup — nothing to toggle
+
+    auto flip = [&](SPK::System* system)
+    {
+        if (!system) return;
+        for (auto* group : system->getGroups())
+        {
+            auto* renderer = dynamic_cast<SPK::IRR::IRRRenderer*>(group->getRenderer());
+            if (!renderer) continue;
+            auto& mat = renderer->getMaterialRW();
+            if (enabled && mat.MaterialType == irr::video::EMT_ONETEXTURE_BLEND)
+                mat.MaterialType = softType;
+            else if (!enabled && mat.MaterialType == softType)
+                mat.MaterialType = irr::video::EMT_ONETEXTURE_BLEND;
+        }
+    };
+
+    // Templates are stored as SPARK factory IDs — resolve to systems.
+    for (auto& kv : m_effects)
+        flip(dynamic_cast<SPK::System*>(
+            SPK::SPKFactory::getInstance().get(kv.second.baseID)));
+    for (auto& kv : m_instances)
+        flip(kv.second.system);
+}
+
 void ParticleManager::update(float dt)
 {
+    // Feed SPARK the camera position — required by Group::enableSorting so
+    // alpha-blended groups can sort particles back-to-front.
+    if (auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera())
+        SPK::System::setCameraPosition(SPK::IRR::irr2spk(cam->getAbsolutePosition()));
+
     const float dtS = dt * 0.001f;  // dt is in ms; SPARK lifetimes are in seconds
     for (auto it = m_instances.begin(); it != m_instances.end(); )
     {

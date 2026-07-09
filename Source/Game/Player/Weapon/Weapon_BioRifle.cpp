@@ -1,4 +1,4 @@
-#include "Weapon_BioRifle.h"
+﻿#include "Weapon_BioRifle.h"
 
 #include "Engine/Engine.h"
 
@@ -107,6 +107,18 @@ void Weapon_BioRifle::init()
 	m_mesh.node->setVisible(false);
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/2x/crosshair131.png");
+
+	// Character sheet: sickly green spatter flash, no tracers/shells/impacts (projectile weapon)
+	WeaponEffectsDesc fx;
+	fx.muzzleJointName = "FIRESPOT";
+	fx.flashColor      = irr::video::SColor(255, 40, 220, 40);
+	fx.flashSize       = 0.7f;
+	fx.flashLight      = false;
+	fx.tracerPoolSize  = 0;
+	fx.shellPoolSize   = 0;
+	fx.impactParticle  = nullptr;
+	fx.impactDecal     = nullptr;
+	m_effects.init(m_mesh.node, fx);
 }
 
 void Weapon_BioRifle::destroy()
@@ -230,6 +242,12 @@ void Weapon_BioRifle::update()
 				{
 					ParticleManager::Get()->setEmitterDirection(handle, forward);
 					m_mistBursts.push_back({ handle, muzzlePos, forward, currentTime });
+
+					// Micro-kick per burst — sells the spray as pressurized
+					g_CameraFX.addRecoil(-0.25f, Engine::Get()->rng()->getFloat(-0.08f, 0.08f));
+					addViewKick(
+						irr::core::vector3df(0.0f, 0.0f, -0.015f),
+						irr::core::vector3df(0.8f, 0.0f, Engine::Get()->rng()->getFloat(-0.3f, 0.3f)));
 				}
 			}
 		}
@@ -244,7 +262,7 @@ void Weapon_BioRifle::persist()
 	float currentTime = Engine::Get()->getCurrentTime();
 
 	updateGlobs(dt);
-	updateMuzzleFlash(dt);
+	m_effects.update(dt);
 
 	// Prune bursts whose particles have all expired (~750 ms max lifetime)
 	const float burstMaxLifetime = 750.0f;
@@ -475,12 +493,21 @@ void Weapon_BioRifle::spawnGlob()
 
 	m_projectiles.emplace_back(proj);
 
-	SoundManager::Get()->sound()->play2D("content/sound/weapon/grenade_launcher/fire.wav", false);
+	// Placeholder asset — wants its own content/sound/weapon/biorifle/fire1..N.wav
+	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/grenade_launcher/fire", 0.08f);
 
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(81, 89);
 
-	createMuzzleFlash();
+	m_effects.muzzleFlash();
+
+	// Wet sputtering kick — organic launcher, softer than the ballistic weapons
+	g_CameraFX.addRecoil(-1.2f, Engine::Get()->rng()->getFloat(-0.2f, 0.2f));
+	addViewKick(
+		irr::core::vector3df(0.0f, 0.015f, -0.06f),
+		irr::core::vector3df(3.0f,
+			Engine::Get()->rng()->getFloat(-0.5f, 0.5f),
+			Engine::Get()->rng()->getFloat(-0.8f, 0.8f)));
 }
 
 void Weapon_BioRifle::updateGlobs(float dt)
@@ -560,6 +587,7 @@ void Weapon_BioRifle::updateGlobs(float dt)
 		bool hitSomething               = false;
 		irr::scene::ISceneNode* hitNode = nullptr;
 		irr::core::vector3df hitPoint   = currentPos;
+		irr::core::vector3df hitNormal(0.0f, 0.0f, 0.0f);
 
 		if (raycastResult.hit && raycastResult.node)
 		{
@@ -580,6 +608,7 @@ void Weapon_BioRifle::updateGlobs(float dt)
 							hitSomething = true;
 							hitNode      = raycastResult.node;
 							hitPoint     = raycastResult.point;
+							hitNormal    = raycastResult.normal;
 						}
 					}
 				}
@@ -595,7 +624,7 @@ void Weapon_BioRifle::updateGlobs(float dt)
 			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
 				hitEntityID != it->entity.getComponent<DescriptorComponent>().id)
 			{
-				detonateAt(hitPoint, hitEntityID);
+				detonateAt(hitPoint, hitEntityID, hitNormal);
 				shouldRemove = true;
 			}
 		}
@@ -655,39 +684,23 @@ void Weapon_BioRifle::updateGlobs(float dt)
 	}
 }
 
-void Weapon_BioRifle::detonateAt(const irr::core::vector3df& pos, entityid directHitID)
+void Weapon_BioRifle::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
+	const irr::core::vector3df& surfaceNormal)
 {
-	SoundManager::Get()->sound()->play3D("content/sound/effect/explosion2.wav", pos);
+	// Placeholder — wants a wet splat variant set (content/sound/weapon/biorifle/splash1..N.wav)
+	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.10f);
 	ParticleManager::Get()->spawn("bio_splash", irr2spk(pos));
 	applySplashDamage(pos, directHitID);
 
-	anax::Entity& playerEnt = WorldManager::Get()->managerSystem()->getEntityByName("player");
-	if (playerEnt.isValid() && playerEnt.hasComponent<TransformComponent>())
-	{
-		const float maxShakeDist = 5.0f;
-		const float peakShake    = 2.5f;
-		const float shakeDurMs   = 250.0f;
-
-		float dist      = (pos - playerEnt.getComponent<TransformComponent>().getPosition()).getLength();
-		float intensity = std::max(0.0f, 1.0f - dist / maxShakeDist) * peakShake;
-
-		if (intensity > 0.05f)
-			g_CameraFX.addShake(intensity, shakeDurMs);
-	}
+	// Green splat flash + scorch (oriented to the hit surface) + proximity feedback
+	m_effects.explosionAt(pos,
+		irr::video::SColorf(0.3f, 0.9f, 0.2f), 7.0f, 2.5f, 5.0f, 250.0f,
+		surfaceNormal);
 
 	if (directHitID != _entity_null_value)
 	{
-		auto entities = WorldManager::Get()->managerSystem()->getEntities();
-		for (auto& entity : entities)
-		{
-			if (entity.hasComponent<DescriptorComponent>() &&
-				entity.getComponent<DescriptorComponent>().id == directHitID)
-			{
-				if (entity.hasComponent<DamageReceiverComponent>())
-					entity.getComponent<DamageReceiverComponent>().damageReceived += m_pointDamage;
-				break;
-			}
-		}
+		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
+			directHitID, static_cast<unsigned int>(m_pointDamage)));
 	}
 }
 
@@ -695,6 +708,9 @@ void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, e
 {
 	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
 		return;
+
+	// One feedback event per detonation regardless of how many entities it caught
+	HIT_RESULT bestResult = HIT_RESULT::NONE;
 
 	auto& entities = WorldManager::Get()->managerSystem()->getEntities();
 	for (auto& entity : entities)
@@ -716,8 +732,15 @@ void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, e
 		float falloff = 1.0f - (dist / m_splashRadius);
 		float damage  = m_splashDamage * falloff;
 
-		if (damage > 0.0f && entity.hasComponent<DamageReceiverComponent>())
-			entity.getComponent<DamageReceiverComponent>().damageReceived += damage;
+		if (damage >= 1.0f)
+		{
+			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(
+				desc.id, static_cast<unsigned int>(damage));
+
+			// Splash-damaging yourself is not a hit confirm
+			if (desc.name != "player" && static_cast<int>(r) > static_cast<int>(bestResult))
+				bestResult = r;
+		}
 
 		if (m_splashForce > 0.0f && entity.hasComponent<PhysicsComponent>())
 		{
@@ -738,62 +761,7 @@ void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, e
 			}
 		}
 	}
+
+	registerHitFeedback(bestResult);
 }
 
-void Weapon_BioRifle::createMuzzleFlash()
-{
-	if (!m_mesh.node)
-		return;
-
-	m_mesh.node->updateAbsolutePosition();
-
-	irr::scene::IBoneSceneNode* muzzleBone = m_mesh.node->getJointNode("FIRESPOT");
-	if (!muzzleBone)
-		return;
-
-	muzzleBone->updateAbsolutePosition();
-
-	if (!m_muzzleStarNode)
-	{
-		m_muzzleStarNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
-			muzzleBone,
-			irr::core::dimension2df(0.7f, 0.7f),
-			irr::core::vector3df(0.0f, 0.0f, 0.0f)
-		);
-
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_LIGHTING,        false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE,   false);
-		m_muzzleStarNode->setMaterialFlag(irr::video::EMF_BLEND_OPERATION,  true);
-		m_muzzleStarNode->setMaterialType(m_muzzleFlashMat);
-	}
-
-	auto* starTex = RenderManager::Get()->driver()->getTexture("content/texture/particle/star_05.png");
-	m_muzzleStarNode->setMaterialTexture(0, starTex);
-	m_muzzleStarNode->setVisible(true);
-	m_muzzleStarNode->updateAbsolutePosition();
-
-	// Green tint for the bio muzzle flash
-	m_muzzleStarNode->setColor(irr::video::SColor(255, 40, 220, 40));
-
-	m_muzzleFlashTime = 0.0f;
-}
-
-void Weapon_BioRifle::updateMuzzleFlash(float dt)
-{
-	if (!m_muzzleStarNode)
-		return;
-
-	m_muzzleFlashTime += dt;
-
-	if (m_muzzleFlashTime >= m_muzzleFlashDuration)
-	{
-		m_muzzleStarNode->setVisible(false);
-	}
-	else
-	{
-		float fadeProgress = m_muzzleFlashTime / m_muzzleFlashDuration;
-		irr::u32 alpha = (irr::u32)((1.0f - fadeProgress) * 255.0f);
-
-		m_muzzleStarNode->setColor(irr::video::SColor(alpha, 40, 220, 40));
-	}
-}
