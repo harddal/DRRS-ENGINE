@@ -227,6 +227,7 @@
     <ClCompile Include="Source\Game\EndGameState.cpp" />
     <ClCompile Include="Source\Game\GameManager.cpp" />
     <ClCompile Include="Source\Game\GameplaySystem.cpp" />
+    <ClCompile Include="Source\Game\LogicLinks.cpp" />
     <ClCompile Include="Source\Game\GameState.cpp" />
     <ClCompile Include="Source\Game\Interface\MainMenuGUI.cpp" />
     <ClCompile Include="Source\Game\IntroState.cpp" />
@@ -499,6 +500,7 @@
     <ClInclude Include="Source\Game\EndGameState.h" />
     <ClInclude Include="Source\Game\GameManager.h" />
     <ClInclude Include="Source\Game\GameplaySystem.h" />
+    <ClInclude Include="Source\Game\LogicLinks.h" />
     <ClInclude Include="Source\Game\GameState.h" />
     <ClInclude Include="Source\Game\Interface\MainMenuGUI.h" />
     <ClInclude Include="Source\Game\IntroState.h" />

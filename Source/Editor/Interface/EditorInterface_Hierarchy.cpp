@@ -25,6 +25,14 @@ void EditorInterface::draw_window_hierarchy()
 		ImGui::InputTextWithHint("##hier_filter", "Filter...", s_hier_filter, sizeof(s_hier_filter));
 		ImGui::Separator();
 
+		if (g_sceneInteractor.isLinkPicking())
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 60, 255));
+			ImGui::TextWrapped("Pick link target: click an entity (Esc cancels)");
+			ImGui::PopStyleColor();
+			ImGui::Separator();
+		}
+
 		for (auto ent : WorldManager::Get()->world()->getEntities())
 		{
 			auto& desc = ent.getComponent<DescriptorComponent>();
@@ -51,9 +59,16 @@ void EditorInterface::draw_window_hierarchy()
 			ImGui::PushID(static_cast<int>(desc.id));
 			if (ImGui::Selectable(desc.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
 			{
-				g_sceneInteractor.setSelectedEntity(desc.id);
-				g_currentSelectedObjectType = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::ENTITY);
-				m_windowData.draw_window_prop_ent = true;
+				if (g_sceneInteractor.isLinkPicking())
+				{
+					g_sceneInteractor.completeLinkPick(desc.id);
+				}
+				else
+				{
+					g_sceneInteractor.setSelectedEntity(desc.id);
+					g_currentSelectedObjectType = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::ENTITY);
+					m_windowData.draw_window_prop_ent = true;
+				}
 			}
 			ImGui::PopID();
 		}

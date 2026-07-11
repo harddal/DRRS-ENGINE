@@ -457,8 +457,13 @@
         </div>
         <div class="file-list">
           <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">Engine.h/.cpp</span><span class="file-desc">— bootstraps all managers, drives state machine</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">setTimeScale()</span><span class="file-desc">— bullet time [0.1–2.0], scales the fixed-step accumulator</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">requestHitStop()</span><span class="file-desc">— brief near-freeze, real-time recovery</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">EngineState.h</span><span class="file-desc">— base class for all engine states</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-engine)"></div><span class="file-name">Types.h</span><span class="file-desc">— entity types (ET_STATIC, ET_DYNAMIC, ET_PLAYER…)</span></div>
+        </div>
+        <div class="inset" style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <strong style="color:var(--text);">Time scale</strong> — slows logic, PhysX step frequency, particles and <code>getCurrentTime()</code> coherently; rendering and audio stay real-time. Hit-stop layers on top via <code>min(hitStopScale, timeScale)</code>.
         </div>
       </div>
 
@@ -517,34 +522,43 @@
         <div class="file-list">
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">driver()</span><span class="file-desc">— IVideoDriver*, Irrlicht render device</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">sceneManager()</span><span class="file-desc">— ISceneManager*, Irrlicht scene graph</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">drawShadowPass()</span><span class="file-desc">— depth-only render for shadow map</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">m_lightProjView</span><span class="file-desc">— spotlight shadow matrix</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">createShadowResources()</span><span class="file-desc">— 2048² ECF_R32F shadow RTT</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">OnSetConstants()</span><span class="file-desc">— pushes uniforms to all shaders</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">ClusteredLightManager</span><span class="file-desc">— froxel light culling, GL units 8-10</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">updatePerFrameUBO()</span><span class="file-desc">— std140 PerFrame block, binding 0</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">drawShadowPass()</span><span class="file-desc">— renders casters into atlas quadrants</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">drawPrePass() / drawSSAO()</span><span class="file-desc">— view normal+depth RTT, half-res AO</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">drawTransparentPass()</span><span class="file-desc">— sorted per-buffer transparent owner</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">decals()</span><span class="file-desc">— DecalManager*, screen-space decals</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">registerViewmodelNode()</span><span class="file-desc">— depth-cleared first-person pass</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">registerLDREffectNode()</span><span class="file-desc">— additive FX drawn post-tonemap</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">m_debugNodes</span><span class="file-desc">— hidden before shadow pass</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">SplatMap.h</span><span class="file-desc">— terrain texture splatting</span></div>
         </div>
 
         <h3 class="section-title">Shadow System</h3>
         <div class="inset" style="font-size:11px;color:var(--muted);">
-          Single spot shadow · 2048×2048 · ECF_R32F RTT<br>
-          Front-face cull + slope-scale bias in shadow pass<br>
+          Shadow atlas: up to <strong style="color:var(--text);">4 spotlights</strong> · 4096×4096 R32F, 2048² quadrants<br>
+          Slots assigned to nearest visible casters by ClusteredLightManager<br>
+          Front-face cull + slope-scale bias · per-light PCF in the cluster loop<br>
           <span style="color:var(--red);">vShadowClip</span> passed as clip-space vec4 — divide by w in <em>fragment</em> shader only
         </div>
 
-        <h3 class="section-title">Post-Processing Pipeline</h3>
+        <h3 class="section-title">Frame Pipeline</h3>
         <div class="pipeline">
-          <div class="pipeline-stage">Scene</div>
+          <div class="pipeline-stage">Shadow Atlas</div>
           <span class="pipeline-arrow">→</span>
-          <div class="pipeline-stage">Bloom</div>
+          <div class="pipeline-stage">HDR Scene</div>
           <span class="pipeline-arrow">→</span>
-          <div class="pipeline-stage">Tonemap</div>
+          <div class="pipeline-stage">Transparent</div>
           <span class="pipeline-arrow">→</span>
-          <div class="pipeline-stage">ColorGrade</div>
+          <div class="pipeline-stage">Viewmodel</div>
           <span class="pipeline-arrow">→</span>
-          <div class="pipeline-stage">FXAA</div>
+          <div class="pipeline-stage">Prepass + SSAO</div>
           <span class="pipeline-arrow">→</span>
-          <div class="pipeline-stage">Film FX</div>
+          <div class="pipeline-stage">Bloom · Tonemap · Grade · FXAA</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">Decals</div>
+          <span class="pipeline-arrow">→</span>
+          <div class="pipeline-stage">LDR FX</div>
         </div>
       </div>
 
@@ -580,14 +594,20 @@
           </div>
         </div>
         <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">ParticleManager</span><span class="file-desc">— data-driven SPARK effects (.psys XML)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">ParticleSystemLoader</span><span class="file-desc">— .psys → SPARK system, soft-particle swap</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">DecalManager</span><span class="file-desc">— screen-space decals (bullet holes, scorch)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">SPARK (Irrlicht)</span><span class="file-desc">— full particle system library</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">BoltSceneNode</span><span class="file-desc">— lightning bolt effect</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CBeamSceneNode</span><span class="file-desc">— continuous beam (pulse rifle)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CBeamSceneNode</span><span class="file-desc">— continuous beam effect</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CBloodEffect</span><span class="file-desc">— blood splatter particles</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CShieldManager</span><span class="file-desc">— shield visual system</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">DecalSceneNode</span><span class="file-desc">— projected decals</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">IQuadSceneNode</span><span class="file-desc">— quad billboard base</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">SPARK (Irrlicht)</span><span class="file-desc">— full particle system library</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-render)"></div><span class="file-name">CUnrealMeshFileLoader</span><span class="file-desc">— Unreal mesh importer</span></div>
+        </div>
+        <div class="inset" style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <strong style="color:var(--text);">DecalManager</strong> — box volumes, post-tonemap MODULATE blend, world-pos reconstruction from the prepass; 64 max, 60s life + fade<br>
+          <strong style="color:var(--text);">Soft particles</strong> — SPARK quads fade near geometry via prepass depth (unit 14)
         </div>
       </div>
 
@@ -637,6 +657,9 @@
             <div class="shader-chip vert">impact_burn.vert</div>
             <div class="shader-chip vert">barrel_heat.vert</div>
             <div class="shader-chip vert">additive_color.vert</div>
+            <div class="shader-chip vert">soft_particle.vert</div>
+            <div class="shader-chip vert">decal.vert</div>
+            <div class="shader-chip vert">prepass.vert</div>
             <div class="shader-chip vert">quad.vert</div>
             <div class="shader-chip vert">fxaa.vert</div>
           </div>
@@ -655,6 +678,9 @@
             <div class="shader-chip frag">impact_burn.frag</div>
             <div class="shader-chip frag">barrel_heat.frag</div>
             <div class="shader-chip frag">additive_color.frag</div>
+            <div class="shader-chip frag">soft_particle.frag</div>
+            <div class="shader-chip frag">decal.frag</div>
+            <div class="shader-chip frag">prepass.frag</div>
             <div class="shader-chip frag">varicolor.frag</div>
             <div class="shader-chip frag">blit.frag</div>
           </div>
@@ -670,13 +696,19 @@
             <div class="shader-chip post">sharpen.frag</div>
             <div class="shader-chip post">pixelate.frag</div>
             <div class="shader-chip post">posterize.frag</div>
+            <div class="shader-chip post">radiation.frag</div>
+            <div class="shader-chip post">ssao_gen.frag</div>
+            <div class="shader-chip post">ssao_blur.frag</div>
+            <div class="shader-chip post">ssao_apply.frag</div>
             <div class="shader-chip post">lum_measure.frag</div>
           </div>
         </div>
       </div>
       <div class="inset" style="margin-top:14px;font-size:11px;color:var(--muted);">
-        <strong style="color:var(--text);">phong_perpixel</strong> — main shader: GGX/Cook-Torrance PBR, shadow sampling, lightmap UV2 (<code style="color:var(--col-render);">uHasLightmap</code>), point + spot lights, baked AO blend<br>
-        <strong style="color:var(--text);">shadow_depth</strong> — writes linear depth to R32F RTT; front-face culled for Peter-Pan prevention
+        <strong style="color:var(--text);">phong_perpixel</strong> — main shader: GGX/Cook-Torrance PBR, clustered lights (<code style="color:var(--col-render);">uUseClusters</code>), shadow-atlas PCF, lightmap UV2 (<code style="color:var(--col-render);">uHasLightmap</code>), PerFrame UBO<br>
+        <strong style="color:var(--text);">shadow_depth</strong> — writes linear depth to R32F RTT; front-face culled for Peter-Pan prevention<br>
+        <strong style="color:var(--text);">soft_particle</strong> — SPARK quads over EMT_ONETEXTURE_BLEND (blend packed in MaterialTypeParam), depth-fades against the prepass<br>
+        <strong style="color:var(--text);">decal</strong> — screen-space box projection, MODULATE onto tonemapped backbuffer, normal-rejection vs prepass
       </div>
     </div>
   </div>
@@ -794,7 +826,11 @@
         </div>
         <div class="file-list">
           <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">SoundEngine.h/.cpp</span><span class="file-desc">— SoLoud backend, low-level playback</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">playRandomized2D/3D()</span><span class="file-desc">— fire1..N variant sets + pitch jitter</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">play2D/3D playbackSpeed</span><span class="file-desc">— per-voice pitch (setRelativePlaySpeed)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">voice pools</span><span class="file-desc">— maxConcurrent + poolGroup limits, oldest-out</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">SoundManager.h/.cpp</span><span class="file-desc">— high-level: play, stop, 3D position</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-audio)"></div><span class="file-name">GeigerEffect.h/.cpp</span><span class="file-desc">— radiation click intensity driver</span></div>
         </div>
       </div>
 
@@ -838,6 +874,9 @@
           <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">Bindings_Vector2/3.cpp</span><span class="file-desc">— math types</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-script)"></div><span class="file-name">ScriptExceptions.h/.cpp</span><span class="file-desc">— script error handling</span></div>
         </div>
+        <div class="inset" style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <code style="color:var(--col-script);">engine::setTimeScale(f)</code> · <code style="color:var(--col-script);">engine::getTimeScale()</code> · <code style="color:var(--col-script);">engine::hitStop(ms)</code> — bullet time / hit-stop from level scripts. Arbitrary snippets executable at runtime via the GameConsole REPL (scripthelper <code>ExecuteString</code>).
+        </div>
       </div>
 
       <!-- Debug -->
@@ -850,11 +889,16 @@
           </div>
         </div>
         <div class="file-list">
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">GameConsole.h/.cpp</span><span class="file-desc">— Quake 3-style drop-down console (tilde)</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugConsole.h/.cpp</span><span class="file-desc">— stats overlay + player-info window</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugState.h/.cpp</span><span class="file-desc">— in-engine debug mode</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugInterface.h/.cpp</span><span class="file-desc">— debug overlay / visualizations</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">DebugConsole.h/.cpp</span><span class="file-desc">— in-game console (spdlog sink)</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">ImGuiExtensions.h/.cpp</span><span class="file-desc">— custom ImGui widgets</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--muted)"></div><span class="file-name">ImTransformControl.h/.cpp</span><span class="file-desc">— transform gizmo</span></div>
+        </div>
+        <div class="inset" style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <strong style="color:var(--text);">GameConsole</strong> — command registry with help text, up/down history, tab completion (commands + cvars), cvar get/set fallback (WorldManager store), engine log mirror (ImGuiLogSink), and an AngelScript REPL (<code>script &lt;code&gt;</code> or leading <code>&gt;</code>). Blocks game input while open; works in game and editor-game modes.<br>
+          Commands: help · clear · echo · quit · cvarlist · timescale · hitstop · script · stats · debug · scene · spawn · damage · heal
         </div>
       </div>
 
@@ -938,7 +982,7 @@
         <div class="file-list">
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameManager.h/.cpp</span><span class="file-desc">— config, lifecycle</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameState.h/.cpp</span><span class="file-desc">— main gameplay state</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameplaySystem.h/.cpp</span><span class="file-desc">— game logic tick</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">GameplaySystem.h/.cpp</span><span class="file-desc">— game logic tick; damageEntity() → HIT_RESULT (hit/kill feedback chokepoint)</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">DialogManager.h/.cpp</span><span class="file-desc">— conversation system</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">ProcessGameComponents.cpp</span><span class="file-desc">— game component processing</span></div>
         </div>
@@ -967,9 +1011,9 @@
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">HUDController.h/.cpp</span><span class="file-desc">— heads-up display</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InteractionController</span><span class="file-desc">— world interaction / use</span></div>
           <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">InventoryController</span><span class="file-desc">— item inventory</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">CameraFX.h</span><span class="file-desc">— head bob, recoil</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponController.h/.cpp</span><span class="file-desc">— weapon switching, fire logic</span></div>
-          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponData.h/.cpp</span><span class="file-desc">— weapon config, stats</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">CameraFX.h</span><span class="file-desc">— recoil, screen shake, landing bob, FOV kick</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponController.h/.cpp</span><span class="file-desc">— weapon switching, unequip anims, hitmarker draw</span></div>
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponData.h/.cpp</span><span class="file-desc">— PlayerWeapon base: view-kick spring, sway, converging aim, hit feedback</span></div>
         </div>
       </div>
 
@@ -984,16 +1028,23 @@
         </div>
         <div class="weapon-grid">
           <div class="weapon-chip">Weapon_None</div>
-          <div class="weapon-chip">Weapon_Pistol</div>
-          <div class="weapon-chip">Weapon_Rifle</div>
-          <div class="weapon-chip">Weapon_Shotgun</div>
           <div class="weapon-chip">Weapon_Melee</div>
+          <div class="weapon-chip">Weapon_Pistol</div>
+          <div class="weapon-chip">Weapon_Shotgun</div>
+          <div class="weapon-chip">Weapon_MiningLaser</div>
+          <div class="weapon-chip">Weapon_BoltDriver</div>
           <div class="weapon-chip">Weapon_Minigun</div>
           <div class="weapon-chip">Weapon_RocketLauncher</div>
-          <div class="weapon-chip">Weapon_PulseRifle</div>
+          <div class="weapon-chip">Weapon_GrenadeLauncher</div>
+          <div class="weapon-chip">Weapon_BioRifle</div>
+          <div class="weapon-chip">Weapon_FuelRodCannon</div>
         </div>
-        <div class="inset" style="margin-top:12px;font-size:11px;color:var(--muted);">
-          PulseRifle uses <code style="color:var(--orange);">CBeamSceneNode</code> for continuous laser beam with <code style="color:var(--orange);">additive_color</code> shader
+        <div class="file-list" style="margin-top:12px;">
+          <div class="file-item"><div class="file-dot" style="background:var(--col-game)"></div><span class="file-name">WeaponEffects.h/.cpp</span><span class="file-desc">— shared VFX behind per-weapon descriptor structs</span></div>
+        </div>
+        <div class="inset" style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <strong style="color:var(--text);">WeaponEffects</strong> — muzzle flash (LDR-registered, per-shot size/roll variance), pooled moving tracers, shell casings (fake physics), impacts fanned along the surface normal + decals, and <code style="color:var(--orange);">explosionAt()</code>: light flash, surface-oriented scorch decal, lingering smoke, proximity shake + directional shove + FOV crunch.<br>
+          Melee lands damage on the animation's <em>contact frame</em> and triggers 35/70 ms hit-stop on connect/kill. Minigun keeps its barrel-spin/heat/overheat state machine and layered fire audio; MiningLaser its persistent beam.
         </div>
       </div>
 
@@ -1116,7 +1167,7 @@
 </div><!-- /page -->
 
 <footer>
-  Game Engine Architecture Map &mdash; generated 2026-05-17
+  Game Engine Architecture Map &mdash; generated 2026-05-17 &middot; updated 2026-07-08 (clustered renderer, WeaponEffects, time scale/hit-stop, GameConsole)
 </footer>
 
 <script>
@@ -1306,7 +1357,7 @@
     { w: 1540, h: 560,
       nodes: [
         { id:'n_main', label:'main()',                    sub:'Application.cpp',         x:30,   y:250, w:155, c:'engine' },
-        { id:'n_eng',  label:'Engine::update()',          sub:'Engine.cpp · main loop',  x:230,  y:250,         c:'engine' },
+        { id:'n_eng',  label:'Engine::update()',          sub:'main loop · timescale/hit-stop scales accumulator',  x:230,  y:250,         c:'engine' },
         { id:'n_inp',  label:'InputManager::update()',    sub:'fixed 60 Hz',             x:500,  y:40,          c:'input'  },
         { id:'n_wld',  label:'WorldManager::update()',    sub:'fixed 60 Hz',             x:500,  y:130,         c:'world'  },
         { id:'n_sta',  label:'StateManager::update()',    sub:'fixed 60 Hz',             x:500,  y:220,         c:'engine' },

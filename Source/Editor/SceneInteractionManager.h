@@ -31,6 +31,15 @@ enum class SELECTED_OBJECT_TYPE
     PREFAB
 };
 
+// Which name-string field a LINK pick writes into (see completeLinkPick)
+enum class LinkPickField
+{
+    NONE,
+    LOGIC_RECEIVER,        // LogicComponent::receiver (comma list, append)
+    ZONE_DETECT_ENTITY,    // TriggerZoneComponent::entity (single, replace)
+    ZONE_TRIGGERED_ENTITY  // TriggerZoneComponent::triggered_entity (comma list, append)
+};
+
 enum class TRANSFORM_WIDGET_MODE
 {
     TRANSLATE,
@@ -135,6 +144,26 @@ public:
             g_currentEntity = _entity_null_value;
     }
 
+    // One-shot link pick: next entity click (viewport or hierarchy) writes its
+    // name into the host entity's field, then the mode clears itself.
+    void beginLinkPick(entityid host, LinkPickField field)
+    {
+        m_linkPickHost = host;
+        m_linkPickField = field;
+    }
+
+    void cancelLinkPick()
+    {
+        m_linkPickHost = _entity_null_value;
+        m_linkPickField = LinkPickField::NONE;
+    }
+
+    bool isLinkPicking() const { return m_linkPickField != LinkPickField::NONE; }
+    LinkPickField linkPickField() const { return m_linkPickField; }
+    entityid linkPickHost() const { return m_linkPickHost; }
+
+    void completeLinkPick(entityid pickedId);
+
     void deleteEntity();
     void cutEntity();
     void copyEntity();
@@ -217,6 +246,9 @@ private:
     TexturePainter    m_texturePainter;
     std::vector<entityid> m_selectedEntities;
     uint32_t              m_selectedPropId = UINT32_MAX;
+
+    LinkPickField m_linkPickField = LinkPickField::NONE;
+    entityid      m_linkPickHost = _entity_null_value;
 
     static constexpr int k_maxUndoDepth = 50;
     bool m_gizmoWasUsing;

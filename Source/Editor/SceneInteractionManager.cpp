@@ -10,6 +10,9 @@
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/World/WorldManager.h"
 #include "Engine/Prop/PropManager.h"
+#include "Game/Components/LogicComponent.h"
+#include "Game/Components/TriggerZoneComponent.h"
+#include "Game/LogicLinks.h"
 
 using namespace irr;
 using namespace core;
@@ -88,6 +91,51 @@ void SceneInteractionManager::init()
 
 	m_selectedPropId = UINT32_MAX;
 	m_currentSelectedObject = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
+
+	cancelLinkPick();
+}
+
+void SceneInteractionManager::completeLinkPick(entityid pickedId)
+{
+	auto field = m_linkPickField;
+	auto hostId = m_linkPickHost;
+
+	// One-shot: the mode ends no matter how the pick resolves
+	cancelLinkPick();
+
+	auto& host = WorldManager::Get()->managerSystem()->getEntityByID(hostId);
+	auto& picked = WorldManager::Get()->managerSystem()->getEntityByID(pickedId);
+	if (!host.isValid() || !picked.isValid())
+		return;
+
+	const std::string& name = picked.getComponent<DescriptorComponent>().name;
+
+	switch (field)
+	{
+	case LinkPickField::LOGIC_RECEIVER:
+		if (host.hasComponent<LogicComponent>())
+			LogicLinks::appendUniqueName(host.getComponent<LogicComponent>().receiver, name);
+		break;
+
+	case LinkPickField::ZONE_DETECT_ENTITY:
+		if (host.hasComponent<TriggerZoneComponent>())
+			host.getComponent<TriggerZoneComponent>().entity = name;
+		break;
+
+	case LinkPickField::ZONE_TRIGGERED_ENTITY:
+		if (host.hasComponent<TriggerZoneComponent>())
+		{
+			auto& zone = host.getComponent<TriggerZoneComponent>();
+			// "null" is the component's empty sentinel — replace it, don't append to it
+			if (zone.triggered_entity == "null")
+				zone.triggered_entity.clear();
+			LogicLinks::appendUniqueName(zone.triggered_entity, name);
+		}
+		break;
+
+	default:
+		break;
+	}
 }
 
 void SceneInteractionManager::update(float dt)
@@ -102,13 +150,28 @@ void SceneInteractionManager::update(float dt)
 		m_selectNewSpawnedEntity = false;
 	}
 
-	if (InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_ESCAPE))
+	// Abort a link pick if its host entity disappeared (deleted, scene change)
+	if (isLinkPicking() && !WorldManager::Get()->managerSystem()->getEntityByID(m_linkPickHost).isValid())
 	{
-		//g_currentEntity = _selected_entity;
-		clearSelectedEntities();
-		m_selectedPropId = UINT32_MAX;
-		//g_currentMesh = _mesh_null_value;
-		m_currentSelectedObject = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
+		cancelLinkPick();
+	}
+
+	static bool escPressed = false;
+	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_ESCAPE, &escPressed))
+	{
+		if (isLinkPicking())
+		{
+			// Esc only cancels the pick; the host entity stays selected
+			cancelLinkPick();
+		}
+		else
+		{
+			//g_currentEntity = _selected_entity;
+			clearSelectedEntities();
+			m_selectedPropId = UINT32_MAX;
+			//g_currentMesh = _mesh_null_value;
+			m_currentSelectedObject = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
+		}
 	}
 
 	static bool mouseClick = false;
@@ -122,6 +185,17 @@ void SceneInteractionManager::update(float dt)
 		auto node = RenderManager::Get()->getNodeFromCursorPosition();
 		if (node)
 		{
+			// Link pick mode consumes the click: write the picked entity's name
+			// into the pending field and leave the normal selection untouched
+			if (isLinkPicking())
+			{
+				if (node->getID() < _entity_null_value)
+				{
+					completeLinkPick(node->getID());
+				}
+				return;
+			}
+
 			// Check props first (they have no numeric ID in the ECS range)
 			if (PropManager::Get())
 			{

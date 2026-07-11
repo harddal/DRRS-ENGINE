@@ -3,9 +3,9 @@
 // prepass says is inside the decal's unit-cube volume. Rendered as a box with
 // depth test off (back faces, so it works with the camera inside the volume)
 // and MODULATE blending (dst * src): unaffected pixels output 1.0, decaled
-// pixels darken toward the decal color. Runs post-tonemap like SSAO — a
-// multiplicative effect applied pre-tonemap would be crushed by the filmic
-// curve's shoulder at high exposure.
+// pixels darken toward the decal color. Composites into the HDR scene between
+// the opaque and transparent passes so beams/tracers/water render over decals;
+// hole cores multiply hard enough (~0.1-0.3) to survive the tonemap shoulder.
 
 // Per-frame constants — std140 block filled once per frame by RenderManager
 // (updatePerFrameUBO) and bound to binding point 0 by the fork patch in

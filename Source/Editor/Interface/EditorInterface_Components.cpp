@@ -14,6 +14,7 @@
 #include "Game/Components.h"
 #include "Engine/Script/ScriptManager.h"
 #include "Engine/Renderer/IrrAssimp/IrrAssimpImport.h"
+#include "Game/LogicLinks.h"
 #include <tinyxml2.h>
 
 #include <string>
@@ -249,6 +250,103 @@ void EditorInterface::draw_window_add_component()
 		}
 	}
 	ImGui::End();
+}
+
+// LINK button for an entity-name field: starts a one-shot pick handled by
+// SceneInteractionManager (viewport Shift+Click or hierarchy click).
+static void s_drawLinkPickButton(entityid hostId, LinkPickField field, const char* tooltip)
+{
+	ImGui::PushID(static_cast<int>(field));
+
+	const bool pickingThis = g_sceneInteractor.isLinkPicking()
+		&& g_sceneInteractor.linkPickField() == field
+		&& g_sceneInteractor.linkPickHost() == hostId;
+
+	if (pickingThis)
+	{
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.85f, 0.55f, 0.10f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.95f, 0.65f, 0.15f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.45f, 0.05f, 1.0f));
+		if (ImGui::SmallButton("Picking... (Esc)"))
+			g_sceneInteractor.cancelLinkPick();
+		ImGui::PopStyleColor(3);
+	}
+	else
+	{
+		if (ImGui::SmallButton("Link..."))
+			g_sceneInteractor.beginLinkPick(hostId, field);
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", tooltip);
+	}
+
+	ImGui::PopID();
+}
+
+// Removable token chips for a comma-separated entity-name list. Chips turn red
+// when the name resolves to no entity and yellow when it resolves to several.
+static void s_drawNameListChips(std::string& csv, const char* idLabel)
+{
+	if (csv.empty() || csv == "null")
+		return;
+
+	ImGui::PushID(idLabel);
+
+	auto tokens = LogicLinks::splitNameList(csv);
+	std::string removed;
+	const float windowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+
+	for (auto i = 0U; i < tokens.size(); i++)
+	{
+		const auto& tok = tokens[i];
+		const auto matches = WorldManager::Get()->managerSystem()->getEntitiesByName(tok).size();
+
+		int styleCount = 0;
+		if (matches == 0)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.15f, 0.15f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.25f, 0.25f, 1.0f));
+			styleCount = 2;
+		}
+		else if (matches > 1)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.55f, 0.10f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.70f, 0.20f, 1.0f));
+			styleCount = 2;
+		}
+
+		const std::string label = tok + " x";
+
+		if (i > 0)
+		{
+			// Wrap chips when the next one would overflow the window
+			const float nextWidth = ImGui::CalcTextSize(label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+			if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + nextWidth < windowRight)
+				ImGui::SameLine();
+		}
+
+		ImGui::PushID(static_cast<int>(i));
+		if (ImGui::SmallButton(label.c_str()))
+			removed = tok;
+		ImGui::PopID();
+
+		if (ImGui::IsItemHovered())
+		{
+			if (matches == 0)
+				ImGui::SetTooltip("No entity named '%s' - click to remove", tok.c_str());
+			else if (matches > 1)
+				ImGui::SetTooltip("%d entities share this name (all will activate) - click to remove", static_cast<int>(matches));
+			else
+				ImGui::SetTooltip("Click to remove");
+		}
+
+		if (styleCount > 0)
+			ImGui::PopStyleColor(styleCount);
+	}
+
+	if (!removed.empty())
+		LogicLinks::removeName(csv, removed);
+
+	ImGui::PopID();
 }
 
 bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax::Entity& entity)
@@ -742,9 +840,9 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto& logic = entity.getComponent<LogicComponent>();
 
-			char buf[256];
-			memset(buf, 0, 256);
-			for (auto i = 0U; i < logic.receiver.size() && i < 256; i++) buf[i] = logic.receiver[i];
+			char buf[512];
+			memset(buf, 0, 512);
+			for (auto i = 0U; i < logic.receiver.size() && i < 511; i++) buf[i] = logic.receiver[i];
 
 			if (ImGui::BeginTable("##logic_props", 2, ImGuiTableFlags_SizingFixedFit))
 			{
@@ -753,8 +851,17 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Event Receiver");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##logic_recv", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+				if (ImGui::InputText("##logic_recv", buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					logic.receiver = buf;
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				s_drawLinkPickButton(entity.getComponent<DescriptorComponent>().id,
+					LinkPickField::LOGIC_RECEIVER,
+					"Pick an entity to add as receiver (Shift+Click in viewport or click in hierarchy)");
+				ImGui::TableSetColumnIndex(1);
+				s_drawNameListChips(logic.receiver, "##logic_recv_chips");
+
 				ImGui::EndTable();
 			}
 
@@ -1690,11 +1797,12 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				return false;
 
 			auto& zone = entity.getComponent<TriggerZoneComponent>();
+			const auto zoneHostId = entity.getComponent<DescriptorComponent>().id;
 
-			char zone_ent_buf[256] = {};
-			for (auto i = 0U; i < zone.entity.size() && i < 256; i++) zone_ent_buf[i] = zone.entity[i];
-			char zone_trig_buf[256] = {};
-			for (auto i = 0U; i < zone.triggered_entity.size() && i < 256; i++) zone_trig_buf[i] = zone.triggered_entity[i];
+			char zone_ent_buf[512] = {};
+			for (auto i = 0U; i < zone.entity.size() && i < 511; i++) zone_ent_buf[i] = zone.entity[i];
+			char zone_trig_buf[512] = {};
+			for (auto i = 0U; i < zone.triggered_entity.size() && i < 511; i++) zone_trig_buf[i] = zone.triggered_entity[i];
 
 			std::string mask_type;
 			switch (zone.mask)
@@ -1713,14 +1821,26 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Detect Entity");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##zone_ent", zone_ent_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+				if (ImGui::InputText("##zone_ent", zone_ent_buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					zone.entity = zone_ent_buf;
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				s_drawLinkPickButton(zoneHostId, LinkPickField::ZONE_DETECT_ENTITY,
+					"Pick the entity to detect - replaces the current value");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Trigger Entity");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##zone_trig", zone_trig_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+				if (ImGui::InputText("##zone_trig", zone_trig_buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					zone.triggered_entity = zone_trig_buf;
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				s_drawLinkPickButton(zoneHostId, LinkPickField::ZONE_TRIGGERED_ENTITY,
+					"Pick an entity to add as trigger target (Shift+Click in viewport or click in hierarchy)");
+				ImGui::TableSetColumnIndex(1);
+				s_drawNameListChips(zone.triggered_entity, "##zone_trig_chips");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Mask");

@@ -90,6 +90,9 @@ void WorldManager::update(irr::f32 dt)
 
 	if (PropManager::Get()) PropManager::Get()->update();
 
+	// Runs outside the game-mode gate so the F8 link view works in the editor
+	m_gameplaySystem.drawEntityLinkDebug();
+
 	if (Engine::Get()->isGameMode())
 	{
 		m_scriptSystem.update();
@@ -127,6 +130,9 @@ void WorldManager::update(irr::f32 dt)
 	m_renderCurrent = Engine::Get()->GetCounter();
     m_renderSystem.update();
 	m_renderTime = Engine::Get()->GetCounter() - m_renderCurrent;
+
+	// Runs outside the game-mode gate so the F8 link view works in the editor
+	m_gameplaySystem.drawEntityLinkDebug();
 
     if (Engine::Get()->isGameMode())
     {

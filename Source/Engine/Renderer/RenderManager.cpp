@@ -839,6 +839,52 @@ void RenderManager::drawPrePass()
     }
 }
 
+void RenderManager::drawPrePassViewmodels()
+{
+    if (m_prepassMat < 0 || !m_prepassRTT || m_viewmodelNodes.empty())
+        return;
+
+    // Keep the opaque prepass colors; reset only depth so viewmodels stamp on
+    // top — mirroring the main pass's clearZBuffer before the viewmodel pass.
+    m_driver->setRenderTarget(m_prepassRTT, false, false);
+    m_driver->clearZBuffer();
+
+    for (auto* n : m_viewmodelNodes)
+    {
+        if (!n->isVisible())
+            continue;
+
+        irr::scene::IMesh* mesh = nullptr;
+        const auto ntype = n->getType();
+        if (ntype == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* a = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
+            if (a->getMesh())
+                mesh = a->getMesh()->getMesh(a->getFrameNr());
+        }
+        else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+            mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
+        if (!mesh)
+            continue;
+
+        m_driver->setTransform(irr::video::ETS_WORLD, n->getAbsoluteTransformation());
+        for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+        {
+            const irr::video::SMaterial& src = n->getMaterial(b);
+            irr::video::IMaterialRenderer* rnd = m_driver->getMaterialRenderer(src.MaterialType);
+            if ((rnd && rnd->isTransparent()) || src.Wireframe)
+                continue;
+            irr::video::SMaterial pm;
+            pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
+            pm.Lighting         = false;
+            pm.BackfaceCulling  = src.BackfaceCulling;
+            pm.FrontfaceCulling = src.FrontfaceCulling;
+            m_driver->setMaterial(pm);
+            m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+        }
+    }
+}
+
 void RenderManager::drawSSAO()
 {
     if (m_ssaoGenMat < 0 || m_ssaoBlurMat < 0 || !m_ssaoRTT[0] || !m_ssaoRTT[1] || !m_prepassRTT)
@@ -1432,6 +1478,22 @@ void RenderManager::draw(f32 dt)
 
     m_sceneManager->drawAll();
 
+    // Thin geometry pre-pass (opaque only — viewmodels are stamped in later by
+    // drawPrePassViewmodels). Consumed by decals, SSAO, and soft particles.
+    drawPrePass();
+
+    // Screen-space decals — composited into the HDR scene between opaques and
+    // transparents, so beams/tracers/water draw over them. Unlike SSAO's gentle
+    // factors, decal cores multiply hard (~0.1-0.3) and survive the filmic
+    // tonemap shoulder, so pre-tonemap placement stays visible.
+    if (m_sceneRTT)
+        m_driver->setRenderTarget(m_sceneRTT, false, false);
+    if (m_decalManager)
+    {
+        m_decalManager->update(dt * 0.001f);   // dt is in ms; decal lifetimes are in seconds
+        m_decalManager->render();
+    }
+
     // Sorted transparent pass — water, particles, crystal props (now phong_perpixel_transparent).
     drawTransparentPass();
 
@@ -1498,12 +1560,10 @@ void RenderManager::draw(f32 dt)
     for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
         m_ldrEffectNodes[i]->setVisible(ldrWasVisible[i]);
 
-    // Thin geometry pre-pass + SSAO. Runs AFTER visibility restore so viewmodels
-    // enter the prepass at their true depth (their subtree transforms were
-    // updated by the viewmodel pass above) — otherwise the gun inherits AO from
-    // the world geometry behind it. Transparent (LDR effects, trigger zones) and
-    // wireframe (editor markers) materials are skipped inside drawPrePass.
-    drawPrePass();   // always — consumed by SSAO, soft particles, and decals
+    // Stamp viewmodels into the prepass at their true depth (their subtree
+    // transforms were updated by the viewmodel pass above) — otherwise the gun
+    // inherits AO from the world geometry behind it — then run SSAO.
+    drawPrePassViewmodels();
     if (m_ssaoEnabled)
         drawSSAO();
     if (m_sceneRTT)
@@ -1574,14 +1634,6 @@ void RenderManager::draw(f32 dt)
     else
     {
         runPostProcessChain();
-    }
-
-    // Screen-space decals — modulate-blended onto the tonemapped backbuffer,
-    // projected against the geometry prepass (raw unit 14).
-    if (m_decalManager)
-    {
-        m_decalManager->update(dt * 0.001f);   // dt is in ms; decal lifetimes are in seconds
-        m_decalManager->render();
     }
 
     // Draw debug nodes directly to the backbuffer after post-processing so

@@ -1,11 +1,14 @@
 #include "GameplaySystem.h"
 
+#include <unordered_map>
+
 #include <spdlog/spdlog.h>
 
 #include "Engine/Engine.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/World/WorldManager.h"
 #include "Game/Components.h"
+#include "Game/LogicLinks.h"
 #include "Player/PlayerController.h"
 
 #include "Game/Item/ItemDatabase.h"
@@ -40,16 +43,6 @@ void GameplaySystem::init()
 	
 }
 
-static std::vector<std::string> splitReceiver(const std::string& s)
-{
-    std::vector<std::string> tokens;
-    std::stringstream ss(s);
-    std::string tok;
-    while (getline(ss, tok, ','))
-        tokens.push_back(tok);
-    return tokens;
-}
-
 void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited)
 {
     if (!entity.isValid()) return;
@@ -75,7 +68,7 @@ void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_s
 
         if (logic.isActivated)
         {
-            for (auto& token : splitReceiver(logic.receiver))
+            for (auto& token : LogicLinks::splitNameList(logic.receiver))
             {
                 for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
                     propagateLogicSignal(*next, visited);
@@ -94,6 +87,135 @@ void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_s
         entity.getComponent<RenderComponent>().isVisible =
             !entity.getComponent<RenderComponent>().isVisible;
     }
+}
+
+static void s_drawLinkArrow(const irr::core::vector3df& from, const irr::core::vector3df& to,
+	const irr::video::SColor& color)
+{
+	auto* rm = RenderManager::Get();
+
+	irr::core::vector3df dir = to - from;
+	if (dir.getLengthSQ() < 0.01f)
+	{
+		// Self-link: a short vertical tick so it stays visible
+		rm->renderLine3D(Line3D(irr::core::line3df(from, from + irr::core::vector3df(0, 0.5f, 0)), color));
+		return;
+	}
+
+	rm->renderLine3D(Line3D(irr::core::line3df(from, to), color));
+
+	irr::core::vector3df ndir = dir;
+	ndir.normalize();
+
+	irr::core::vector3df side = ndir.crossProduct(irr::core::vector3df(0, 1, 0));
+	if (side.getLengthSQ() < 0.001f)
+		side = ndir.crossProduct(irr::core::vector3df(1, 0, 0));
+	side.normalize();
+	irr::core::vector3df up = ndir.crossProduct(side);
+
+	const float headLen = 0.4f;
+	const float headWidth = 0.18f;
+
+	// Head sits at the line midpoint (target ends are usually inside mesh
+	// geometry). One global head color for every link kind: white — contrasts
+	// with all line hues and can't be mistaken for the red error markers.
+	const irr::video::SColor headColor(color.getAlpha(), 255, 255, 255);
+
+	irr::core::vector3df tip = from + dir * 0.5f;
+	irr::core::vector3df base = tip - ndir * headLen;
+
+	rm->renderLine3D(Line3D(irr::core::line3df(tip, base + side * headWidth), headColor));
+	rm->renderLine3D(Line3D(irr::core::line3df(tip, base - side * headWidth), headColor));
+	rm->renderLine3D(Line3D(irr::core::line3df(tip, base + up * headWidth), headColor));
+	rm->renderLine3D(Line3D(irr::core::line3df(tip, base - up * headWidth), headColor));
+}
+
+static void s_drawBrokenLinkMarker(const irr::core::vector3df& at, const irr::video::SColor& color)
+{
+	auto* rm = RenderManager::Get();
+
+	// Vertical stem with an X on top: a link target name that resolves to nothing
+	irr::core::vector3df top = at + irr::core::vector3df(0, 1.0f, 0);
+	rm->renderLine3D(Line3D(irr::core::line3df(at, top), color));
+
+	const float s = 0.25f;
+	rm->renderLine3D(Line3D(irr::core::line3df(top + irr::core::vector3df(-s, 0.0f, 0), top + irr::core::vector3df(s, 2.0f * s, 0)), color));
+	rm->renderLine3D(Line3D(irr::core::line3df(top + irr::core::vector3df(-s, 2.0f * s, 0), top + irr::core::vector3df(s, 0.0f, 0)), color));
+}
+
+void GameplaySystem::drawEntityLinkDebug()
+{
+	static bool f8 = false;
+	if (InputManager::Get()->getKeyPressOnce(KEYBOARD_KEY::KEY_F8, &f8))
+	{
+		m_showEntityLinks = !m_showEntityLinks;
+	}
+
+	if (!m_showEntityLinks)
+		return;
+
+	// Same designer-debug gate as the waypoint lines below
+	if (!Engine::Get()->isEditorMode() && !WorldManager::Get()->renderSystem()->isDebugSpriteVisible())
+		return;
+
+	const irr::video::SColor colorLogic(255, 0, 200, 255);      // LogicComponent::receiver
+	const irr::video::SColor colorTriggered(255, 0, 255, 100);  // TriggerZoneComponent::triggered_entity
+	const irr::video::SColor colorDetect(255, 255, 0, 255);     // TriggerZoneComponent::entity
+	const irr::video::SColor colorBroken(255, 255, 40, 40);     // unresolved target name
+
+	struct LinkSource
+	{
+		irr::core::vector3df pos;
+		std::vector<std::string> tokens;
+		irr::video::SColor color;
+	};
+
+	// Single pass over all entities: name lookup map + link sources
+	std::unordered_map<std::string, std::vector<irr::core::vector3df>> nameToPositions;
+	std::vector<LinkSource> sources;
+
+	for (auto entity : WorldManager::Get()->world()->getEntities())
+	{
+		if (!entity.hasComponent<TransformComponent>() || !entity.hasComponent<DescriptorComponent>())
+			continue;
+
+		auto pos = entity.getComponent<TransformComponent>().getPosition();
+
+		nameToPositions[entity.getComponent<DescriptorComponent>().name].push_back(pos);
+
+		if (entity.hasComponent<LogicComponent>())
+		{
+			auto& logic = entity.getComponent<LogicComponent>();
+			if (!logic.receiver.empty())
+				sources.push_back({ pos, LogicLinks::splitNameList(logic.receiver), colorLogic });
+		}
+
+		if (entity.hasComponent<TriggerZoneComponent>())
+		{
+			auto& zone = entity.getComponent<TriggerZoneComponent>();
+			if (!zone.triggered_entity.empty() && zone.triggered_entity != "null")
+				sources.push_back({ pos, LogicLinks::splitNameList(zone.triggered_entity), colorTriggered });
+			if (!zone.entity.empty() && zone.entity != "null")
+				sources.push_back({ pos, std::vector<std::string>{ zone.entity }, colorDetect });
+		}
+	}
+
+	for (auto& src : sources)
+	{
+		for (auto& token : src.tokens)
+		{
+			auto it = nameToPositions.find(token);
+			if (it == nameToPositions.end())
+			{
+				s_drawBrokenLinkMarker(src.pos, colorBroken);
+				continue;
+			}
+
+			// Duplicate names fan out at runtime, so draw an arrow to every match
+			for (auto& target : it->second)
+				s_drawLinkArrow(src.pos, target, src.color);
+		}
+	}
 }
 
 void GameplaySystem::update()
@@ -342,7 +464,7 @@ void GameplaySystem::update()
 					std::unordered_set<entityid> visited;
 					visited.insert(entity.getComponent<DescriptorComponent>().id);
 
-					for (auto& token : splitReceiver(logicComponent.receiver))
+					for (auto& token : LogicLinks::splitNameList(logicComponent.receiver))
 					{
 						for (auto* r_ent : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
 							propagateLogicSignal(*r_ent, visited);
@@ -499,15 +621,7 @@ void GameplaySystem::update()
 						continue;
 					}
 
-					std::vector<std::string> tokens;
-					std::stringstream check1(triggerzoneComponent.triggered_entity);
-					std::string intermediate;
-					while (getline(check1, intermediate, ','))
-					{
-						tokens.push_back(intermediate);
-					}
-
-					for (auto& token : tokens)
+					for (auto& token : LogicLinks::splitNameList(triggerzoneComponent.triggered_entity))
 					{
 						auto& entity = WorldManager::Get()->managerSystem()->getEntityByName(token);
 						if (entity.isValid())
@@ -533,7 +647,7 @@ void GameplaySystem::update()
 								{
 									std::unordered_set<entityid> visited;
 									visited.insert(entity.getComponent<DescriptorComponent>().id);
-									for (auto& t : splitReceiver(ent_logic.receiver))
+									for (auto& t : LogicLinks::splitNameList(ent_logic.receiver))
 									{
 										for (auto* next : WorldManager::Get()->managerSystem()->getEntitiesByName(t))
 											propagateLogicSignal(*next, visited);

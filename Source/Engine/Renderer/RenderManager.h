@@ -1002,6 +1002,7 @@ private:
 
     // Thin geometry pre-pass + SSAO (Stage 3)
     void drawPrePass();
+    void drawPrePassViewmodels();   // stamps viewmodels into the prepass (SSAO gun coverage)
     void drawSSAO();
     irr::video::ITexture* m_prepassRTT      = nullptr;   // full res RGBA16F: normal.xyz + view depth
     irr::video::ITexture* m_ssaoRTT[2]      = { nullptr, nullptr }; // half res: raw AO, blurred AO
