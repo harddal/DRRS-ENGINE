@@ -383,6 +383,7 @@ void EditorInterface::draw_menubar_main()
 			if (ImGui::MenuItem("Prop Spawn Menu", "")) { m_windowData.draw_window_spawn_prop = true; }
 			if (ImGui::MenuItem("Vegetation Painter", "")) { m_windowData.draw_window_vegetation_painter = true; }
 			if (ImGui::MenuItem("Texture Painter",    "")) { m_windowData.draw_window_texture_painter    = true; }
+			if (ImGui::MenuItem("Brush Editor",       "")) { m_windowData.draw_window_brush_editor       = true; }
 
 			ImGui::Separator();
 

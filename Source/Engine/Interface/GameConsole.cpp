@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <sstream>
 
+#include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Engine.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/Script/ScriptManager.h"
@@ -270,6 +271,63 @@ void GameConsole::registerBuiltins()
 		[this](const std::vector<std::string>&, const std::string& raw)
 	{
 		runScript(raw);
+	});
+
+	registerCommand("brush_test", "run the CSG brush geometry self-tests",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		const int failures = BrushGeometry::runSelfTests();
+		if (failures == 0)
+			print("BrushGeometry self-tests: all passed");
+		else
+			printLine(kColError, "BrushGeometry self-tests: " + std::to_string(failures) + " failure(s) — see log");
+	});
+
+	registerCommand("brush_add", "[size] add a test CSG box brush at the crosshair",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* cam = RenderManager::Get()->sceneManager()->getActiveCamera();
+		if (!cam || !BrushManager::Get())
+		{
+			printLine(kColError, "no active camera / brush manager");
+			return;
+		}
+
+		irr::core::vector3df target = cam->getAbsolutePosition() +
+			Math::GetDirectionVector(cam->getRotation(), true) * 10.0f;
+		auto rdata = PhysicsManager::Get()->raycast(
+			cam->getAbsolutePosition(),
+			Math::GetDirectionVector(cam->getRotation(), true),
+			100.0);
+		if (rdata.hit)
+			target = Utility::PxVec3_To_IrrVec3(rdata.data.getAnyHit(0).position);
+
+		const float size = args.empty() ? 2.0f : std::max(0.25f, static_cast<float>(atof(args[0].c_str())));
+		const irr::core::vector3df half(size * 0.5f, size * 0.5f, size * 0.5f);
+		Brush box = BrushGeometry::makeBox(irr::core::aabbox3df(target - half, target + half));
+
+		const uint32_t id = BrushManager::Get()->addBrush(box);
+		if (id == 0)
+			printLine(kColError, "brush_add: invalid plane set");
+		else
+			print("added brush " + std::to_string(id) + " (" + std::to_string(size) + " units)");
+	});
+
+	registerCommand("brush_stats", "print CSG brush and chunk counts",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		if (!BrushManager::Get())
+			return;
+		print("brushes: " + std::to_string(BrushManager::Get()->getAllBrushes().size()));
+	});
+
+	registerCommand("brush_clear", "remove all CSG brushes",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		if (!BrushManager::Get())
+			return;
+		BrushManager::Get()->clearAll();
+		print("brushes cleared");
 	});
 
 	registerCommand("stats", "toggle the stats overlay",

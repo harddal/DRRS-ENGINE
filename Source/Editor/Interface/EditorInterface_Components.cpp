@@ -1379,6 +1379,12 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				}
 			}
 
+			ImGui::SameLine();
+			ImGui::BeginDisabled(script.script.empty());
+			if (ImGui::Button("Edit##script_edit_open"))
+				EditorInterface::open_script_in_editor(script.script);
+			ImGui::EndDisabled();
+
 			if (invalid_script)
 				ImGui::Text("Invalid script file!");
 

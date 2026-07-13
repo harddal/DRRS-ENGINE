@@ -57,13 +57,12 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 		{
 			meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
 		}
-		else if (str == "glb")
+		else if (str == "glb" || str == "gltf")
 		{
-			meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
-		}
-		else if (str == "gltf")
-		{
-			meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
+			// fastgltf backend; fall back to Assimp if it can't load the file
+			meshComponent.trimesh = RenderManager::Get()->gltf()->getMesh(meshComponent.mesh.c_str());
+			if (!meshComponent.trimesh)
+				meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
 		}
 		else
 		{

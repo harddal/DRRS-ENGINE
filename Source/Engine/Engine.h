@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Game/GameManager.h"
+#include "Engine/Brush/BrushManager.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Physics/PhysicsManager.h"
@@ -238,6 +239,7 @@ private:
 	WorldManager m_worldManager;
     ParticleManager m_particleManager;
     PropManager m_propManager;
+    BrushManager m_brushManager;
     NavigationManager m_navigationManager;
 
 	RNG m_rng;

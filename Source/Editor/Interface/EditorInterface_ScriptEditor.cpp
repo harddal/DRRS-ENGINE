@@ -415,3 +415,13 @@ void drawScriptEditorPopups()
 
     ImGui::End();
 }
+
+void EditorInterface::open_script_in_editor(const std::string& path)
+{
+    if (path.empty())
+        return;
+
+    s_initialized = true; // prevent draw_window_script_editor() from also spawning a blank "untitled" tab
+    openFile(path);
+    m_windowData.draw_window_script_editor = true;
+}

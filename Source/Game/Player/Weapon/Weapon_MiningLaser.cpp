@@ -400,6 +400,11 @@ void Weapon_MiningLaser::fire()
 				ParticleManager::Get()->spawn("laser_impact", SPK::IRR::irr2spk(raycastResult.point));
 			}
 		}
+		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
+		{
+			// Brush chunks / props carry no ECS id — solid surface hit, nothing to damage
+			ParticleManager::Get()->spawn("laser_impact", SPK::IRR::irr2spk(raycastResult.point));
+		}
 	}
 
 	m_effects.muzzleFlash();

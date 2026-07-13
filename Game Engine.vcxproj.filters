@@ -255,6 +255,21 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Renderer\GltfImport\GltfImport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Include\fastgltf\src\base64.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Include\fastgltf\src\fastgltf.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Include\fastgltf\src\io.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Include\simdjson\simdjson.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -526,6 +541,21 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Prop\PropManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Brush\BrushGeometry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Brush\BrushCompiler.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Engine\Brush\BrushManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\BrushTool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Brush.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Editor\VegetationPainter.cpp">
@@ -989,6 +1019,9 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Renderer\GltfImport\GltfImport.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1290,6 +1323,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Prop\PropManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Brush\BrushData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Brush\BrushGeometry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Brush\BrushCompiler.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\Brush\BrushManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Editor\BrushTool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Editor\VegetationPainter.h">

@@ -8,6 +8,7 @@
 #include "cereal/cereal.hpp"
 #include <IMGUI/imgui.h>
 #include "IrrAssimp/IrrAssimp.h"
+#include "GltfImport/GltfImport.h"
 #include "Engine/Input/IrrImGuiEventReceiver.h"
 
 #include "Engine/Resource/AnimatedSpriteLoader.h"
@@ -613,6 +614,7 @@ public:
     TerrainShaderCallback*               terrainCallback()     const { return m_terrainCallback; }
 	irr::scene::IMeshManipulator*        manipulator()  const { return m_manipulator; }
 	IrrAssimp*                           assimp()       const { return m_assimpLoader; }
+	GltfImport*                          gltf()         const { return m_gltfLoader; }
 
     void setAmbientLight(irr::video::SColor color = irr::video::SColor(255, 255, 255, 255)) const { m_sceneManager->setAmbientLight(color); }
 
@@ -645,6 +647,12 @@ public:
     // originates inside it (weapons/projectiles/shells fired by the player) so they cannot
     // self-damage or bounce off their own hitbox. Hits on the hitbox from outside are unaffected.
     RaycastResultData raycastWorldPosition(irr::core::vector3df start, irr::core::vector3df end, bool excludeDebugNodes = false);
+
+    // True when the node is non-entity world geometry — a CSG brush chunk or a
+    // static prop. Their nodes carry no ECS id (getID() == -1), so weapon and
+    // projectile hit-resolution must treat them as solid static surfaces
+    // instead of resolving them to an entity.
+    static bool isWorldGeometryNode(irr::scene::ISceneNode* node);
 
 	static bool getAABBIntersection(irr::scene::ISceneNode* n1, irr::scene::ISceneNode* n2) { return n1->getTransformedBoundingBox().intersectsWithBox(n2->getTransformedBoundingBox()); }
 	static bool calculate_bbox_collision(irr::scene::IAnimatedMeshSceneNode* sn1, irr::scene::IAnimatedMeshSceneNode* sn2) { return sn1->getTransformedBoundingBox().intersectsWithBox(sn2->getTransformedBoundingBox()); }
@@ -952,6 +960,7 @@ private:
 	AnimatedSpriteLoader m_AnimatedSpriteLoader;
 
 	IrrAssimp* m_assimpLoader;
+	GltfImport* m_gltfLoader = nullptr;
 
     // Viewmodel nodes are rendered in a separate pass after clearing the depth
     // buffer so they never clip into world geometry.

@@ -7,6 +7,7 @@
 #include "Engine/Interface/ImGuiExtensions.h"
 
 #include "Engine/Engine.h"
+#include "Engine/Brush/BrushManager.h"
 #include "Game/Components.h"
 
 #include <iomanip>
@@ -30,6 +31,30 @@ void EditorInterface::draw_window_hierarchy()
 			ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 60, 255));
 			ImGui::TextWrapped("Pick link target: click an entity (Esc cancels)");
 			ImGui::PopStyleColor();
+			ImGui::Separator();
+		}
+
+		// ---- World brushes (CSG) ----
+		if (BrushManager::Get() && !BrushManager::Get()->getAllBrushes().empty())
+		{
+			if (ImGui::CollapsingHeader("World Brushes", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				for (const auto& brush : BrushManager::Get()->getAllBrushes())
+				{
+					if (s_hier_filter[0] != '\0' &&
+					    brush.name.find(s_hier_filter) == std::string::npos)
+						continue;
+
+					const bool selected = g_sceneInteractor.isBrushInSelection(brush.id);
+					ImGui::PushID(static_cast<int>(brush.id) + 0x40000000);
+					if (ImGui::Selectable(brush.name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+					{
+						g_sceneInteractor.setSelectedBrush(brush.id);
+						m_windowData.draw_window_brush_editor = true;
+					}
+					ImGui::PopID();
+				}
+			}
 			ImGui::Separator();
 		}
 

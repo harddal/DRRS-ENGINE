@@ -489,6 +489,14 @@ void Weapon_GrenadeLauncher::updateProjectiles(float dt)
 						}
 					}
 				}
+				else if (RenderManager::isWorldGeometryNode(raycastResult.node))
+				{
+					// Brush chunks / props carry no ECS id — solid surface hit
+					hitSomething = true;
+					hitNode      = raycastResult.node;
+					hitPoint     = raycastResult.point;
+					hitNormal    = raycastResult.normal;
+				}
 			}
 		}
 

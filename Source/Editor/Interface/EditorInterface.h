@@ -28,6 +28,7 @@ struct EditorWindowData
     bool draw_window_prop_prop         = false;
     bool draw_window_vegetation_painter = false;
     bool draw_window_texture_painter    = false;
+    bool draw_window_brush_editor       = false;
     bool draw_window_script_editor      = false;
     bool draw_window_particle_designer  = false;
 
@@ -72,7 +73,9 @@ namespace EditorInterface
     void draw_window_prop_prop();
     void draw_window_vegetation_painter();
     void draw_window_texture_painter();
+    void draw_window_brush_editor();
     void draw_window_script_editor();
+    void open_script_in_editor(const std::string& path);
     void draw_window_particle_designer();
     void draw_toolbar();
     void draw_statusbar();

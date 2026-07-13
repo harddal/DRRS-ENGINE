@@ -5,6 +5,7 @@
 
 #include "Editor/SceneInteractionManager.h"
 #include "Editor/Interface/EditorInterface.h"
+#include "Engine/Brush/BrushManager.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Input/InputMap.h"
 #include "Engine/Renderer/RenderManager.h"
@@ -90,7 +91,10 @@ void SceneInteractionManager::init()
 	std::vector<entityid>().swap(m_selectedEntities);
 
 	m_selectedPropId = UINT32_MAX;
+	m_selectedBrushIds.clear();
 	m_currentSelectedObject = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
+
+	m_brushTool.init(this);
 
 	cancelLinkPick();
 }
@@ -142,6 +146,8 @@ void SceneInteractionManager::update(float dt)
 {
 	m_painter.update(dt);
     m_texturePainter.update(dt);
+    if (!m_painter.isActive() && !m_texturePainter.active)
+        m_brushTool.update(dt);
 
 	if (m_selectNewSpawnedEntity)
 	{
@@ -164,18 +170,25 @@ void SceneInteractionManager::update(float dt)
 			// Esc only cancels the pick; the host entity stays selected
 			cancelLinkPick();
 		}
+		else if (m_brushTool.handleEscape())
+		{
+			// Esc consumed by the brush tool (cleared clip points or exited
+			// the sub-mode); selection survives
+		}
 		else
 		{
 			//g_currentEntity = _selected_entity;
 			clearSelectedEntities();
 			m_selectedPropId = UINT32_MAX;
+			m_selectedBrushIds.clear();
 			//g_currentMesh = _mesh_null_value;
 			m_currentSelectedObject = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
 		}
 	}
 
 	static bool mouseClick = false;
-	if (!m_painter.isActive() && InputManager::Get()->getMousePressOnce(0, &mouseClick) && InputManager::Get()->isKeyPressed(
+	if (!m_painter.isActive() && !m_brushTool.isActive() &&
+		InputManager::Get()->getMousePressOnce(0, &mouseClick) && InputManager::Get()->isKeyPressed(
 		KEYBOARD_KEY::KEY_LSHIFT))
 	{
 		// BUG: If entity is deleted, selection will not work due to a bug in the transform control
@@ -207,12 +220,43 @@ void SceneInteractionManager::update(float dt)
 				}
 			}
 
+			// Then brush chunks: the node identifies the chunk, an exact
+			// plane-set raycast identifies which member brush was clicked
+			if (BrushManager::Get() && BrushManager::Get()->getChunkFromNode(node))
+			{
+				auto* smgr = RenderManager::Get()->sceneManager();
+				line3d<f32> ray = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(
+					RenderManager::Get()->device()->getCursorControl()->getPosition(),
+					smgr->getActiveCamera());
+
+				vector3df dir = ray.end - ray.start;
+				const float len = dir.getLength();
+				if (len > 0.001f)
+				{
+					dir /= len;
+					BrushManager::BrushRayHit hit;
+					if (BrushManager::Get()->raycastBrushes(ray.start, dir, len, hit))
+					{
+						if (InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_LCONTROL) && isBrushSelected())
+						{
+							toggleBrushInSelection(hit.brushId);
+						}
+						else
+						{
+							setSelectedBrush(hit.brushId);
+						}
+					}
+				}
+				return;
+			}
+
 			if (node->getID() < _entity_null_value)
 			{
 				entityid eid = node->getID();
 
-				// Clicking an entity clears prop selection
+				// Clicking an entity clears prop/brush selection
 				m_selectedPropId = UINT32_MAX;
+				m_selectedBrushIds.clear();
 
 				if (InputManager::Get()->isKeyPressed(KEYBOARD_KEY::KEY_LCONTROL))
 				{
@@ -391,14 +435,11 @@ void SceneInteractionManager::draw()
 					if (!m_gizmoWasUsing && ImTransformControl::IsUsing())
 					{
 						UndoEntry entry;
-						entry.push_back({ _selected_entity,
+						entry.transforms.push_back({ _selected_entity,
 							selectedTransform.getPosition(),
 							selectedTransform.getRotation(),
 							selectedTransform.getScale() });
-						if (m_transformUndoStack.size() >= static_cast<size_t>(k_maxUndoDepth))
-							m_transformUndoStack.erase(m_transformUndoStack.begin());
-						m_transformUndoStack.push_back(std::move(entry));
-						m_transformRedoStack.clear();
+						pushUndoEntry(std::move(entry));
 					}
 
 					if (ImTransformControl::IsUsing())
@@ -578,17 +619,11 @@ void SceneInteractionManager::draw()
 						if (e.isValid() && e.hasComponent<TransformComponent>())
 						{
 							auto& tc = e.getComponent<TransformComponent>();
-							entry.push_back({ id, tc.getPosition(), tc.getRotation(), tc.getScale() });
+							entry.transforms.push_back({ id, tc.getPosition(), tc.getRotation(), tc.getScale() });
 						}
 					}
 				}
-				if (!entry.empty())
-				{
-					if (m_transformUndoStack.size() >= static_cast<size_t>(k_maxUndoDepth))
-						m_transformUndoStack.erase(m_transformUndoStack.begin());
-					m_transformUndoStack.push_back(std::move(entry));
-					m_transformRedoStack.clear();
-				}
+				pushUndoEntry(std::move(entry));
 			}
 
 			if (ImTransformControl::IsUsing())
@@ -724,6 +759,8 @@ void SceneInteractionManager::draw()
 	break;
 	}
 	m_gizmoWasUsing = ImTransformControl::IsUsing();
+
+	m_brushTool.draw();
 
 	if (m_painter.isActive())
 		m_painter.drawBrush();
@@ -878,23 +915,88 @@ void SceneInteractionManager::saveConfiguration(EditorConfiguration& configurati
 	editor_config(configuration);
 }
 
+void SceneInteractionManager::pushUndoEntry(UndoEntry entry)
+{
+	if (entry.empty()) return;
+
+	if (m_transformUndoStack.size() >= static_cast<size_t>(k_maxUndoDepth))
+		m_transformUndoStack.erase(m_transformUndoStack.begin());
+	m_transformUndoStack.push_back(std::move(entry));
+	m_transformRedoStack.clear();
+}
+
+namespace
+{
+	// Capture the CURRENT state of everything a snapshot touches (for the
+	// opposite stack), then restore the snapshot.  Shared by undo and redo.
+	UndoEntry captureCurrentState(const UndoEntry& snapshot)
+	{
+		UndoEntry current;
+
+		for (auto& snap : snapshot.transforms)
+		{
+			auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
+			if (e.isValid() && e.hasComponent<TransformComponent>())
+			{
+				auto& tc = e.getComponent<TransformComponent>();
+				current.transforms.push_back({ snap.id, tc.getPosition(), tc.getRotation(), tc.getScale() });
+			}
+		}
+
+		if (BrushManager::Get())
+		{
+			for (auto& snap : snapshot.brushes)
+			{
+				BrushSnapshot cur;
+				cur.id = snap.id;
+				Brush* brush = BrushManager::Get()->getBrush(snap.id);
+				cur.existed = (brush != nullptr);
+				if (brush)
+					cur.data = *brush;
+				current.brushes.push_back(std::move(cur));
+			}
+		}
+
+		return current;
+	}
+
+	void restoreSnapshot(const UndoEntry& snapshot)
+	{
+		for (auto& snap : snapshot.transforms)
+		{
+			auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
+			if (e.isValid() && e.hasComponent<TransformComponent>())
+			{
+				auto& tc = e.getComponent<TransformComponent>();
+				tc.setPosition(snap.position);
+				tc.setRotation(snap.rotation);
+				tc.setScale(snap.scale);
+			}
+		}
+		if (!snapshot.transforms.empty())
+			WorldManager::Get()->renderSystem()->forceTransformUpdate();
+
+		if (BrushManager::Get())
+		{
+			for (auto& snap : snapshot.brushes)
+			{
+				if (snap.existed)
+					BrushManager::Get()->restoreBrush(snap.data);
+				else
+					BrushManager::Get()->removeBrush(snap.id);
+			}
+		}
+	}
+}
+
 void SceneInteractionManager::undoTransform()
 {
 	if (m_transformUndoStack.empty()) return;
 
-	UndoEntry& snapshot = m_transformUndoStack.back();
+	UndoEntry snapshot = std::move(m_transformUndoStack.back());
+	m_transformUndoStack.pop_back();
 
-	// Save current state to redo stack
-	UndoEntry redoEntry;
-	for (auto& snap : snapshot)
-	{
-		auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
-		if (e.isValid() && e.hasComponent<TransformComponent>())
-		{
-			auto& tc = e.getComponent<TransformComponent>();
-			redoEntry.push_back({ snap.id, tc.getPosition(), tc.getRotation(), tc.getScale() });
-		}
-	}
+	UndoEntry redoEntry = captureCurrentState(snapshot);
 	if (!redoEntry.empty())
 	{
 		if (m_transformRedoStack.size() >= static_cast<size_t>(k_maxUndoDepth))
@@ -902,40 +1004,17 @@ void SceneInteractionManager::undoTransform()
 		m_transformRedoStack.push_back(std::move(redoEntry));
 	}
 
-	// Restore snapshot
-	for (auto& snap : snapshot)
-	{
-		auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
-		if (e.isValid() && e.hasComponent<TransformComponent>())
-		{
-			auto& tc = e.getComponent<TransformComponent>();
-			tc.setPosition(snap.position);
-			tc.setRotation(snap.rotation);
-			tc.setScale(snap.scale);
-		}
-	}
-	WorldManager::Get()->renderSystem()->forceTransformUpdate();
-
-	m_transformUndoStack.pop_back();
+	restoreSnapshot(snapshot);
 }
 
 void SceneInteractionManager::redoTransform()
 {
 	if (m_transformRedoStack.empty()) return;
 
-	UndoEntry& snapshot = m_transformRedoStack.back();
+	UndoEntry snapshot = std::move(m_transformRedoStack.back());
+	m_transformRedoStack.pop_back();
 
-	// Save current state to undo stack
-	UndoEntry undoEntry;
-	for (auto& snap : snapshot)
-	{
-		auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
-		if (e.isValid() && e.hasComponent<TransformComponent>())
-		{
-			auto& tc = e.getComponent<TransformComponent>();
-			undoEntry.push_back({ snap.id, tc.getPosition(), tc.getRotation(), tc.getScale() });
-		}
-	}
+	UndoEntry undoEntry = captureCurrentState(snapshot);
 	if (!undoEntry.empty())
 	{
 		if (m_transformUndoStack.size() >= static_cast<size_t>(k_maxUndoDepth))
@@ -943,19 +1022,29 @@ void SceneInteractionManager::redoTransform()
 		m_transformUndoStack.push_back(std::move(undoEntry));
 	}
 
-	// Restore snapshot
-	for (auto& snap : snapshot)
-	{
-		auto& e = WorldManager::Get()->managerSystem()->getEntityByID(snap.id);
-		if (e.isValid() && e.hasComponent<TransformComponent>())
-		{
-			auto& tc = e.getComponent<TransformComponent>();
-			tc.setPosition(snap.position);
-			tc.setRotation(snap.rotation);
-			tc.setScale(snap.scale);
-		}
-	}
-	WorldManager::Get()->renderSystem()->forceTransformUpdate();
+	restoreSnapshot(snapshot);
+}
 
-	m_transformRedoStack.pop_back();
+void SceneInteractionManager::deleteSelectedBrushes()
+{
+	if (m_selectedBrushIds.empty() || !BrushManager::Get())
+		return;
+
+	UndoEntry entry;
+	for (uint32_t id : m_selectedBrushIds)
+	{
+		Brush* brush = BrushManager::Get()->getBrush(id);
+		if (!brush)
+			continue;
+		BrushSnapshot snap;
+		snap.id = id;
+		snap.existed = true;
+		snap.data = *brush;
+		entry.brushes.push_back(std::move(snap));
+	}
+	pushUndoEntry(std::move(entry));
+
+	for (uint32_t id : m_selectedBrushIds)
+		BrushManager::Get()->removeBrush(id);
+	m_selectedBrushIds.clear();
 }

@@ -1265,6 +1265,8 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 		spdlog::error("Failed to create the ASSIMP loader");
 	}
 
+	m_gltfLoader = new GltfImport(m_sceneManager);
+
     initDefaultSkyDome();
 
 	// Make a default camera
@@ -1323,6 +1325,9 @@ RenderManager::~RenderManager()
 
     delete m_clusteredLights;
     m_clusteredLights = nullptr;
+
+    delete m_gltfLoader;
+    m_gltfLoader = nullptr;
 
     if (m_sceneRTT)   m_driver->removeTexture(m_sceneRTT);
     if (m_ppRTT[0])   m_driver->removeTexture(m_ppRTT[0]);
@@ -2464,6 +2469,17 @@ void RenderManager::setNodeMesh(IAnimatedMesh* trimesh, IAnimatedMeshSceneNode* 
     }
 
     spdlog::error("Failed to load mesh \'" + file + "\' in RenderManager::loadMesh");
+}
+
+bool RenderManager::isWorldGeometryNode(irr::scene::ISceneNode* node)
+{
+    if (!node)
+        return false;
+    if (BrushManager::Get() && BrushManager::Get()->getChunkFromNode(node))
+        return true;
+    if (PropManager::Get() && PropManager::Get()->getPropFromNode(node))
+        return true;
+    return false;
 }
 
 RaycastResultData RenderManager::raycastWorldPosition(vector3df start, vector3df end, bool excludeDebugNodes)

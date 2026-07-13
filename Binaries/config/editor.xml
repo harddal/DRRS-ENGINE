@@ -2,10 +2,10 @@
 <cereal>
 	<value0>
 		<drawPointLightBounds>true</drawPointLightBounds>
-		<useSnap>false</useSnap>
-		<snapX>1</snapX>
-		<snapY>1</snapY>
-		<snapZ>1</snapZ>
+		<useSnap>true</useSnap>
+		<snapX>0.5</snapX>
+		<snapY>0.5</snapY>
+		<snapZ>0.5</snapZ>
 	</value0>
 </cereal>
 

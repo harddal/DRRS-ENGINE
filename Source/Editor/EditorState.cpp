@@ -34,10 +34,13 @@ void EditorState::update(float dt)
 	WorldManager::Get()->updateEntityQueues();
 	WorldManager::Get()->transformSystem()->update();
 	WorldManager::Get()->renderSystem()->forceTransformUpdate();
-	
+
     m_camera.update();
 
 	g_sceneInteractor.update(dt);
+
+	if (BrushManager::Get())
+		BrushManager::Get()->rebuildDirtyChunks();
 }
 
 void EditorState::updateUI(float dt)

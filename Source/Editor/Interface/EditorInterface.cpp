@@ -118,6 +118,7 @@ void EditorInterface::draw()
 		draw_window_spawn_prop();
 		draw_window_vegetation_painter();
 		draw_window_texture_painter();
+		draw_window_brush_editor();
 		draw_window_hierarchy();
 		draw_window_prop_ent();
 		draw_window_prop_scene();
@@ -156,6 +157,8 @@ void EditorInterface::detectKeyShortcuts()
 	{
 		if (g_sceneInteractor.isPropSelected())
 			g_sceneInteractor.deleteProp();
+		else if (g_sceneInteractor.isBrushSelected())
+			g_sceneInteractor.deleteSelectedBrushes();
 		else
 			g_sceneInteractor.deleteEntity();
 	}

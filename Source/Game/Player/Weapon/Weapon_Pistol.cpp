@@ -356,6 +356,11 @@ void Weapon_Pistol::fire()
 				m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
+		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
+		{
+			// Brush chunks / props carry no ECS id — solid surface hit, nothing to damage
+			m_effects.impact(raycastResult.point, raycastResult.normal);
+		}
 	}
 
 	// Tracer segment toward the hit point (module fires every Nth shot)

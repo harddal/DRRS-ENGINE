@@ -1,5 +1,6 @@
 #include "Engine/World/WorldManager.h"
 
+#include "Engine/Brush/BrushManager.h"
 #include "Engine/Script/Bindings.h"
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Physics/PhysicsManager.h"
@@ -89,6 +90,7 @@ void WorldManager::update(irr::f32 dt)
 	m_cameraSystem.update();
 
 	if (PropManager::Get()) PropManager::Get()->update();
+	if (BrushManager::Get()) BrushManager::Get()->rebuildDirtyChunks();
 
 	// Runs outside the game-mode gate so the F8 link view works in the editor
 	m_gameplaySystem.drawEntityLinkDebug();
@@ -126,6 +128,7 @@ void WorldManager::update(irr::f32 dt)
 	m_cameraTime = Engine::Get()->GetCounter() - m_cameraCurrent;
 
 	if (PropManager::Get()) PropManager::Get()->update();
+	if (BrushManager::Get()) BrushManager::Get()->rebuildDirtyChunks();
 
 	m_renderCurrent = Engine::Get()->GetCounter();
     m_renderSystem.update();
@@ -297,6 +300,9 @@ void WorldManager::killAllEntities()
 
     if (PropManager::Get())
         PropManager::Get()->clearAll();
+
+    if (BrushManager::Get())
+        BrushManager::Get()->clearAll();
 }
 
 unsigned int WorldManager::spawnEntity(const std::string& file, const std::string& name, bool preserve_transform,
@@ -454,6 +460,32 @@ void WorldManager::importScene(const std::string& file)
 		else if (propsFile)
 		{
 			propsFile->drop();
+		}
+
+		// Load CSG brushes (plane data is the source of truth; chunk meshes,
+		// selectors and collision are recompiled by deserialize -> compileAll)
+		irr::io::IReadFile* brushFile = fs->createAndOpenFile("brushes.xml");
+		if (brushFile && BrushManager::Get())
+		{
+			std::vector<char> brushBuf(static_cast<size_t>(brushFile->getSize()));
+			brushFile->read(brushBuf.data(), static_cast<irr::u32>(brushBuf.size()));
+			brushFile->drop();
+
+			std::string tmpBrushes = file.substr(0, file.size() - 4) + "_tmp_brushes.xml";
+			{
+				std::ofstream ofs(tmpBrushes, std::ios::binary);
+				ofs.write(brushBuf.data(), static_cast<std::streamsize>(brushBuf.size()));
+			}
+			{
+				std::ifstream ifs(tmpBrushes);
+				cereal::XMLInputArchive ar(ifs);
+				BrushManager::Get()->deserialize(ar);
+			}
+			std::remove(tmpBrushes.c_str());
+		}
+		else if (brushFile)
+		{
+			brushFile->drop();
 		}
 
 		// Load baked navmesh if present
@@ -658,13 +690,28 @@ void WorldManager::exportScene(const std::string& file)
 		propCount = PropManager::Get()->getAllProps().size();
 	}
 
+	// 5. Serialize CSG brushes (plane data only — meshes are derived caches)
+	size_t brushCount = 0;
+	if (BrushManager::Get() && !BrushManager::Get()->getAllBrushes().empty())
+	{
+		std::ostringstream brushStream;
+		{
+			cereal::XMLOutputArchive ar(brushStream);
+			BrushManager::Get()->serialize(ar);
+		}
+		const std::string brushData = brushStream.str();
+		mz_zip_writer_add_mem(&zip, "brushes.xml",
+		    brushData.data(), brushData.size(), MZ_DEFAULT_COMPRESSION);
+		brushCount = BrushManager::Get()->getAllBrushes().size();
+	}
+
 	if (!mz_zip_writer_finalize_archive(&zip))
 		spdlog::error("WorldManager::exportScene: failed to finalise zip '{}'", file);
 
 	mz_zip_writer_end(&zip);
 
-	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), navmesh: {})",
-	    file, lightmapFiles.size(), propCount, navBytes.empty() ? "no" : "yes");
+	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), {} brush(es), navmesh: {})",
+	    file, lightmapFiles.size(), propCount, brushCount, navBytes.empty() ? "no" : "yes");
 }
 
 bool WorldManager::getCVarExists(const std::string& name)

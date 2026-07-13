@@ -145,7 +145,21 @@ void EditorInterface::draw_toolbar()
 	// -- Separator --
 	ImGui::SameLine(0.0f, gap); ImGui::TextDisabled("|");
 
-	// -- Lightmaps -- 
+	// -- Brush editor toggle --
+	ImGui::SameLine(0.0f, gap);
+	{
+		const bool brushOn = m_windowData.draw_window_brush_editor ||
+		                     g_sceneInteractor.getBrushTool().isActive();
+		if (brushOn) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
+		if (ImGui::Button("Brush"))
+			m_windowData.draw_window_brush_editor = !m_windowData.draw_window_brush_editor;
+		if (brushOn) ImGui::PopStyleColor();
+	}
+
+	// -- Separator --
+	ImGui::SameLine(0.0f, gap); ImGui::TextDisabled("|");
+
+	// -- Lightmaps --
 	static LightmapBaker::BakeSettings s_bakeSettings;
 	static int s_bakeResolution = static_cast<int>(s_bakeSettings.resolution);
 	s_bakeSettings.blurRadius = 4;

@@ -304,6 +304,16 @@ void TurretBehavior::fire(const vector3df& muzzlePos, const vector3df& dir)
                 }
             }
         }
+        else if (RenderManager::isWorldGeometryNode(result.node))
+        {
+            // Brush chunks / props carry no ECS id — solid surface hit
+            ParticleManager::Get()->setScale(
+                ParticleManager::Get()->spawn("spark", irr2spk(result.point)),
+                m_entityScale);
+            RenderManager::Get()->decals()->spawn(
+                result.point, result.normal, 0.2f,
+                "content/texture/fx/bullet_hole.png");
+        }
     }
 
     vector3df tracerEnd = (result.hit && result.node) ? result.point : rayEnd;

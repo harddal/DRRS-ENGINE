@@ -11,8 +11,10 @@
 #include "Engine/World/Components/TransformComponent.h"
 #include "Engine/Interface/ImTransformControl.h"
 #include "Engine/Prop/PropManager.h"
+#include "Engine/Brush/BrushData.h"
 #include "Editor/VegetationPainter.h"
 #include "Editor/TexturePainter.h"
+#include "Editor/BrushTool.h"
 
 #define CLIPBOARD_ENTITY_FILENAME "temp/-cent"
 
@@ -82,7 +84,25 @@ struct TransformSnapshot
 	entityid id;
 	irr::core::vector3df position, rotation, scale;
 };
-using UndoEntry = std::vector<TransformSnapshot>;
+
+// Pre-operation state of one brush.  existed == false means the brush was
+// created by the operation, so undoing it deletes the brush.
+struct BrushSnapshot
+{
+	uint32_t id = 0;
+	bool     existed = true;
+	Brush    data;
+};
+
+// One undo step.  A single user action may snapshot entity transforms and
+// brush states together (single Ctrl+Z timeline — no parallel stacks).
+struct UndoEntry
+{
+	std::vector<TransformSnapshot> transforms;
+	std::vector<BrushSnapshot>     brushes;
+
+	bool empty() const { return transforms.empty() && brushes.empty(); }
+};
 
 class SceneInteractionManager
 {
@@ -94,6 +114,7 @@ public:
 
 	VegetationPainter& getPainter()       { return m_painter; }
     TexturePainter&    getTexturePainter() { return m_texturePainter; }
+    BrushTool&         getBrushTool()      { return m_brushTool; }
 
 	void setSelectedEntity(unsigned int ent)
 	{
@@ -173,8 +194,9 @@ public:
     void setSelectedProp(uint32_t id)
     {
         m_selectedPropId = id;
-        // Deselect any entities when a prop is selected
+        // Deselect any entities/brushes when a prop is selected
         clearSelectedEntities();
+        m_selectedBrushIds.clear();
         g_currentEntity = _entity_null_value;
         g_currentSelectedObjectType = m_currentSelectedObject =
             static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
@@ -189,6 +211,48 @@ public:
 
     bool isPropSelected()    const { return m_selectedPropId != UINT32_MAX; }
     bool hasPropClipboard()  const { return m_propClipboardValid; }
+
+    // Brush selection (mutually exclusive with entity/prop selection)
+    void setSelectedBrush(uint32_t id)
+    {
+        m_selectedBrushIds.clear();
+        m_selectedBrushIds.push_back(id);
+        clearSelectedEntities();
+        m_selectedPropId = UINT32_MAX;
+        g_currentEntity = _entity_null_value;
+        g_currentSelectedObjectType = m_currentSelectedObject =
+            static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
+    }
+
+    void toggleBrushInSelection(uint32_t id)
+    {
+        for (auto it = m_selectedBrushIds.begin(); it != m_selectedBrushIds.end(); ++it)
+        {
+            if (*it == id)
+            {
+                m_selectedBrushIds.erase(it);
+                return;
+            }
+        }
+        m_selectedBrushIds.push_back(id);
+    }
+
+    void clearSelectedBrushes() { m_selectedBrushIds.clear(); }
+    const std::vector<uint32_t>& getSelectedBrushes() const { return m_selectedBrushIds; }
+    bool isBrushSelected() const { return !m_selectedBrushIds.empty(); }
+
+    bool isBrushInSelection(uint32_t id) const
+    {
+        for (auto b : m_selectedBrushIds)
+            if (b == id) return true;
+        return false;
+    }
+
+    void deleteSelectedBrushes();
+
+    // Push one undo step (caps depth, clears the redo stack).  Used by the
+    // gizmo grab paths and by BrushTool for brush operations.
+    void pushUndoEntry(UndoEntry entry);
 
     void undoTransform();
     void redoTransform();
@@ -244,8 +308,10 @@ public:
 private:
     VegetationPainter m_painter;
     TexturePainter    m_texturePainter;
+    BrushTool         m_brushTool;
     std::vector<entityid> m_selectedEntities;
     uint32_t              m_selectedPropId = UINT32_MAX;
+    std::vector<uint32_t> m_selectedBrushIds;
 
     LinkPickField m_linkPickField = LinkPickField::NONE;
     entityid      m_linkPickHost = _entity_null_value;

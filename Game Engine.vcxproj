@@ -52,6 +52,31 @@
     <ClCompile Include="Include\imgui\imgui_tables.cpp" />
     <ClCompile Include="Include\imgui\imgui_widgets.cpp" />
     <ClCompile Include="Include\tinyxml2\tinyxml2.cpp" />
+    <ClCompile Include="Include\fastgltf\src\base64.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\fastgltf\include;$(ProjectDir)Include\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>cctype;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="Include\fastgltf\src\fastgltf.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\fastgltf\include;$(ProjectDir)Include\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>SIMDJSON_TARGET_VERSION="3.12.3";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ForcedIncludeFiles>cctype;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="Include\fastgltf\src\io.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\fastgltf\include;$(ProjectDir)Include\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>cctype;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ClCompile Include="Include\simdjson\simdjson.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\simdjson;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>cctype;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
     <ClCompile Include="Source\Application.cpp" />
     <ClCompile Include="Source\Editor\EditorCamera.cpp" />
     <ClCompile Include="Source\Editor\EditorGameState.cpp" />
@@ -59,6 +84,7 @@
     <ClCompile Include="Source\Editor\Interface\EditorInterface.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Assets.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Components.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Brush.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_EntityBuilder.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Hierarchy.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_MenuBar.cpp" />
@@ -82,6 +108,7 @@
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
+    <ClCompile Include="Source\Editor\BrushTool.cpp" />
     <ClCompile Include="Source\Editor\SceneInteractionManager.cpp" />
     <ClCompile Include="Source\Editor\TexturePainter.cpp" />
     <ClCompile Include="Source\Editor\VegetationPainter.cpp" />
@@ -120,6 +147,9 @@
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastMeshDetail.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastRasterization.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastRegion.cpp" />
+    <ClCompile Include="Source\Engine\Brush\BrushCompiler.cpp" />
+    <ClCompile Include="Source\Engine\Brush\BrushGeometry.cpp" />
+    <ClCompile Include="Source\Engine\Brush\BrushManager.cpp" />
     <ClCompile Include="Source\Engine\Physics\PhysicsManager.cpp" />
     <ClCompile Include="Source\Engine\Prop\PropManager.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Extensions\BoltSceneNode.cpp" />
@@ -133,6 +163,11 @@
     <ClCompile Include="Source\Engine\Renderer\Extensions\IQuadSceneNode.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Lightmapper\LightmapBaker.cpp" />
     <ClCompile Include="Source\Engine\Renderer\Lightmapper\xatlas.cpp" />
+    <ClCompile Include="Source\Engine\Renderer\GltfImport\GltfImport.cpp">
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <SDLCheck>false</SDLCheck>
+      <AdditionalIncludeDirectories>$(ProjectDir)Include\fastgltf\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.cpp" />
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.cpp" />
     <ClCompile Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.cpp" />
@@ -294,6 +329,7 @@
     <ClInclude Include="Source\Editor\Interface\TextEditor\dtl.h" />
     <ClInclude Include="Source\Editor\Interface\TextEditor\TextDiff.h" />
     <ClInclude Include="Source\Editor\Interface\TextEditor\TextEditor.h" />
+    <ClInclude Include="Source\Editor\BrushTool.h" />
     <ClInclude Include="Source\Editor\TexturePainter.h" />
     <ClInclude Include="Source\Editor\VegetationPainter.h" />
     <ClInclude Include="Source\Engine\Debug\Interface\DebugInterface.h" />
@@ -319,6 +355,10 @@
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\Recast.h" />
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAlloc.h" />
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAssert.h" />
+    <ClInclude Include="Source\Engine\Brush\BrushCompiler.h" />
+    <ClInclude Include="Source\Engine\Brush\BrushData.h" />
+    <ClInclude Include="Source\Engine\Brush\BrushGeometry.h" />
+    <ClInclude Include="Source\Engine\Brush\BrushManager.h" />
     <ClInclude Include="Source\Engine\Prop\PropManager.h" />
     <ClInclude Include="Source\Engine\Renderer\Extensions\BoltSceneNode.h" />
     <ClInclude Include="Source\Engine\Renderer\Extensions\CBeamSceneNode.h" />
@@ -332,6 +372,7 @@
     <ClInclude Include="Source\Engine\Renderer\Extensions\IQuadSceneNode.h" />
     <ClInclude Include="Source\Engine\Renderer\Lightmapper\LightmapBaker.h" />
     <ClInclude Include="Source\Engine\Renderer\Lightmapper\xatlas.h" />
+    <ClInclude Include="Source\Engine\Renderer\GltfImport\GltfImport.h" />
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimp.h" />
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpExport.h" />
     <ClInclude Include="Source\Engine\Renderer\IrrAssimp\IrrAssimpImport.h" />

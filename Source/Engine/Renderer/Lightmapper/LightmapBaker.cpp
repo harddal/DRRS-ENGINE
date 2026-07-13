@@ -19,6 +19,7 @@
 #include "Engine/World/Components/DescriptorComponent.h"
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Prop/PropManager.h"
+#include "Engine/Brush/BrushManager.h"
 
 #include "irrlicht.h"
 
@@ -1283,14 +1284,62 @@ namespace {
 
 struct PendingUpload
 {
-    MeshComponent* mc;
-    MeshLightmap*  lightmap; // owned; transferred to mc->lightmap on the main thread
+    MeshComponent* mc = nullptr;    // entity target (null for brush chunks)
+    MeshLightmap*  lightmap = nullptr; // owned; transferred to the target on the main thread
     std::string    texName;
+
+    // Brush-chunk target: resolved by key at upload time; discarded when the
+    // chunk was recompiled (revision mismatch) or destroyed mid-bake.
+    bool     isBrushChunk = false;
+    irr::s64 chunkKey = 0;
+    irr::u32 chunkRevision = 0;
 };
 
 std::atomic<bool>          g_baking{false};
 std::mutex                 g_uploadMutex;
 std::vector<PendingUpload> g_pendingUploads;
+
+// CSG brush chunks block light like any other static geometry.  Chunk verts
+// are world-space, so no transform is applied.
+void appendBrushChunkTriangles(std::vector<triangle3df>& sceneTriangles)
+{
+    if (!BrushManager::Get())
+        return;
+
+    const matrix4 identity;
+    for (auto* node : BrushManager::Get()->getOccluderNodes())
+    {
+        IAnimatedMesh* animMesh = node->getMesh();
+        if (!animMesh)
+            continue;
+        IMesh* mesh = animMesh->getMesh(0);
+
+        for (u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+        {
+            IMeshBuffer* buf = mesh->getMeshBuffer(b);
+            const u32 indexCount = buf->getIndexCount();
+
+            auto addTri = [&](u32 i0, u32 i1, u32 i2)
+            {
+                sceneTriangles.push_back({
+                    getVertexWorldPos(buf, i0, identity),
+                    getVertexWorldPos(buf, i1, identity),
+                    getVertexWorldPos(buf, i2, identity) });
+            };
+
+            if (buf->getIndexType() == EIT_16BIT)
+            {
+                const u16* idx = static_cast<const u16*>(buf->getIndices());
+                for (u32 i = 0; i + 2 < indexCount; i += 3) addTri(idx[i], idx[i+1], idx[i+2]);
+            }
+            else
+            {
+                const u32* idx = reinterpret_cast<const u32*>(buf->getIndices());
+                for (u32 i = 0; i + 2 < indexCount; i += 3) addTri(idx[i], idx[i+1], idx[i+2]);
+            }
+        }
+    }
+}
 
 } // namespace
 
@@ -1313,6 +1362,31 @@ void LightmapBaker::flushPendingUploads(IVideoDriver* driver)
 
     for (auto& upload : batch)
     {
+        // ---- brush chunk target ----
+        if (upload.isBrushChunk)
+        {
+            BrushChunk* chunk = BrushManager::Get()
+                ? BrushManager::Get()->getChunkByKey(upload.chunkKey) : nullptr;
+
+            // Discard stale results: chunk destroyed or recompiled mid-bake
+            if (!chunk || !chunk->node || chunk->revision != upload.chunkRevision)
+            {
+                delete upload.lightmap;
+                continue;
+            }
+
+            BrushManager::Get()->clearChunkLightmap(*chunk);
+            chunk->lightmap = upload.lightmap;
+
+            uploadLightmap(driver, *chunk->lightmap, upload.texName);
+            applyLightmapUVsToNode(*chunk->lightmap, chunk->node);
+
+            { std::vector<MeshLightmap::BufferData>().swap(chunk->lightmap->buffers); }
+            { std::vector<MeshLightmap::Texel>().swap(chunk->lightmap->texels); }
+            { std::vector<float>().swap(chunk->lightmap->pixels); }
+            continue;
+        }
+
         MeshComponent* mc = upload.mc;
 
         // Remove old lightmap — GPU and CPU
@@ -1388,6 +1462,9 @@ void LightmapBaker::bakeSceneAsync(const BakeSettings& settings)
         }
     }
 
+    // CSG brush chunks block light too
+    appendBrushChunkTriangles(sceneTriangles);
+
     // Static lights
     std::vector<BakeLight> lights;
     for (auto& ent : entities)
@@ -1429,6 +1506,30 @@ void LightmapBaker::bakeSceneAsync(const BakeSettings& settings)
                            "lightmap_" + std::to_string(dc.id) });
     }
 
+    // Brush chunks to bake — chunk verts are world-space (identity transform).
+    // The mesh is grab()bed so a mid-bake recompile can't free it under the
+    // worker thread; stale results are discarded by the revision check.
+    struct ChunkToBake
+    {
+        irr::s64 key;
+        irr::u32 revision;
+        IAnimatedMesh* mesh;    // grabbed; dropped by the worker after unwrap
+        std::string texName;
+    };
+    std::vector<ChunkToBake> chunksToBake;
+    if (BrushManager::Get())
+    {
+        for (const auto& target : BrushManager::Get()->getBakeTargets())
+        {
+            IAnimatedMesh* animMesh = target.node->getMesh();
+            if (!animMesh)
+                continue;
+            animMesh->grab();
+            chunksToBake.push_back({ target.chunkKey, target.revision, animMesh,
+                "brush_lightmap_" + std::to_string(static_cast<long long>(target.chunkKey)) });
+        }
+    }
+
     // Reset progress — texel totals are filled after Phase 1 in the background thread
     g_texelsDone  = 0;
     g_texelsTotal = 0;
@@ -1444,7 +1545,8 @@ void LightmapBaker::bakeSceneAsync(const BakeSettings& settings)
     std::thread([settings,
                  sceneTriangles = std::move(sceneTriangles),
                  lights         = std::move(lights),
-                 toBake         = std::move(toBake)]()
+                 toBake         = std::move(toBake),
+                 chunksToBake   = std::move(chunksToBake)]()
     {
         // Phase 1: unwrap + rasterize all entities to discover total covered texels.
         struct ReadyEntity { MeshComponent* mc; MeshLightmap* lm; std::string texName; };
@@ -1467,6 +1569,30 @@ void LightmapBaker::bakeSceneAsync(const BakeSettings& settings)
             ready.push_back({ ed.mc, lm, ed.texName });
         }
 
+        // Phase 1b: unwrap + rasterize brush chunks (identity transform —
+        // chunk verts are world-space).
+        struct ReadyChunk { irr::s64 key; irr::u32 revision; MeshLightmap* lm; std::string texName; };
+        std::vector<ReadyChunk> readyChunks;
+        readyChunks.reserve(chunksToBake.size());
+
+        const matrix4 identity;
+        for (const auto& cd : chunksToBake)
+        {
+            auto* lm = new MeshLightmap();
+            const bool ok = unwrapMesh(cd.mesh, identity, settings, *lm);
+            cd.mesh->drop();
+            if (!ok)
+            {
+                spdlog::warn("LightmapBaker: unwrapMesh failed for '{}', skipping", cd.texName);
+                delete lm;
+                continue;
+            }
+            rasterizeTexels(*lm);
+            for (const auto& t : lm->texels)
+                if (t.covered) totalCovered++;
+            readyChunks.push_back({ cd.key, cd.revision, lm, cd.texName });
+        }
+
         // Now we know total work; reset per-texel counters before baking.
         g_texelsDone.store(0, std::memory_order_relaxed);
         g_texelsTotal.store(totalCovered, std::memory_order_relaxed);
@@ -1481,7 +1607,30 @@ void LightmapBaker::bakeSceneAsync(const BakeSettings& settings)
 
             {
                 std::lock_guard<std::mutex> lk(g_uploadMutex);
-                g_pendingUploads.push_back({ r.mc, r.lm, r.texName });
+                PendingUpload up;
+                up.mc = r.mc;
+                up.lightmap = r.lm;
+                up.texName = r.texName;
+                g_pendingUploads.push_back(std::move(up));
+            }
+        }
+
+        for (auto& r : readyChunks)
+        {
+            spdlog::info("LightmapBaker: baking '{}'...", r.texName);
+            bake(*r.lm, lights, sceneTriangles, settings);
+            blurLightmap(*r.lm, settings.blurRadius);
+            dilate(*r.lm, settings.dilationPasses);
+
+            {
+                std::lock_guard<std::mutex> lk(g_uploadMutex);
+                PendingUpload up;
+                up.lightmap = r.lm;
+                up.texName = r.texName;
+                up.isBrushChunk = true;
+                up.chunkKey = r.key;
+                up.chunkRevision = r.revision;
+                g_pendingUploads.push_back(std::move(up));
             }
         }
 
@@ -1590,6 +1739,9 @@ void LightmapBaker::bakeScene(const BakeSettings& settings)
             }
         }
     }
+
+    // CSG brush chunks block light too
+    appendBrushChunkTriangles(sceneTriangles);
 
     spdlog::info("LightmapBaker: {} scene triangles extracted for shadow testing", sceneTriangles.size());
 

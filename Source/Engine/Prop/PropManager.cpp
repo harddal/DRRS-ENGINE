@@ -199,7 +199,14 @@ void PropManager::spawnNode(StaticProp& prop)
 
     // Load mesh (mirrors RenderSystem::setMeshComponentData logic)
     const std::string ext = Utility::FileExtensionFromPath(prop.mesh);
-    if (ext == "fbx" || ext == "glb" || ext == "gltf")
+    if (ext == "glb" || ext == "gltf")
+    {
+        // fastgltf backend; fall back to Assimp if it can't load the file
+        prop.trimesh = RenderManager::Get()->gltf()->getMesh(prop.mesh.c_str());
+        if (!prop.trimesh)
+            prop.trimesh = RenderManager::Get()->assimp()->getMesh(prop.mesh.c_str());
+    }
+    else if (ext == "fbx")
     {
         try
         {

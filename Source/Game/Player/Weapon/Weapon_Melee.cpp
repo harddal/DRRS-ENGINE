@@ -252,6 +252,11 @@ void Weapon_Melee::performStrike()
 				}
 			}
 		}
+		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
+		{
+			// Brush chunks / props carry no ECS id — clang off the surface
+			ParticleManager::Get()->spawn("spark", SPK::IRR::irr2spk(raycastResult.point));
+		}
 	}
 }
 
