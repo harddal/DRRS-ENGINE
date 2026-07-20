@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <iterator>
 
 #include <spdlog/spdlog.h>
 
@@ -256,6 +260,14 @@ void BrushManager::clearAll()
     m_deferHeavy = false;
 }
 
+void BrushManager::setToolOverlayVisible(bool visible)
+{
+    m_toolOverlayVisible = visible;
+    for (auto& pair : m_chunks)
+        if (pair.second.toolNode)
+            pair.second.toolNode->setVisible(visible);
+}
+
 void BrushManager::setCellSize(float size)
 {
     if (size < 1.0f)
@@ -295,12 +307,17 @@ void BrushManager::compileHeavy(BrushChunk& chunk)
     }
 
     // PhysX static collision, cooked from a collision-inclusive mesh
-    // (FACE_NODRAW faces still block movement and bullets).
+    // (FACE_NODRAW faces still block movement — not hitscans, which trace the
+    // render-mesh selector).  Tool brushes are excluded here; their clip bits
+    // get separate query-filtered actors below.
     if (chunk.physicsActor)
     {
         chunk.physicsActor->release();
         chunk.physicsActor = nullptr;
     }
+    for (auto* actor : chunk.clipActors)
+        actor->release();
+    chunk.clipActors.clear();
 
     if (!PhysicsManager::Get())
         return;
@@ -310,13 +327,48 @@ void BrushManager::compileHeavy(BrushChunk& chunk)
     if (members.empty())
         return;
 
-    irr::scene::SMesh* collisionMesh = BrushCompiler::buildChunkMesh(members, /*includeNoDraw=*/true);
-    if (!collisionMesh)
-        return;
-
     // Chunk verts are world-space — cook at the identity transform.
-    PhysicsManager::Get()->cookStaticTriangleMeshFromMemory(collisionMesh, chunk.physicsActor);
-    collisionMesh->drop();
+    irr::scene::SMesh* collisionMesh =
+        BrushCompiler::buildChunkMesh(members, BrushCompiler::MeshFilter::COLLISION);
+    if (collisionMesh)
+    {
+        PhysicsManager::Get()->cookStaticTriangleMeshFromMemory(collisionMesh, chunk.physicsActor);
+        collisionMesh->drop();
+    }
+
+    // Clip brushes: one actor per distinct clip-bit combination so each
+    // shape's query filter word carries exactly what it blocks.  Trigger/sky
+    // brushes without clip bits cook nothing.
+    std::vector<irr::u32> signatures;
+    for (const Brush* b : members)
+    {
+        const irr::u32 sig = b->clipMask();
+        if (sig != 0 &&
+            std::find(signatures.begin(), signatures.end(), sig) == signatures.end())
+            signatures.push_back(sig);
+    }
+
+    for (irr::u32 sig : signatures)
+    {
+        irr::scene::SMesh* clipMesh =
+            BrushCompiler::buildChunkMesh(members, BrushCompiler::MeshFilter::CLIP, sig);
+        if (!clipMesh)
+            continue;
+
+        irr::u32 word0 = 0;
+        if (sig & CONTENT_CLIP_PLAYER)  word0 |= RHG_CLIP_PLAYER;
+        if (sig & CONTENT_CLIP_MONSTER) word0 |= RHG_CLIP_MONSTER;
+        if (sig & CONTENT_CLIP_WEAPON)  word0 |= RHG_CLIP_WEAPON;
+
+        physx::PxRigidStatic* actor = nullptr;
+        PhysicsManager::Get()->cookStaticTriangleMeshFromMemory(
+            clipMesh, actor,
+            physx::PxVec3(0, 0, 0), physx::PxQuat(0, physx::PxVec3(0, 1, 0)),
+            physx::PxVec3(1, 1, 1), word0);
+        clipMesh->drop();
+        if (actor)
+            chunk.clipActors.push_back(actor);
+    }
 }
 
 void BrushManager::destroyChunkResources(BrushChunk& chunk)
@@ -327,6 +379,16 @@ void BrushManager::destroyChunkResources(BrushChunk& chunk)
     {
         chunk.physicsActor->release();
         chunk.physicsActor = nullptr;
+    }
+    for (auto* actor : chunk.clipActors)
+        actor->release();
+    chunk.clipActors.clear();
+    if (chunk.toolNode)
+    {
+        // Unregister before remove — RenderManager walks m_debugNodes every frame
+        RenderManager::Get()->unregisterDebugNode(chunk.toolNode);
+        chunk.toolNode->remove();
+        chunk.toolNode = nullptr;
     }
     if (chunk.node)
     {
@@ -443,6 +505,198 @@ BrushChunk* BrushManager::getChunkFromNode(irr::scene::ISceneNode* node)
 }
 
 // ---------------------------------------------------------------------------
+// Chunk lightmap persistence — same PNG + LMSV uvmesh formats as the prop and
+// entity paths (PropManager::collectPropLightmapFiles / loadPropLightmaps),
+// keyed by packed chunk key.
+// ---------------------------------------------------------------------------
+
+std::vector<BrushManager::ChunkLightmapFiles> BrushManager::collectChunkLightmapFiles(
+    irr::video::IVideoDriver* driver,
+    const std::string&        tempDir)
+{
+    std::vector<ChunkLightmapFiles> result;
+
+    for (auto& pair : m_chunks)
+    {
+        BrushChunk& chunk = pair.second;
+        if (!chunk.lightmap || !chunk.lightmap->texture || !chunk.node)
+            continue;
+
+        ChunkLightmapFiles clf;
+        clf.chunkKey = pair.first;
+
+        // --- PNG: write to temp file, read back ---
+        {
+            irr::video::ITexture* tex = chunk.lightmap->texture;
+            irr::video::IImage* img = driver->createImage(
+                tex, position2di(0, 0), tex->getSize());
+
+            if (img)
+            {
+                const std::string tmpPath =
+                    tempDir + "/brush_lightmap_" + std::to_string(pair.first) + "_tmp.png";
+
+                driver->writeImageToFile(img, tmpPath.c_str());
+                img->drop();
+
+                std::ifstream ifs(tmpPath, std::ios::binary);
+                if (ifs)
+                {
+                    clf.pngBytes.assign(
+                        std::istreambuf_iterator<char>(ifs),
+                        std::istreambuf_iterator<char>());
+                }
+                std::remove(tmpPath.c_str());
+            }
+        }
+
+        // --- UVMesh: extract from the EVT_2TCOORDS chunk mesh (LMSV binary) ---
+        {
+            irr::scene::IMesh* mesh =
+                chunk.node->getMesh() ? chunk.node->getMesh()->getMesh(0) : nullptr;
+            if (!mesh)
+            {
+                spdlog::warn("BrushManager::collectChunkLightmapFiles: no mesh on chunk {}", pair.first);
+                continue;
+            }
+
+            const u32 bufCount = mesh->getMeshBufferCount();
+
+            std::vector<uint8_t> buf;
+            auto write32 = [&](uint32_t v) {
+                buf.insert(buf.end(), reinterpret_cast<uint8_t*>(&v), reinterpret_cast<uint8_t*>(&v) + 4);
+            };
+            auto write16 = [&](uint16_t v) {
+                buf.insert(buf.end(), reinterpret_cast<uint8_t*>(&v), reinterpret_cast<uint8_t*>(&v) + 2);
+            };
+            auto writeF = [&](float v) {
+                buf.insert(buf.end(), reinterpret_cast<uint8_t*>(&v), reinterpret_cast<uint8_t*>(&v) + 4);
+            };
+
+            write32(0x4C4D5356); // magic 'LMSV'
+            write32(1);          // version
+            write32(bufCount);
+
+            for (u32 b = 0; b < bufCount; b++)
+            {
+                irr::scene::IMeshBuffer* mbuf = mesh->getMeshBuffer(b);
+                const u32 vertCount  = mbuf->getVertexCount();
+                const u32 indexCount = mbuf->getIndexCount();
+
+                write32(vertCount);
+                write32(indexCount);
+
+                const irr::video::S3DVertex2TCoords* verts =
+                    static_cast<const irr::video::S3DVertex2TCoords*>(mbuf->getVertices());
+
+                for (u32 i = 0; i < vertCount; i++)
+                {
+                    writeF(verts[i].Pos.X);      writeF(verts[i].Pos.Y);      writeF(verts[i].Pos.Z);
+                    writeF(verts[i].Normal.X);   writeF(verts[i].Normal.Y);   writeF(verts[i].Normal.Z);
+                    writeF(verts[i].TCoords.X);  writeF(verts[i].TCoords.Y);
+                    writeF(verts[i].TCoords2.X); writeF(verts[i].TCoords2.Y);
+                }
+
+                const u16* indices = static_cast<const u16*>(mbuf->getIndices());
+                for (u32 i = 0; i < indexCount; i++)
+                    write16(static_cast<uint16_t>(indices[i]));
+            }
+
+            clf.uvmeshBytes = std::move(buf);
+        }
+
+        if (!clf.pngBytes.empty() && !clf.uvmeshBytes.empty())
+            result.push_back(std::move(clf));
+        else
+            spdlog::warn("BrushManager::collectChunkLightmapFiles: skipping chunk {} — data empty", pair.first);
+    }
+
+    return result;
+}
+
+void BrushManager::loadChunkLightmaps(irr::io::IFileSystem* fs, irr::video::IVideoDriver* driver)
+{
+    size_t applied = 0;
+
+    for (auto& pair : m_chunks)
+    {
+        BrushChunk& chunk = pair.second;
+        if (!chunk.node)
+            continue;
+
+        const std::string baseName = "brush_lightmap_" + std::to_string(pair.first);
+
+        irr::io::IReadFile* uvFile = fs->createAndOpenFile((baseName + ".uvmesh").c_str());
+        if (!uvFile)
+            continue; // no lightmap baked for this chunk
+
+        std::vector<uint8_t> uvData(static_cast<size_t>(uvFile->getSize()));
+        uvFile->read(uvData.data(), static_cast<u32>(uvData.size()));
+        uvFile->drop();
+
+        const uint8_t* ptr = uvData.data();
+        const uint8_t* end = ptr + uvData.size();
+
+        auto readU32 = [&]() -> uint32_t { uint32_t v; memcpy(&v, ptr, 4); ptr += 4; return v; };
+        auto readU16 = [&]() -> uint16_t { uint16_t v; memcpy(&v, ptr, 2); ptr += 2; return v; };
+        auto readF32 = [&]() -> float    { float    v; memcpy(&v, ptr, 4); ptr += 4; return v; };
+
+        if (readU32() != 0x4C4D5356)
+        {
+            spdlog::warn("BrushManager::loadChunkLightmaps: bad magic for chunk {}, skipping", pair.first);
+            continue;
+        }
+        /*version =*/ readU32();
+        const uint32_t bufCount = readU32();
+
+        MeshLightmap* lm = new MeshLightmap();
+        lm->buffers.resize(bufCount);
+
+        for (uint32_t b = 0; b < bufCount && ptr < end; b++)
+        {
+            const uint32_t vertCount  = readU32();
+            const uint32_t indexCount = readU32();
+
+            lm->buffers[b].vertices.resize(vertCount);
+            lm->buffers[b].indices.resize(indexCount);
+
+            for (uint32_t vi = 0; vi < vertCount && ptr < end; vi++)
+            {
+                MeshLightmap::Vertex& v = lm->buffers[b].vertices[vi];
+                v.objPos.X    = readF32(); v.objPos.Y    = readF32(); v.objPos.Z    = readF32();
+                v.objNormal.X = readF32(); v.objNormal.Y = readF32(); v.objNormal.Z = readF32();
+                v.uv1.X = readF32(); v.uv1.Y = readF32();
+                v.uv2.X = readF32(); v.uv2.Y = readF32();
+            }
+            for (uint32_t ii = 0; ii < indexCount && ptr < end; ii++)
+                lm->buffers[b].indices[ii] = readU16();
+        }
+
+        lm->texture = driver->getTexture((baseName + ".png").c_str());
+        if (!lm->texture)
+        {
+            spdlog::warn("BrushManager::loadChunkLightmaps: texture '{}.png' not found", baseName);
+            delete lm;
+            continue;
+        }
+        lm->width  = lm->texture->getSize().Width;
+        lm->height = lm->texture->getSize().Height;
+
+        clearChunkLightmap(chunk);
+        chunk.lightmap = lm;
+
+        LightmapBaker::applyLightmapUVsToNode(*lm, chunk.node);
+
+        // Free CPU vertex data — now on GPU
+        { std::vector<MeshLightmap::BufferData>().swap(lm->buffers); }
+        applied++;
+    }
+
+    if (applied > 0)
+        spdlog::info("BrushManager::loadChunkLightmaps: applied {} chunk lightmap(s)", applied);
+}
+
+// ---------------------------------------------------------------------------
 // Serialization
 // ---------------------------------------------------------------------------
 
@@ -450,6 +704,7 @@ void BrushManager::serialize(cereal::XMLOutputArchive& ar)
 {
     ar.setNextName("brushes");
     ar.startNode();
+    ar(cereal::make_nvp("version", BRUSHES_XML_VERSION));
     ar(cereal::make_nvp("cellSize", m_cellSize));
     ar(cereal::make_nvp("nextId", m_nextId));
     ar(cereal::make_nvp("count", static_cast<uint32_t>(m_brushes.size())));
@@ -466,6 +721,14 @@ void BrushManager::deserialize(cereal::XMLInputArchive& ar)
     {
         ar.startNode();     // <brushes>
 
+        // Schema version: files older than BRUSHES_XML_VERSION 1 have no
+        // <version> element — peek the first child's name instead of reading
+        // blind (a missing NVP would throw and abort the whole load).
+        uint32_t version = 0;
+        const char* firstNode = ar.getNodeName();
+        if (firstNode && std::strcmp(firstNode, "version") == 0)
+            ar(cereal::make_nvp("version", version));
+
         ar(cereal::make_nvp("cellSize", m_cellSize));
         ar(cereal::make_nvp("nextId", m_nextId));
 
@@ -477,7 +740,10 @@ void BrushManager::deserialize(cereal::XMLInputArchive& ar)
         for (uint32_t i = 0; i < count; i++)
         {
             Brush brush;
-            ar(cereal::make_nvp("brush", brush));
+            ar.setNextName("brush");
+            ar.startNode();
+            brush.load(ar, version);
+            ar.finishNode();
             if (brush.id > maxId)
                 maxId = brush.id;
             m_brushes.push_back(std::move(brush));

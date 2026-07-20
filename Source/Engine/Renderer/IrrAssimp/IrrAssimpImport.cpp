@@ -228,7 +228,17 @@ scene::IAnimatedMesh* IrrAssimpImport::createMesh(io::IReadFile* file)
 
     unsigned int flags = aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_SplitLargeMeshes | aiProcess_FlipUVs;
     if (isGltf)
-        flags |= aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder;
+    {
+        flags |= aiProcess_MakeLeftHanded | aiProcess_FlipWindingOrder | aiProcess_GlobalScale;
+        // Assimp imports glTF ~10x smaller than the fastgltf path, so when we
+        // fall back to Assimp for a .glb/.gltf the model comes out tiny (and the
+        // fixed-world-radius SSAO halo then looks oversized around it). Scale the
+        // whole scene back up via aiProcess_GlobalScale, which handles vertices,
+        // bone offsets, node transforms and animation keys uniformly. Tune this
+        // constant if a fallback-loaded model comes out wrong-sized.
+        static const float kGltfFallbackScale = 10.0f;
+        importer.SetPropertyFloat(AI_CONFIG_GLOBAL_SCALE_FACTOR_KEY, kGltfFallbackScale);
+    }
 
     m_assimpScene = importer.ReadFile(filePath.c_str(), flags);
     if (!m_assimpScene)

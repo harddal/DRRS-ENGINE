@@ -22,7 +22,8 @@ extern unsigned int g_currentEntity;
 extern unsigned int g_currentMesh;
 extern unsigned int g_currentPrefab;
 extern std::string g_currentScene;
-extern std::string g_currentSelectedTexture;
+extern std::string g_currentSelectedTexture;  // full "content/texture/....ext" path chosen in the texture browser, or "null"
+extern std::string g_textureBrowserRequestID; // identifies which call site is awaiting a browser result, "" when none pending
 extern unsigned int g_currentSelectedObjectType;
 
 enum class SELECTED_OBJECT_TYPE
@@ -33,13 +34,25 @@ enum class SELECTED_OBJECT_TYPE
     PREFAB
 };
 
+// Which clipboard the most recent cut/copy filled.  Ctrl+V dispatches on this
+// ("last copied wins") instead of a fixed prop>entity priority, so a stale
+// clipboard of one kind can never shadow a fresher copy of another.
+enum class ClipboardKind
+{
+    NONE,
+    ENTITY,
+    PROP,
+    BRUSH
+};
+
 // Which name-string field a LINK pick writes into (see completeLinkPick)
 enum class LinkPickField
 {
     NONE,
     LOGIC_RECEIVER,        // LogicComponent::receiver (comma list, append)
     ZONE_DETECT_ENTITY,    // TriggerZoneComponent::entity (single, replace)
-    ZONE_TRIGGERED_ENTITY  // TriggerZoneComponent::triggered_entity (comma list, append)
+    ZONE_TRIGGERED_ENTITY, // TriggerZoneComponent::triggered_entity (comma list, append)
+    BRUSH_RECEIVER         // Brush::receiver (comma list, append; host is a brush id)
 };
 
 enum class TRANSFORM_WIDGET_MODE
@@ -170,18 +183,29 @@ public:
     void beginLinkPick(entityid host, LinkPickField field)
     {
         m_linkPickHost = host;
+        m_linkPickBrushId = 0;
         m_linkPickField = field;
+    }
+
+    // Brush-hosted variant: brush ids are a separate namespace from entity ids
+    void beginBrushLinkPick(uint32_t brushId)
+    {
+        m_linkPickHost = _entity_null_value;
+        m_linkPickBrushId = brushId;
+        m_linkPickField = LinkPickField::BRUSH_RECEIVER;
     }
 
     void cancelLinkPick()
     {
         m_linkPickHost = _entity_null_value;
+        m_linkPickBrushId = 0;
         m_linkPickField = LinkPickField::NONE;
     }
 
     bool isLinkPicking() const { return m_linkPickField != LinkPickField::NONE; }
     LinkPickField linkPickField() const { return m_linkPickField; }
     entityid linkPickHost() const { return m_linkPickHost; }
+    uint32_t linkPickBrushId() const { return m_linkPickBrushId; }
 
     void completeLinkPick(entityid pickedId);
 
@@ -250,6 +274,15 @@ public:
 
     void deleteSelectedBrushes();
 
+    // Brush clipboard: independent value copies, so the contents survive level
+    // switches and never reference source brush ids.
+    void cutBrushes();
+    void copyBrushes();
+    void pasteBrushes();
+
+    bool hasBrushClipboard() const { return !m_brushClipboard.empty(); }
+    ClipboardKind lastClipboardKind() const { return m_lastClipboardKind; }
+
     // Push one undo step (caps depth, clears the redo stack).  Used by the
     // gizmo grab paths and by BrushTool for brush operations.
     void pushUndoEntry(UndoEntry entry);
@@ -315,6 +348,7 @@ private:
 
     LinkPickField m_linkPickField = LinkPickField::NONE;
     entityid      m_linkPickHost = _entity_null_value;
+    uint32_t      m_linkPickBrushId = 0;        // BRUSH_RECEIVER host
 
     static constexpr int k_maxUndoDepth = 50;
     bool m_gizmoWasUsing;
@@ -331,6 +365,11 @@ private:
 
     bool      m_propClipboardValid = false;
     StaticProp m_propClipboard;
+
+    std::vector<Brush> m_brushClipboard;
+    bool m_brushClipboardFromCut = false;  // cut→paste restores in place (no offset)
+    int  m_brushPasteCount = 0;            // consecutive pastes step the offset so copies don't stack
+    ClipboardKind m_lastClipboardKind = ClipboardKind::NONE;
 
     entityid m_selectedEntity;
 

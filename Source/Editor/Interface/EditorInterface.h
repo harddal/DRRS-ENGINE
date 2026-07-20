@@ -80,7 +80,10 @@ namespace EditorInterface
     void draw_toolbar();
     void draw_statusbar();
 
-    void show_window_texture_browser();
+    // requestId identifies the calling field; the caller polls g_textureBrowserRequestID
+    // against its own id and reads g_currentSelectedTexture (full "content/texture/....ext"
+    // path) once the browser closes with a selection.
+    void show_window_texture_browser(const std::string& requestId);
 
 	bool draw_component_properties(ENTITY_COMPONENT component, anax::Entity &entity);
 	void add_component(ENTITY_COMPONENT component, anax::Entity &entity);

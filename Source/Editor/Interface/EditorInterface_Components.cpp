@@ -284,7 +284,8 @@ static void s_drawLinkPickButton(entityid hostId, LinkPickField field, const cha
 
 // Removable token chips for a comma-separated entity-name list. Chips turn red
 // when the name resolves to no entity and yellow when it resolves to several.
-static void s_drawNameListChips(std::string& csv, const char* idLabel)
+// Shared with the brush editor panel (declared in EditorInterface_Internal.h).
+void s_drawNameListChips(std::string& csv, const char* idLabel)
 {
 	if (csv.empty() || csv == "null")
 		return;
@@ -420,7 +421,6 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto tstr = billboardsprite.sprite;
 			char buf[256];
-			static bool is_searching = false;
 
 			memset(buf, '\0', 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
@@ -435,19 +435,16 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::SameLine();
 			ImGui::PushID("texture_browse_");
 			if (ImGui::Button("..."))
-			{
-				show_window_texture_browser();
-				is_searching = true;
-			}
+				show_window_texture_browser("mesh2d_sprite");
 			ImGui::PopID();
 
-			if (is_searching && g_currentSelectedTexture != "null")
+			if (g_textureBrowserRequestID == "mesh2d_sprite" && g_currentSelectedTexture != "null")
 			{
-				billboardsprite.sprite = _asset_tex(g_currentSelectedTexture);
+				billboardsprite.sprite = g_currentSelectedTexture;
 				billboardsprite.node->setMaterialTexture(
 					0, RenderManager::Get()->driver()->getTexture(billboardsprite.sprite.c_str()));
-				is_searching = false;
 				g_currentSelectedTexture = "null";
+				g_textureBrowserRequestID.clear();
 			}
 
 			break;
@@ -578,7 +575,6 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			}
 
 			auto tstr = debugmesh.texture;
-			static bool is_searching = false;
 
 			memset(buf, 0, 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
@@ -593,19 +589,16 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::SameLine();
 			ImGui::PushID("texture_browse_");
 			if (ImGui::Button("..."))
-			{
-				show_window_texture_browser();
-				is_searching = true;
-			}
+				show_window_texture_browser("debugmesh_texture");
 			ImGui::PopID();
 
-			if (is_searching && g_currentSelectedTexture != "null")
+			if (g_textureBrowserRequestID == "debugmesh_texture" && g_currentSelectedTexture != "null")
 			{
-				debugmesh.texture = _asset_tex(g_currentSelectedTexture);
+				debugmesh.texture = g_currentSelectedTexture;
 				debugmesh.node->setMaterialTexture(
 					0, RenderManager::Get()->driver()->getTexture(debugmesh.texture.c_str()));
-				is_searching = false;
 				g_currentSelectedTexture = "null";
+				g_textureBrowserRequestID.clear();
 			}
 
 			break;
@@ -619,7 +612,6 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto tstr = debugsprite.sprite;
 			char buf[256];
-			static bool is_searching = false;
 
 			memset(buf, '\0', 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
@@ -634,19 +626,16 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::SameLine();
 			ImGui::PushID("texture_browse_");
 			if (ImGui::Button("..."))
-			{
-				show_window_texture_browser();
-				is_searching = true;
-			}
+				show_window_texture_browser("debugsprite_texture");
 			ImGui::PopID();
 
-			if (is_searching && g_currentSelectedTexture != "null")
+			if (g_textureBrowserRequestID == "debugsprite_texture" && g_currentSelectedTexture != "null")
 			{
-				debugsprite.sprite = _asset_tex(g_currentSelectedTexture);
+				debugsprite.sprite = g_currentSelectedTexture;
 				debugsprite.node->setMaterialTexture(
 					0, RenderManager::Get()->driver()->getTexture(debugsprite.sprite.c_str()));
-				is_searching = false;
 				g_currentSelectedTexture = "null";
+				g_textureBrowserRequestID.clear();
 			}
 
 			break;
@@ -959,15 +948,16 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::SameLine();
 
 				ImGui::PushID(("texture_browse_" + std::to_string(iter)).c_str());
+				const std::string meshTexRequestId = "mesh_tex_" + std::to_string(iter);
 				if (ImGui::Button("..."))
+					show_window_texture_browser(meshTexRequestId);
+				if (g_textureBrowserRequestID == meshTexRequestId && g_currentSelectedTexture != "null")
 				{
-					std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
-					if (!chosen.empty())
-					{
-						tstr = chosen;
-						if (mesh.node)
-							mesh.node->setMaterialTexture(iter, RenderManager::Get()->driver()->getTexture(tstr.c_str()));
-					}
+					tstr = g_currentSelectedTexture;
+					if (mesh.node)
+						mesh.node->setMaterialTexture(iter, RenderManager::Get()->driver()->getTexture(tstr.c_str()));
+					g_currentSelectedTexture = "null";
+					g_textureBrowserRequestID.clear();
 				}
 				ImGui::PopID();
 
@@ -1002,15 +992,16 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 							mesh.node->setMaterialTexture(slot, RenderManager::Get()->driver()->getTexture(path.c_str()));
 					}
 					ImGui::SameLine();
+					const std::string pbrRequestId = id; // id is already a unique per-row tag, e.g. "pbr_n"
 					if (ImGui::Button("..."))
+						show_window_texture_browser(pbrRequestId);
+					if (g_textureBrowserRequestID == pbrRequestId && g_currentSelectedTexture != "null")
 					{
-						std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
-						if (!chosen.empty())
-						{
-							path = chosen;
-							if (mesh.node)
-								mesh.node->setMaterialTexture(slot, RenderManager::Get()->driver()->getTexture(path.c_str()));
-						}
+						path = g_currentSelectedTexture;
+						if (mesh.node)
+							mesh.node->setMaterialTexture(slot, RenderManager::Get()->driver()->getTexture(path.c_str()));
+						g_currentSelectedTexture = "null";
+						g_textureBrowserRequestID.clear();
 					}
 					ImGui::PopID();
 				};

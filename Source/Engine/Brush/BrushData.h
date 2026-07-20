@@ -32,6 +32,26 @@ enum BrushSolidClass : irr::u8
     // reserved: SOLID_DETAIL, SOLID_ENTITY
 };
 
+// Per-brush content semantics.  0 = normal structural brush (renders, blocks
+// everything).  Any nonzero value makes the brush a "tool brush": stripped
+// from the runtime render mesh at compile time, still fully editable and
+// pickable in the editor.  Bits combine freely (e.g. monster+weapon clip).
+enum BrushContentFlags : irr::u32
+{
+    CONTENT_CLIP_PLAYER  = 1 << 0,  // blocks player movement (CCT filter)
+    CONTENT_CLIP_MONSTER = 1 << 1,  // blocks NPC movement probes
+    CONTENT_CLIP_WEAPON  = 1 << 2,  // blocks weapon hitscans (inert until rays move to PhysX)
+    CONTENT_TRIGGER      = 1 << 3,  // fires `receiver` entity list on player overlap
+    CONTENT_SKY          = 1 << 4,  // sky marker; no runtime behavior in v1
+    CONTENT_TRIGGER_ONCE = 1 << 5,  // modifier on CONTENT_TRIGGER: fire once per session
+
+    CONTENT_CLIP_MASK = CONTENT_CLIP_PLAYER | CONTENT_CLIP_MONSTER | CONTENT_CLIP_WEAPON,
+};
+
+// brushes.xml schema version, written as a <version> header element by
+// BrushManager::serialize.  Files without the element load as version 0.
+constexpr uint32_t BRUSHES_XML_VERSION = 1;
+
 struct BrushFace
 {
     // ---- persistent ----
@@ -102,12 +122,23 @@ struct Brush
     irr::u8     solidClass = SOLID_WORLD;
     bool        castShadows = true;
     bool        receivesLightmap = true;
+    irr::u32    contentFlags = 0;               // BrushContentFlags; 0 = normal structural brush
+    std::string receiver;                       // trigger targets: CSV entity names
+                                                // (LogicComponent::receiver convention, empty = unset)
 
     // ---- derived (never serialized) ----
     std::vector<irr::core::vector3df> verts;    // welded shared vertex pool
     irr::core::aabbox3df bounds;
     irr::s64    chunkKey = -1;                  // packed cell coords of owning chunk
     bool        geometryValid = false;
+
+    // Runtime trigger state (per play session — brushes are recreated on every
+    // scene import, so entering editor-play resets these).
+    bool triggerInside = false;                 // player was inside last frame (edge detect)
+    bool triggerFired  = false;                 // CONTENT_TRIGGER_ONCE latch
+
+    bool isToolBrush() const { return contentFlags != 0; }
+    irr::u32 clipMask() const { return contentFlags & CONTENT_CLIP_MASK; }
 
     template<class Archive>
     void save(Archive& ar) const
@@ -119,11 +150,16 @@ struct Brush
             ar(cereal::make_nvp("face", f));
         ar(CEREAL_NVP(solidClass),
            CEREAL_NVP(castShadows),
-           CEREAL_NVP(receivesLightmap));
+           CEREAL_NVP(receivesLightmap),
+           CEREAL_NVP(contentFlags),
+           CEREAL_NVP(receiver));
     }
 
+    // Called manually by BrushManager::deserialize with the file-level schema
+    // version (not through cereal's NVP path — versioning needs the argument).
+    // version 0 files predate contentFlags/receiver; defaults hold.
     template<class Archive>
-    void load(Archive& ar)
+    void load(Archive& ar, uint32_t version)
     {
         uint32_t faceCount = 0;
         ar(CEREAL_NVP(id),
@@ -135,5 +171,8 @@ struct Brush
         ar(CEREAL_NVP(solidClass),
            CEREAL_NVP(castShadows),
            CEREAL_NVP(receivesLightmap));
+        if (version >= 1)
+            ar(CEREAL_NVP(contentFlags),
+               CEREAL_NVP(receiver));
     }
 };

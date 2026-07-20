@@ -93,15 +93,15 @@ namespace Math
 
     static irr::core::vector3df ConstrainAngleVector3(irr::core::vector3df v)
     {
-        v.X = fmod<irr::f32, irr::f32>(v.X, 360);
+        v.X = fmod(v.X, 360.0f);
         if (v.X < 0)
             v.X += 360;
 
-        v.Y = fmod<irr::f32, irr::f32>(v.Y, 360);
+        v.Y = fmod(v.Y, 360.0f);
         if (v.Y < 0)
             v.Y += 360;
 
-        v.Z = fmod<irr::f32, irr::f32>(v.Z, 360);
+        v.Z = fmod(v.Z, 360.0f);
         if (v.Z < 0)
             v.Z += 360;
 

@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Engine/Brush/BrushManager.h"
+#include "Engine/Engine.h"
 #include "Engine/Renderer/RenderManager.h"
 
 using namespace irr;
@@ -68,7 +69,7 @@ namespace
 namespace BrushCompiler
 {
 
-SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, bool includeNoDraw)
+SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filter, irr::u32 clipMask)
 {
     auto* driver = RenderManager::Get()->driver();
 
@@ -80,9 +81,19 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, bool includeNoDr
         if (!brush || !brush->geometryValid)
             continue;
 
+        if (filter == MeshFilter::CLIP)
+        {
+            if (!brush->isToolBrush() || brush->clipMask() != clipMask)
+                continue;
+        }
+        else if (brush->isToolBrush() != (filter == MeshFilter::TOOL))
+        {
+            continue;
+        }
+
         for (const BrushFace& face : brush->faces)
         {
-            if ((face.flags & FACE_NODRAW) && !includeNoDraw)
+            if ((face.flags & FACE_NODRAW) && filter == MeshFilter::RENDER)
                 continue;
             if (face.loop.size() < 3)
                 continue;
@@ -102,7 +113,12 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, bool includeNoDr
             const float sv = (std::fabs(face.scaleV) > 1e-6f) ? face.scaleV : 1.0f;
 
             const u16 base = static_cast<u16>(buf->Vertices.size());
-            const SColor white(255, 255, 255, 255);
+            // Overlay meshes carry their transparency in the vertex alpha —
+            // EMT_TRANSPARENT_VERTEX_ALPHA reads it, so opaque tool textures
+            // still render see-through.
+            const SColor white = (filter == MeshFilter::TOOL)
+                ? SColor(160, 255, 255, 255)
+                : SColor(255, 255, 255, 255);
 
             for (u16 idx : face.loop)
             {
@@ -163,7 +179,10 @@ void updateChunkNode(BrushChunk& chunk, const std::vector<const Brush*>& brushes
 {
     auto* smgr = RenderManager::Get()->sceneManager();
 
-    SMesh* mesh = buildChunkMesh(brushes, /*includeNoDraw=*/false);
+    // ---- runtime render node (structural brushes) ----
+    // No early return on an empty mesh: a chunk holding only tool brushes has
+    // no render node but still needs its overlay node updated below.
+    SMesh* mesh = buildChunkMesh(brushes, MeshFilter::RENDER);
     if (!mesh)
     {
         if (chunk.node)
@@ -171,41 +190,96 @@ void updateChunkNode(BrushChunk& chunk, const std::vector<const Brush*>& brushes
             chunk.node->remove();
             chunk.node = nullptr;
         }
-        return;
-    }
-
-    auto* animMesh = new SAnimatedMesh(mesh);
-    mesh->drop();
-    animMesh->setHardwareMappingHint(EHM_STATIC);
-
-    if (!chunk.node)
-    {
-        // Chunk verts are world-space; node stays at the origin.  Node ID is
-        // left at the Irrlicht default (-1) — chunks are resolved by node
-        // pointer via BrushManager::getChunkFromNode, never by entity ID.
-        chunk.node = smgr->addAnimatedMeshSceneNode(animMesh);
     }
     else
     {
-        chunk.node->setMesh(animMesh);
-    }
-    animMesh->drop();
+        auto* animMesh = new SAnimatedMesh(mesh);
+        mesh->drop();
+        animMesh->setHardwareMappingHint(EHM_STATIC);
 
-    if (!chunk.node)
+        if (!chunk.node)
+        {
+            // Chunk verts are world-space; node stays at the origin.  Node ID is
+            // left at the Irrlicht default (-1) — chunks are resolved by node
+            // pointer via BrushManager::getChunkFromNode, never by entity ID.
+            chunk.node = smgr->addAnimatedMeshSceneNode(animMesh);
+        }
+        else
+        {
+            chunk.node->setMesh(animMesh);
+        }
+        animMesh->drop();
+
+        if (!chunk.node)
+        {
+            spdlog::error("BrushCompiler: failed to create chunk scene node");
+        }
+        else
+        {
+            // setMesh re-copies materials from the buffers; re-apply uniform flags.
+            chunk.node->setMaterialFlag(EMF_ANTI_ALIASING,     true);
+            chunk.node->setMaterialFlag(EMF_GOURAUD_SHADING,   false);
+            chunk.node->setMaterialFlag(EMF_LIGHTING,          true);
+            chunk.node->setMaterialFlag(EMF_NORMALIZE_NORMALS, true);
+            chunk.node->setMaterialFlag(EMF_BACK_FACE_CULLING, true);
+            chunk.node->setMaterialFlag(EMF_BILINEAR_FILTER,   false);
+            chunk.node->setMaterialFlag(EMF_TRILINEAR_FILTER,  true);
+            chunk.node->setMaterialFlag(EMF_ANISOTROPIC_FILTER, true);
+        }
+    }
+
+    // ---- editor-only tool-brush overlay ----
+    // Sibling node, never a child of chunk.node (the lightmap baker extracts
+    // meshes from chunk.node).  Registered as a debug node: excluded from the
+    // shadow / depth pre-pass / SSAO / bloom passes and drawn post-tonemap,
+    // where transparent mesh buffers are drawn explicitly.  No triangle
+    // selector, so cursor picking ignores it.
+    if (!Engine::Get()->isEditorMode())
+        return;
+
+    SMesh* toolMesh = buildChunkMesh(brushes, MeshFilter::TOOL);
+    if (!toolMesh)
     {
-        spdlog::error("BrushCompiler: failed to create chunk scene node");
+        if (chunk.toolNode)
+        {
+            // Unregister BEFORE remove — RenderManager walks m_debugNodes
+            // every frame and a stale pointer there is a crash.
+            RenderManager::Get()->unregisterDebugNode(chunk.toolNode);
+            chunk.toolNode->remove();
+            chunk.toolNode = nullptr;
+        }
         return;
     }
 
-    // setMesh re-copies materials from the buffers; re-apply uniform flags.
-    chunk.node->setMaterialFlag(EMF_ANTI_ALIASING,     true);
-    chunk.node->setMaterialFlag(EMF_GOURAUD_SHADING,   false);
-    chunk.node->setMaterialFlag(EMF_LIGHTING,          true);
-    chunk.node->setMaterialFlag(EMF_NORMALIZE_NORMALS, true);
-    chunk.node->setMaterialFlag(EMF_BACK_FACE_CULLING, true);
-    chunk.node->setMaterialFlag(EMF_BILINEAR_FILTER,   false);
-    chunk.node->setMaterialFlag(EMF_TRILINEAR_FILTER,  true);
-    chunk.node->setMaterialFlag(EMF_ANISOTROPIC_FILTER, true);
+    auto* toolAnim = new SAnimatedMesh(toolMesh);
+    toolMesh->drop();
+    toolAnim->setHardwareMappingHint(EHM_STATIC);
+
+    if (!chunk.toolNode)
+    {
+        chunk.toolNode = smgr->addAnimatedMeshSceneNode(toolAnim);
+        if (chunk.toolNode)
+            RenderManager::Get()->registerDebugNode(chunk.toolNode);
+    }
+    else
+    {
+        chunk.toolNode->setMesh(toolAnim);
+    }
+    toolAnim->drop();
+
+    if (!chunk.toolNode)
+    {
+        spdlog::error("BrushCompiler: failed to create tool overlay node");
+        return;
+    }
+
+    // Trigger-zone overlay recipe (RenderSystem), except vertex alpha carries
+    // the transparency so opaque tool textures still render see-through.
+    chunk.toolNode->setMaterialType(EMT_TRANSPARENT_VERTEX_ALPHA);
+    chunk.toolNode->setMaterialFlag(EMF_ZWRITE_ENABLE,     false);
+    chunk.toolNode->setMaterialFlag(EMF_BACK_FACE_CULLING, false);
+    chunk.toolNode->setMaterialFlag(EMF_LIGHTING,          false);
+    chunk.toolNode->setVisible(BrushManager::Get()->isToolOverlayVisible());
 }
 
 } // namespace BrushCompiler

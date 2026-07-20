@@ -19,11 +19,22 @@ struct BrushChunk;
 
 namespace BrushCompiler
 {
-    // Build a world-space SMesh from the given brushes.  Faces flagged
-    // FACE_NODRAW are skipped unless includeNoDraw (collision meshes want
-    // them).  Returns nullptr when there is nothing to emit; caller drops.
+    // What buildChunkMesh emits.  Tool brushes (contentFlags != 0) never
+    // reach the runtime render mesh or the structural collision cook — their
+    // clip bits get separate query-filtered actors via the CLIP filter.
+    enum class MeshFilter
+    {
+        RENDER,     // structural brushes, FACE_NODRAW faces skipped
+        COLLISION,  // structural brushes, FACE_NODRAW faces included
+        CLIP,       // tool brushes whose clipMask() equals clipMask, all faces
+        TOOL,       // all tool brushes, all faces — editor overlay mesh
+                    // (vertices emitted with alpha for EMT_TRANSPARENT_VERTEX_ALPHA)
+    };
+
+    // Build a world-space SMesh from the given brushes per the filter.
+    // Returns nullptr when there is nothing to emit; caller drops.
     irr::scene::SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes,
-                                      bool includeNoDraw);
+                                      MeshFilter filter, irr::u32 clipMask = 0);
 
     // Create/refresh/destroy the chunk's scene node from its member brushes,
     // using the rebuild-in-place pattern (new SAnimatedMesh + setMesh, then

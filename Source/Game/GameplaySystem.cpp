@@ -7,6 +7,8 @@
 #include "Engine/Engine.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/World/WorldManager.h"
+#include "Engine/Brush/BrushGeometry.h"
+#include "Engine/Brush/BrushManager.h"
 #include "Game/Components.h"
 #include "Game/LogicLinks.h"
 #include "Player/PlayerController.h"
@@ -86,6 +88,48 @@ void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_s
     {
         entity.getComponent<RenderComponent>().isVisible =
             !entity.getComponent<RenderComponent>().isVisible;
+    }
+}
+
+void GameplaySystem::fireReceiverList(const std::string& csv)
+{
+    std::unordered_set<entityid> visited;
+    for (auto& token : LogicLinks::splitNameList(csv))
+    {
+        for (auto* target : WorldManager::Get()->managerSystem()->getEntitiesByName(token))
+            propagateLogicSignal(*target, visited);
+    }
+}
+
+void GameplaySystem::updateBrushTriggers()
+{
+    if (!BrushManager::Get())
+        return;
+
+    auto* ms = WorldManager::Get()->managerSystem();
+    if (!ms->doesEntityExist("player"))
+        return;
+    auto& player = ms->getEntityByName("player");
+    if (!player.isValid() || !player.hasComponent<TransformComponent>())
+        return;
+
+    const irr::core::vector3df p = player.getComponent<TransformComponent>().position;
+
+    for (auto& brush : BrushManager::Get()->getAllBrushesMutable())
+    {
+        if (!(brush.contentFlags & CONTENT_TRIGGER) || !brush.geometryValid)
+            continue;
+        if ((brush.contentFlags & CONTENT_TRIGGER_ONCE) && brush.triggerFired)
+            continue;
+
+        const bool inside = brush.bounds.isPointInside(p) && BrushGeometry::containsPoint(brush, p);
+        if (inside && !brush.triggerInside)
+        {
+            brush.triggerFired = true;
+            if (!brush.receiver.empty())
+                fireReceiverList(brush.receiver);
+        }
+        brush.triggerInside = inside;
     }
 }
 
@@ -200,6 +244,18 @@ void GameplaySystem::drawEntityLinkDebug()
 		}
 	}
 
+	// Trigger brushes fire into entities the same way — arrows from the
+	// brush volume's center
+	if (BrushManager::Get())
+	{
+		const irr::video::SColor colorBrush(255, 255, 150, 0);   // Brush::receiver
+		for (const auto& brush : BrushManager::Get()->getAllBrushes())
+		{
+			if ((brush.contentFlags & CONTENT_TRIGGER) && brush.geometryValid && !brush.receiver.empty())
+				sources.push_back({ brush.bounds.getCenter(), LogicLinks::splitNameList(brush.receiver), colorBrush });
+		}
+	}
+
 	for (auto& src : sources)
 	{
 		for (auto& token : src.tokens)
@@ -221,6 +277,8 @@ void GameplaySystem::drawEntityLinkDebug()
 void GameplaySystem::update()
 {
 	m_waterZones.clear();
+
+	updateBrushTriggers();
 
 	// Stops zones from overwriting each other if there are more than one, only works for player
 	static bool player_in_trigger_zone = false, player_in_water_zone = false;

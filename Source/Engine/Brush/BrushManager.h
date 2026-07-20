@@ -22,7 +22,15 @@ struct BrushChunk
     irr::core::vector3di                cell;               // floor(centroid / cellSize)
     std::vector<uint32_t>               brushIds;           // members, by brush-AABB centroid
     irr::scene::IAnimatedMeshSceneNode* node = nullptr;     // world-space batched mesh
+    // Editor-only semi-transparent tool-brush overlay.  Sibling of `node`
+    // (never a child — the lightmap baker extracts meshes from `node`),
+    // registered as a RenderManager debug node, no triangle selector.
+    irr::scene::IAnimatedMeshSceneNode* toolNode = nullptr;
     physx::PxRigidStatic*               physicsActor = nullptr;
+    // One extra cooked actor per distinct clip-bit combination among the
+    // chunk's tool brushes, query-filtered with RHG_CLIP_* words only (no
+    // RHG_STATIC) so masked queries can skip them.
+    std::vector<physx::PxRigidStatic*>  clipActors;
     MeshLightmap*                       lightmap = nullptr; // baked lightmap; invalidated on recompile
     uint32_t revision = 0;      // bumped on every recompile — stale async bakes are discarded
     bool dirty = true;          // visual mesh needs recompiling
@@ -65,6 +73,10 @@ public:
     Brush*       getBrush(uint32_t id);
     const std::vector<Brush>& getAllBrushes() const { return m_brushes; }
 
+    // Mutable access for runtime-only per-brush state (trigger edge flags).
+    // Plane/face edits must still go through replaceBrush/markBrushDirty.
+    std::vector<Brush>& getAllBrushesMutable() { return m_brushes; }
+
     // Re-derive geometry + chunk assignment after any plane edit.
     void markBrushDirty(uint32_t id);
 
@@ -83,6 +95,10 @@ public:
 
     float cellSize() const { return m_cellSize; }
     void  setCellSize(float size);      // triggers compileAll
+
+    // Editor overlay for tool brushes (chunk toolNode visibility)
+    bool isToolOverlayVisible() const { return m_toolOverlayVisible; }
+    void setToolOverlayVisible(bool visible);
 
     // -----------------------------------------------------------------------
     // Picking
@@ -129,6 +145,24 @@ public:
     // whether the chunk itself receives a lightmap.
     std::vector<irr::scene::IAnimatedMeshSceneNode*> getOccluderNodes();
 
+    // Baked chunk lightmaps encoded for the scene zip (PNG + LMSV uvmesh),
+    // keyed by packed chunk key — deterministic across save/load for the same
+    // brush set and cell size (mirrors PropManager::PropLightmapFiles).
+    struct ChunkLightmapFiles
+    {
+        irr::s64             chunkKey = 0;
+        std::vector<uint8_t> pngBytes;
+        std::vector<uint8_t> uvmeshBytes;
+    };
+
+    // tempDir must be writable; temporary PNG files are deleted on return.
+    std::vector<ChunkLightmapFiles> collectChunkLightmapFiles(
+        irr::video::IVideoDriver* driver, const std::string& tempDir);
+
+    // Reattach lightmaps from the mounted scene zip.  Must run after
+    // deserialize (chunks recompiled and clean) and before the zip unmounts.
+    void loadChunkLightmaps(irr::io::IFileSystem* fs, irr::video::IVideoDriver* driver);
+
     // -----------------------------------------------------------------------
     // Serialization (called by WorldManager during import/export)
     // -----------------------------------------------------------------------
@@ -143,6 +177,7 @@ private:
     uint32_t m_nextId = 1;              // serialized; ids never reused
     float    m_cellSize = 16.0f;        // serialized world-cell edge length
     bool     m_deferHeavy = false;
+    bool     m_toolOverlayVisible = true;   // editor UI toggle, not serialized
 
     irr::s64 chunkKeyFor(const irr::core::vector3df& centroid) const;
 

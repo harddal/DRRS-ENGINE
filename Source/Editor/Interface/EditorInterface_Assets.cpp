@@ -6,6 +6,7 @@
 #include "Utility/Utility.h"
 
 #include <IMGUI/imgui.h>
+#include <irrlicht/source/Irrlicht/COpenGLTexture.h>
 #include "Engine/Interface/ImGuiExtensions.h"
 
 #include "Engine/Engine.h"
@@ -17,9 +18,13 @@
 
 #include <string>
 #include <vector>
+#include <deque>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <functional>
 #include <algorithm>
+#include <cctype>
 
 using namespace boost;
 using namespace filesystem;
@@ -27,14 +32,131 @@ using namespace filesystem;
 // ---------------------------------------------------------------------------
 // Module-local asset list state
 // ---------------------------------------------------------------------------
-static std::vector<std::string> m_entityList, m_textureList, m_prefabList, m_meshList;
+static std::vector<std::string> m_entityList, m_prefabList, m_meshList;
 static std::vector<irr::video::ITexture*> m_imageEntityIconList;
-static std::vector<irr::video::ITexture*> m_imageTextureFileList;
 
 static bool m_hasLoadedEntityList  = false;
-static bool m_hasLoadedTextureList = false;
 static bool m_hasLoadedPrefabList  = false;
 static bool m_hasLoadedMeshList    = false;
+
+// ---------------------------------------------------------------------------
+// Texture browser — folder tree + thumbnail grid
+// ---------------------------------------------------------------------------
+
+// Recursive folder tree over content/texture/, same shape as PropMeshFolder.
+// files holds bare filenames (with extension) that live directly in that folder.
+struct TextureFolder
+{
+    std::map<std::string, TextureFolder> subfolders;
+    std::vector<std::string> files;
+};
+static TextureFolder s_textureRoot;
+static bool          s_textureTreeLoaded    = false;
+static std::string   s_texCurrentFolderPath; // "" == content/texture/ root
+
+static void s_insertTextureFile(TextureFolder& folder,
+    const std::vector<std::string>& parts, size_t idx)
+{
+    if (idx == parts.size() - 1)
+    {
+        folder.files.push_back(parts[idx]);
+        return;
+    }
+    s_insertTextureFile(folder.subfolders[parts[idx]], parts, idx + 1);
+}
+
+// Thumbnails reuse the driver's own texture cache (driver()->getTexture() already
+// dedupes by path) — this cache just remembers the resolved ImTextureID per path
+// so the grid doesn't re-resolve the GL handle every frame.
+struct TextureThumbnail
+{
+    ImTextureID texId  = 0;
+    bool        loaded = false; // load attempt finished (texId may still be 0 on failure)
+};
+static std::unordered_map<std::string, TextureThumbnail> s_thumbCache;
+static std::deque<std::string>       s_thumbPendingQueue;
+static std::unordered_set<std::string> s_thumbQueuedSet;
+static const int k_thumbLoadsPerFrame = 6; // spreads a big folder's disk loads across frames
+
+// Returns a resolved ImTextureID, or 0 if the thumbnail hasn't loaded yet (queues it).
+static ImTextureID s_getOrQueueThumbnail(const std::string& fullPath)
+{
+    auto it = s_thumbCache.find(fullPath);
+    if (it != s_thumbCache.end())
+        return it->second.texId;
+
+    if (s_thumbQueuedSet.insert(fullPath).second)
+        s_thumbPendingQueue.push_back(fullPath);
+    return 0;
+}
+
+static void s_processThumbnailQueue()
+{
+    int budget = k_thumbLoadsPerFrame;
+    while (budget > 0 && !s_thumbPendingQueue.empty())
+    {
+        std::string path = s_thumbPendingQueue.front();
+        s_thumbPendingQueue.pop_front();
+        s_thumbQueuedSet.erase(path);
+
+        TextureThumbnail thumb;
+        auto* tex = RenderManager::Get()->driver()->getTexture(path.c_str());
+        if (tex)
+        {
+            GLuint glTex = static_cast<irr::video::COpenGLTexture*>(tex)->getOpenGLTextureName();
+            thumb.texId = (ImTextureID)(uintptr_t)glTex;
+        }
+        thumb.loaded = true;
+        s_thumbCache[path] = thumb;
+        --budget;
+    }
+}
+
+static TextureFolder* s_findTextureFolder(const std::string& path)
+{
+    TextureFolder* cur = &s_textureRoot;
+    std::string token;
+    for (size_t i = 0; i <= path.size(); ++i)
+    {
+        if (i == path.size() || path[i] == '/')
+        {
+            if (!token.empty())
+            {
+                auto it = cur->subfolders.find(token);
+                if (it == cur->subfolders.end()) return nullptr;
+                cur = &it->second;
+                token.clear();
+            }
+        }
+        else token += path[i];
+    }
+    return cur;
+}
+
+static bool s_containsCaseInsensitive(const std::string& haystack, const std::string& needle)
+{
+    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
+        [](char a, char b) { return tolower((unsigned char)a) == tolower((unsigned char)b); });
+    return it != haystack.end();
+}
+
+// Recursively gathers every texture matching `filter` into out as {rel path w/ ext, filename}.
+static void s_collectFilteredTextures(const TextureFolder& folder, const std::string& folderPath,
+    const std::string& filter, std::vector<std::pair<std::string, std::string>>& out)
+{
+    for (const auto& f : folder.files)
+    {
+        if (!filter.empty() && !s_containsCaseInsensitive(f, filter))
+            continue;
+        std::string rel = folderPath.empty() ? f : folderPath + "/" + f;
+        out.emplace_back(rel, f);
+    }
+    for (const auto& kv : folder.subfolders)
+    {
+        std::string childPath = folderPath.empty() ? kv.first : folderPath + "/" + kv.first;
+        s_collectFilteredTextures(kv.second, childPath, filter, out);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Prop mesh tree — non-static so Painting.cpp can access s_propMeshRoot
@@ -151,29 +273,43 @@ void EditorInterface::loadPrefabList()
 
 void EditorInterface::loadTextureList()
 {
-	m_textureList.clear();
+	s_textureRoot = TextureFolder{};
 
 	const std::string base = "content/texture/";
-	recursive_directory_iterator it(base), end;
 
-	for (auto& entry : make_iterator_range(it, end))
+	try
 	{
-		if (!is_regular(entry)) continue;
+		recursive_directory_iterator it(base), end;
+		for (auto& entry : make_iterator_range(it, end))
+		{
+			if (!is_regular(entry)) continue;
 
-		std::string fullPath = entry.path().string();
-		std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
+			std::string fullPath = entry.path().string();
+			std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
 
-		if (fullPath.size() <= base.size()) continue;
-		std::string relPath = fullPath.substr(base.size());
+			if (fullPath.size() <= base.size()) continue;
+			std::string relPath = fullPath.substr(base.size());
 
-		auto dotPos = relPath.rfind('.');
-		if (dotPos == std::string::npos) continue;
-		std::string ext = relPath.substr(dotPos);
-		if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp") continue;
+			auto dotPos = relPath.rfind('.');
+			if (dotPos == std::string::npos) continue;
+			std::string ext = relPath.substr(dotPos);
+			for (auto& c : ext) c = static_cast<char>(tolower((unsigned char)c));
+			if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp") continue;
 
-		// Store without extension so _asset_tex() can reconstruct the full path
-		m_textureList.emplace_back(relPath.substr(0, dotPos));
+			std::vector<std::string> parts;
+			std::string token;
+			for (char c : relPath)
+			{
+				if (c == '/') { if (!token.empty()) { parts.push_back(token); token.clear(); } }
+				else token += c;
+			}
+			if (!token.empty()) parts.push_back(token);
+
+			if (!parts.empty())
+				s_insertTextureFile(s_textureRoot, parts, 0);
+		}
 	}
+	catch (...) {}
 }
 
 void EditorInterface::loadMeshList()
@@ -461,41 +597,126 @@ void EditorInterface::draw_window_texture_browser()
 
 	static char s_filter[128] = {};
 
-	ImGui::SetNextWindowSize(ImVec2(340, 500), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(DPI_SCALED_IMVEC2(680, 480), ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Texture Browser", &m_windowData.draw_window_texture_browser))
 	{
 		ImGui::End();
 		return;
 	}
 
-	ImGui::Text("%d textures", static_cast<int>(m_textureList.size()));
-	ImGui::SameLine();
+	s_processThumbnailQueue();
+
+	const float dpi = RenderManager::Get()->getConfiguration().dpi_scale;
+
 	ImGui::PushItemWidth(-1);
-	ImGui::InputText("##tx_filter", s_filter, sizeof(s_filter));
+	ImGui::InputTextWithHint("##tx_filter", "Filter...", s_filter, sizeof(s_filter));
 	ImGui::PopItemWidth();
 	ImGui::Separator();
 
-	ImGui::BeginChild("##tx_list", ImVec2(0, 0), false);
-	for (const auto& name : m_textureList)
+	// ---- Left pane: folder tree ----
+	ImGui::BeginChild("##tx_tree", ImVec2(160.0f * dpi, 0), true);
 	{
-		// Filter by substring (case-insensitive not needed — just use find)
-		if (s_filter[0] != '\0' && name.find(s_filter) == std::string::npos)
-			continue;
-
-		// Show just the filename portion as the label, full rel-path as tooltip
-		auto slash = name.rfind('/');
-		const char* label = (slash != std::string::npos) ? name.c_str() + slash + 1 : name.c_str();
-
-		if (ImGui::Selectable(label))
+		std::function<void(const std::string&, TextureFolder&)> drawFolder =
+			[&](const std::string& path, TextureFolder& folder)
 		{
-			g_currentSelectedTexture   = name;
-			m_windowData.draw_window_texture_browser = false;
+			for (auto& kv : folder.subfolders)
+			{
+				std::string childPath = path.empty() ? kv.first : path + "/" + kv.first;
+				ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+				if (childPath == s_texCurrentFolderPath) flags |= ImGuiTreeNodeFlags_Selected;
+				bool open = ImGui::TreeNodeEx(kv.first.c_str(), flags);
+				if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+					s_texCurrentFolderPath = childPath;
+				if (open)
+				{
+					drawFolder(childPath, kv.second);
+					ImGui::TreePop();
+				}
+			}
+		};
+
+		ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth
+			| ImGuiTreeNodeFlags_DefaultOpen;
+		if (s_texCurrentFolderPath.empty()) rootFlags |= ImGuiTreeNodeFlags_Selected;
+		bool rootOpen = ImGui::TreeNodeEx("content/texture", rootFlags);
+		if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+			s_texCurrentFolderPath.clear();
+		if (rootOpen)
+		{
+			drawFolder("", s_textureRoot);
+			ImGui::TreePop();
 		}
-		if (ImGui::IsItemHovered() && slash != std::string::npos)
+	}
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	// ---- Right pane: thumbnail grid ----
+	ImGui::BeginChild("##tx_grid", ImVec2(0, 0), true);
+	{
+		std::vector<std::pair<std::string, std::string>> items; // {rel path w/ ext, filename}
+		if (s_filter[0] != '\0')
 		{
-			ImGui::BeginTooltip();
-			ImGui::TextUnformatted(name.c_str());
-			ImGui::EndTooltip();
+			// A non-empty filter searches the whole tree, ignoring the selected folder.
+			s_collectFilteredTextures(s_textureRoot, "", s_filter, items);
+		}
+		else
+		{
+			TextureFolder* cur = s_findTextureFolder(s_texCurrentFolderPath);
+			if (cur)
+			{
+				for (const auto& f : cur->files)
+				{
+					std::string rel = s_texCurrentFolderPath.empty() ? f : s_texCurrentFolderPath + "/" + f;
+					items.emplace_back(rel, f);
+				}
+			}
+		}
+
+		const float thumbSize = 64.0f * dpi;
+		const float cellPad   = 8.0f * dpi;
+		const float cellW     = thumbSize + cellPad;
+		int columns = static_cast<int>(ImGui::GetContentRegionAvail().x / cellW);
+		if (columns < 1) columns = 1;
+
+		int col = 0;
+		for (const auto& item : items)
+		{
+			const std::string fullPath = "content/texture/" + item.first;
+
+			ImGui::PushID(fullPath.c_str());
+			ImGui::BeginGroup();
+
+			ImTextureID texId = s_getOrQueueThumbnail(fullPath);
+			bool clicked;
+			if (texId)
+				clicked = ImGui::ImageButton("##thumb", ImTextureRef(texId), ImVec2(thumbSize, thumbSize));
+			else
+				clicked = ImGui::Button("...", ImVec2(thumbSize, thumbSize)); // pending load / failed to load
+
+			if (clicked)
+			{
+				g_currentSelectedTexture = fullPath;
+				m_windowData.draw_window_texture_browser = false;
+			}
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::BeginTooltip();
+				ImGui::TextUnformatted(fullPath.c_str());
+				ImGui::EndTooltip();
+			}
+
+			ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + thumbSize);
+			ImGui::TextWrapped("%s", item.second.c_str());
+			ImGui::PopTextWrapPos();
+
+			ImGui::EndGroup();
+			ImGui::PopID();
+
+			if (++col < columns)
+				ImGui::SameLine(0.0f, cellPad);
+			else
+				col = 0;
 		}
 	}
 	ImGui::EndChild();
@@ -503,14 +724,16 @@ void EditorInterface::draw_window_texture_browser()
 	ImGui::End();
 }
 
-void EditorInterface::show_window_texture_browser()
+void EditorInterface::show_window_texture_browser(const std::string& requestId)
 {
-	if (!m_hasLoadedTextureList)
+	if (!s_textureTreeLoaded)
 	{
 		loadTextureList();
-		m_hasLoadedTextureList = true;
+		s_textureTreeLoaded = true;
 	}
 
+	g_textureBrowserRequestID = requestId;
+	g_currentSelectedTexture  = "null";
 	m_windowData.draw_window_texture_browser = true;
 }
 

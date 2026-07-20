@@ -1137,7 +1137,22 @@ scene::IAnimatedMesh* GltfImport::getMesh(const io::path& path)
     }
 
     GltfMeshBuilder builder(m_sceneManager, path);
-    scene::ISkinnedMesh* skinned = builder.build(m_error);
+    scene::ISkinnedMesh* skinned = nullptr;
+    try
+    {
+        skinned = builder.build(m_error);
+    }
+    catch (const std::exception& e)
+    {
+        // A std::bad_alloc (or similar) here means fastgltf tried to allocate on
+        // a corrupted count — the simdjson parse state was clobbered by an OOB
+        // write from another (non-instrumented) subsystem during scene load.
+        // Fail this mesh gracefully instead of taking down the editor.
+        m_error = std::string("GltfImport: exception loading '") + path.c_str() +
+                  "': " + e.what() + " (parse state corrupted by another subsystem)";
+        spdlog::error("{}", m_error);
+        return nullptr;
+    }
     if (!skinned)
     {
         spdlog::error("{}", m_error);

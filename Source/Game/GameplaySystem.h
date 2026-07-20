@@ -45,4 +45,13 @@ private:
 
 	void propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited);
 
+	// Resolve a CSV entity-name list (LogicComponent::receiver convention) and
+	// propagate a logic signal into every match.  Shared visited set across
+	// tokens, mirroring the per-frame LOGIC pass.
+	void fireReceiverList(const std::string& csv);
+
+	// CONTENT_TRIGGER brushes: exact convex player-overlap test, fire the
+	// brush's receiver list on enter (edge-triggered, re-arms on exit).
+	void updateBrushTriggers();
+
 };

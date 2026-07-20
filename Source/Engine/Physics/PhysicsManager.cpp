@@ -476,7 +476,7 @@ void PhysicsManager::cookTriangleMeshFromMemory(irr::scene::IMesh* trimesh, PxRi
 	m_scene->addActor(*actor);
 }
 
-void PhysicsManager::cookStaticTriangleMeshFromMemory(irr::scene::IMesh* trimesh, PxRigidStatic*& actor, PxVec3 pos, PxQuat rot, PxVec3 scale)
+void PhysicsManager::cookStaticTriangleMeshFromMemory(irr::scene::IMesh* trimesh, PxRigidStatic*& actor, PxVec3 pos, PxQuat rot, PxVec3 scale, PxU32 queryFilterWord0)
 {
 	std::vector<PxVec3> allVertices;
 	std::vector<PxU32> allIndices;
@@ -544,7 +544,7 @@ void PhysicsManager::cookStaticTriangleMeshFromMemory(irr::scene::IMesh* trimesh
 
 	PxShape* shape = m_physics->createShape(triGeom, *m_material);
 	PxFilterData filterData;
-	filterData.word0 = RHG_STATIC;
+	filterData.word0 = queryFilterWord0;
 	shape->setQueryFilterData(filterData);
 
 	actor->attachShape(*shape);
@@ -638,6 +638,14 @@ RaycastData PhysicsManager::raycast(irr::core::vector3df origin, irr::core::vect
 
     PxQueryFilterData filterData = PxQueryFilterData();
 
+	// Structural-world guard: clip-brush shapes carry only RHG_CLIP_* filter
+	// words, and all-zero query data would disable filtering and hit them.
+	// Masking to the structural groups keeps NPC/script probes off clip
+	// brushes.  (Word-AND filtering — unlike the PxQueryFlag attempt below,
+	// which selects actor types, not filter groups.)  The full source-type
+	// mask API (honoring `group`) is a separate refactor.
+	filterData.data.word0 = RHG_STATIC | RHG_DYNAMIC;
+
 	// BUG: PhysX doesn't care what the filter flags are ???
 	/*switch (group)
 	{
@@ -674,7 +682,23 @@ RaycastData PhysicsManager::raycast(irr::core::vector3df origin, irr::core::vect
 
 PxController* PhysicsManager::createCCT(PxCapsuleControllerDesc desc)
 {
-    return m_cctManager->createController(desc);
+    PxController* controller = m_cctManager->createController(desc);
+
+	// Tag the capsule like every other dynamic actor so raycasts masked to
+	// RHG_STATIC | RHG_DYNAMIC still hit it (its query filter data would
+	// otherwise be all zeros and get skipped).
+	if (controller && controller->getActor())
+	{
+		PxShape* shape = nullptr;
+		if (controller->getActor()->getNbShapes() > 0 &&
+			controller->getActor()->getShapes(&shape, 1) == 1 && shape)
+		{
+			PxFilterData filterData;
+			filterData.word0 = RHG_DYNAMIC;
+			shape->setQueryFilterData(filterData);
+		}
+	}
+	return controller;
 }
 
 void PhysicsManager::saveConfiguration(PhysicsConfiguration configuration)

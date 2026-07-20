@@ -48,3 +48,8 @@ void s_loadPropMeshList();
 // Defined in EditorInterface_ScriptEditor.cpp — renders any pending script
 // editor modals at the top level, above all docked windows.
 void drawScriptEditorPopups();
+
+// Defined in EditorInterface_Components.cpp — removable token chips for a
+// comma-separated entity-name list (red = unresolved, yellow = duplicate).
+// Shared by the component panels and the brush editor's trigger section.
+void s_drawNameListChips(std::string& csv, const char* idLabel);

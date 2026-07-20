@@ -824,14 +824,13 @@ static void drawRenderer(ParticleRendererDef& rnd)
             rnd.texturePath = s_texPathBuf;
         ImGui::SameLine();
         if (ImGui::Button("...##pd_texbr"))
+            EditorInterface::show_window_texture_browser("particle_renderer_texture");
+        if (g_textureBrowserRequestID == "particle_renderer_texture" && g_currentSelectedTexture != "null")
         {
-            std::string chosen = Utility::RemoveAbsDir(
-                Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
-            if (!chosen.empty())
-            {
-                rnd.texturePath = chosen;
-                strncpy_s(s_texPathBuf, chosen.c_str(), sizeof(s_texPathBuf) - 1);
-            }
+            rnd.texturePath = g_currentSelectedTexture;
+            strncpy_s(s_texPathBuf, g_currentSelectedTexture.c_str(), sizeof(s_texPathBuf) - 1);
+            g_currentSelectedTexture = "null";
+            g_textureBrowserRequestID.clear();
         }
     }
 

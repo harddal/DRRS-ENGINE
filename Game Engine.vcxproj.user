@@ -27,6 +27,9 @@
     <LocalDebuggerCommandArguments>-editor</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$(ProjectDir)Binaries\</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerEnvironment>ASAN_OPTIONS=detect_container_overflow=0
+ASAN_OPTIONS=detect_container_overflow=0:detect_stack_use_after_scope=0
+$(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerCommandArguments>-editor</LocalDebuggerCommandArguments>

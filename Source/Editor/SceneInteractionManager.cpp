@@ -26,6 +26,7 @@ unsigned int g_currentEntity = _entity_null_value, g_undoEntity = _entity_null_v
 	             _entity_null_value, g_currentPrefab = _entity_null_value;
 std::string g_currentScene;
 extern std::string g_currentSelectedTexture = "null";
+extern std::string g_textureBrowserRequestID = "";
 unsigned int g_currentSelectedObjectType = static_cast<unsigned int>(SELECTED_OBJECT_TYPE::NONE);
 
 static vector3df constrainAngleVector3(vector3df v)
@@ -103,16 +104,31 @@ void SceneInteractionManager::completeLinkPick(entityid pickedId)
 {
 	auto field = m_linkPickField;
 	auto hostId = m_linkPickHost;
+	auto hostBrushId = m_linkPickBrushId;
 
 	// One-shot: the mode ends no matter how the pick resolves
 	cancelLinkPick();
 
-	auto& host = WorldManager::Get()->managerSystem()->getEntityByID(hostId);
 	auto& picked = WorldManager::Get()->managerSystem()->getEntityByID(pickedId);
-	if (!host.isValid() || !picked.isValid())
+	if (!picked.isValid())
 		return;
 
 	const std::string& name = picked.getComponent<DescriptorComponent>().name;
+
+	// Brush-hosted pick: the host lives in BrushManager, not the ECS
+	if (field == LinkPickField::BRUSH_RECEIVER)
+	{
+		if (BrushManager::Get())
+		{
+			if (Brush* brush = BrushManager::Get()->getBrush(hostBrushId))
+				LogicLinks::appendUniqueName(brush->receiver, name);
+		}
+		return;
+	}
+
+	auto& host = WorldManager::Get()->managerSystem()->getEntityByID(hostId);
+	if (!host.isValid())
+		return;
 
 	switch (field)
 	{
@@ -156,10 +172,16 @@ void SceneInteractionManager::update(float dt)
 		m_selectNewSpawnedEntity = false;
 	}
 
-	// Abort a link pick if its host entity disappeared (deleted, scene change)
-	if (isLinkPicking() && !WorldManager::Get()->managerSystem()->getEntityByID(m_linkPickHost).isValid())
+	// Abort a link pick if its host disappeared (deleted, scene change)
+	if (isLinkPicking())
 	{
-		cancelLinkPick();
+		bool hostGone;
+		if (m_linkPickField == LinkPickField::BRUSH_RECEIVER)
+			hostGone = !BrushManager::Get() || !BrushManager::Get()->getBrush(m_linkPickBrushId);
+		else
+			hostGone = !WorldManager::Get()->managerSystem()->getEntityByID(m_linkPickHost).isValid();
+		if (hostGone)
+			cancelLinkPick();
 	}
 
 	static bool escPressed = false;
@@ -800,6 +822,7 @@ void SceneInteractionManager::cutProp()
 	if (!prop) return;
 	m_propClipboard      = *prop;
 	m_propClipboardValid = true;
+	m_lastClipboardKind  = ClipboardKind::PROP;
 	PropManager::Get()->removeProp(m_selectedPropId);
 	m_selectedPropId = UINT32_MAX;
 }
@@ -811,6 +834,7 @@ void SceneInteractionManager::copyProp()
 	if (!prop) return;
 	m_propClipboard      = *prop;
 	m_propClipboardValid = true;
+	m_lastClipboardKind  = ClipboardKind::PROP;
 }
 
 void SceneInteractionManager::pasteProp()
@@ -840,6 +864,8 @@ void SceneInteractionManager::cutEntity()
 			}
 		}
 	}
+	if (m_clipboardSize > 0)
+		m_lastClipboardKind = ClipboardKind::ENTITY;
 
 	for (auto id : m_selectedEntities)
 	{
@@ -868,6 +894,8 @@ void SceneInteractionManager::copyEntity()
 			}
 		}
 	}
+	if (m_clipboardSize > 0)
+		m_lastClipboardKind = ClipboardKind::ENTITY;
 }
 
 void SceneInteractionManager::pasteEntity()
@@ -1047,4 +1075,101 @@ void SceneInteractionManager::deleteSelectedBrushes()
 	for (uint32_t id : m_selectedBrushIds)
 		BrushManager::Get()->removeBrush(id);
 	m_selectedBrushIds.clear();
+}
+
+// Matches the auto-generated "Brush <id>" pattern so paste can regenerate the
+// name for the fresh id; user-authored names are kept verbatim.
+static bool isDefaultBrushName(const std::string& name)
+{
+	const char* prefix = "Brush ";
+	const size_t prefixLen = 6;
+	if (name.size() <= prefixLen || name.compare(0, prefixLen, prefix) != 0)
+		return false;
+	for (size_t i = prefixLen; i < name.size(); ++i)
+		if (name[i] < '0' || name[i] > '9')
+			return false;
+	return true;
+}
+
+void SceneInteractionManager::copyBrushes()
+{
+	if (m_selectedBrushIds.empty() || !BrushManager::Get())
+		return;
+
+	m_brushClipboard.clear();
+	for (uint32_t id : m_selectedBrushIds)
+	{
+		if (Brush* brush = BrushManager::Get()->getBrush(id))
+			m_brushClipboard.push_back(*brush);
+	}
+	if (m_brushClipboard.empty())
+		return;
+
+	m_brushClipboardFromCut = false;
+	m_brushPasteCount = 0;
+	m_lastClipboardKind = ClipboardKind::BRUSH;
+}
+
+void SceneInteractionManager::cutBrushes()
+{
+	if (m_selectedBrushIds.empty())
+		return;
+
+	copyBrushes();
+	if (m_brushClipboard.empty())
+		return;
+
+	m_brushClipboardFromCut = true;
+	deleteSelectedBrushes();
+}
+
+void SceneInteractionManager::pasteBrushes()
+{
+	if (m_brushClipboard.empty() || !BrushManager::Get())
+		return;
+
+	// A cut pastes back in place; a copy starts one step out.  Consecutive
+	// pastes keep stepping so repeated Ctrl+V never stacks coincident brushes.
+	const float step = m_configuration.useSnap ? m_configuration.snapX : 1.0f;
+	const float d = step * (m_brushPasteCount + (m_brushClipboardFromCut ? 0 : 1));
+	m_brushPasteCount++;
+
+	matrix4 T;
+	T.setTranslation(vector3df(d, 0.0f, d));
+
+	UndoEntry entry;
+	std::vector<uint32_t> newIds;
+	for (const Brush& src : m_brushClipboard)
+	{
+		Brush clone = src;
+		for (size_t i = 0; i < clone.faces.size(); ++i)
+			clone.faces[i] = BrushTool::transformFace(src.faces[i], T);
+		// The clipboard copy carries the source's derived verts/bounds;
+		// addBrush only rebuilds when geometryValid is false, and chunk
+		// assignment needs post-offset bounds.
+		clone.geometryValid = false;
+		if (isDefaultBrushName(clone.name))
+			clone.name.clear();
+
+		const uint32_t newId = BrushManager::Get()->addBrush(std::move(clone));
+		if (newId == 0)
+			continue;
+
+		BrushSnapshot snap;
+		snap.id = newId;
+		snap.existed = false;
+		entry.brushes.push_back(std::move(snap));
+		newIds.push_back(newId);
+	}
+	if (newIds.empty())
+		return;
+
+	pushUndoEntry(std::move(entry));
+
+	// Paste replaces the selection, so drop any modal sub-tool first — a
+	// mid-clip/face operation must not reference the swapped-out selection.
+	m_brushTool.setMode(BrushToolMode::OFF);
+	setSelectedBrush(newIds[0]);
+	for (size_t i = 1; i < newIds.size(); ++i)
+		toggleBrushInSelection(newIds[i]);
 }

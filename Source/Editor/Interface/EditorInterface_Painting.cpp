@@ -277,7 +277,6 @@ void EditorInterface::draw_window_texture_painter()
 
         static char s_detailPath[4][512] = {};
         static bool s_init = false;
-        static int  s_browsingSlot = -1;
 
         // Sync display buffers when target changes
         static StaticProp* s_lastTarget = nullptr;
@@ -308,27 +307,21 @@ void EditorInterface::draw_window_texture_painter()
             }
             ImGui::PopItemWidth();
             ImGui::SameLine();
+            const std::string requestId = "texture_painter_detail_" + std::to_string(d);
             if (ImGui::Button("...##tp_browse"))
+                show_window_texture_browser(requestId);
+            if (g_textureBrowserRequestID == requestId && g_currentSelectedTexture != "null")
             {
-                s_browsingSlot = d;
-                show_window_texture_browser();
+                tp.targetProp->detailTextures[d] = g_currentSelectedTexture;
+                strncpy(s_detailPath[d], g_currentSelectedTexture.c_str(), 511);
+                auto* tex = driver->getTexture(g_currentSelectedTexture.c_str());
+                if (tex)
+                    for (unsigned b = 0; b < tp.targetProp->node->getMaterialCount(); ++b)
+                        tp.targetProp->node->getMaterial(b).setTexture(3 + d, tex);
+                g_currentSelectedTexture = "null";
+                g_textureBrowserRequestID.clear();
             }
             ImGui::PopID();
-        }
-
-        // Apply browser selection (browser closes and sets g_currentSelectedTexture one frame before we read it)
-        if (s_browsingSlot >= 0 && !m_windowData.draw_window_texture_browser
-            && g_currentSelectedTexture != "null")
-        {
-            std::string fullPath = _asset_tex(g_currentSelectedTexture);
-            tp.targetProp->detailTextures[s_browsingSlot] = fullPath;
-            strncpy(s_detailPath[s_browsingSlot], fullPath.c_str(), 511);
-            auto* tex = driver->getTexture(fullPath.c_str());
-            if (tex)
-                for (unsigned b = 0; b < tp.targetProp->node->getMaterialCount(); ++b)
-                    tp.targetProp->node->getMaterial(b).setTexture(3 + s_browsingSlot, tex);
-            s_browsingSlot = -1;
-            g_currentSelectedTexture = "null";
         }
 
         // Tiling

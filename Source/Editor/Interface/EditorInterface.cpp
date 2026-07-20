@@ -216,28 +216,35 @@ void EditorInterface::detectKeyShortcuts()
 
 		static bool key_t = false;
 		if (control && InputManager::Get()->getKeyRelease(KEY_T, &key_t))
-			draw_window_texture_browser();
+			show_window_texture_browser("");
 	}
 	{
 		static bool key_x = false;
 		if (control && InputManager::Get()->getKeyRelease(KEY_X, &key_x))
 		{
-			if (g_sceneInteractor.isPropSelected()) g_sceneInteractor.cutProp();
-			else                                    g_sceneInteractor.cutEntity();
+			if (g_sceneInteractor.isPropSelected())       g_sceneInteractor.cutProp();
+			else if (g_sceneInteractor.isBrushSelected()) g_sceneInteractor.cutBrushes();
+			else                                          g_sceneInteractor.cutEntity();
 		}
 
 		static bool key_c = false;
 		if (control && InputManager::Get()->getKeyRelease(KEY_C, &key_c))
 		{
-			if (g_sceneInteractor.isPropSelected()) g_sceneInteractor.copyProp();
-			else                                    g_sceneInteractor.copyEntity();
+			if (g_sceneInteractor.isPropSelected())       g_sceneInteractor.copyProp();
+			else if (g_sceneInteractor.isBrushSelected()) g_sceneInteractor.copyBrushes();
+			else                                          g_sceneInteractor.copyEntity();
 		}
 
 		static bool key_v = false;
 		if (control && InputManager::Get()->getKeyRelease(KEY_V, &key_v))
 		{
-			if (g_sceneInteractor.hasPropClipboard()) g_sceneInteractor.pasteProp();
-			else                                      g_sceneInteractor.pasteEntity();
+			switch (g_sceneInteractor.lastClipboardKind())
+			{
+			case ClipboardKind::BRUSH:  g_sceneInteractor.pasteBrushes(); break;
+			case ClipboardKind::PROP:   g_sceneInteractor.pasteProp();    break;
+			case ClipboardKind::ENTITY: g_sceneInteractor.pasteEntity();  break;
+			default: break;
+			}
 		}
 
 		static bool key_z = false;

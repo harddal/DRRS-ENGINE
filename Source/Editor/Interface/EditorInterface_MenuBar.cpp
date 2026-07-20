@@ -337,10 +337,34 @@ void EditorInterface::draw_menubar_main()
 
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Cut",    "CTRL+X")) { if (g_sceneInteractor.isPropSelected()) g_sceneInteractor.cutProp();   else g_sceneInteractor.cutEntity(); }
-			if (ImGui::MenuItem("Copy",   "CTRL+C")) { if (g_sceneInteractor.isPropSelected()) g_sceneInteractor.copyProp();  else g_sceneInteractor.copyEntity(); }
-			if (ImGui::MenuItem("Paste",  "CTRL+V")) { if (g_sceneInteractor.hasPropClipboard()) g_sceneInteractor.pasteProp(); else g_sceneInteractor.pasteEntity(); }
-			if (ImGui::MenuItem("Delete", "DEL", false, !s_builderEntityCreated)) { g_sceneInteractor.deleteEntity(); }
+			if (ImGui::MenuItem("Cut",    "CTRL+X"))
+			{
+				if (g_sceneInteractor.isPropSelected())       g_sceneInteractor.cutProp();
+				else if (g_sceneInteractor.isBrushSelected()) g_sceneInteractor.cutBrushes();
+				else                                          g_sceneInteractor.cutEntity();
+			}
+			if (ImGui::MenuItem("Copy",   "CTRL+C"))
+			{
+				if (g_sceneInteractor.isPropSelected())       g_sceneInteractor.copyProp();
+				else if (g_sceneInteractor.isBrushSelected()) g_sceneInteractor.copyBrushes();
+				else                                          g_sceneInteractor.copyEntity();
+			}
+			if (ImGui::MenuItem("Paste",  "CTRL+V"))
+			{
+				switch (g_sceneInteractor.lastClipboardKind())
+				{
+				case ClipboardKind::BRUSH:  g_sceneInteractor.pasteBrushes(); break;
+				case ClipboardKind::PROP:   g_sceneInteractor.pasteProp();    break;
+				case ClipboardKind::ENTITY: g_sceneInteractor.pasteEntity();  break;
+				default: break;
+				}
+			}
+			if (ImGui::MenuItem("Delete", "DEL", false, !s_builderEntityCreated))
+			{
+				if (g_sceneInteractor.isPropSelected())       g_sceneInteractor.deleteProp();
+				else if (g_sceneInteractor.isBrushSelected()) g_sceneInteractor.deleteSelectedBrushes();
+				else                                          g_sceneInteractor.deleteEntity();
+			}
 
 			ImGui::Separator();
 

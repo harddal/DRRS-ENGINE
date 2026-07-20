@@ -734,7 +734,7 @@ void PlayerController::update(float dt)
 
 	// Configure collision filters to detect static geometry
 	PxFilterData filterData;
-	filterData.word0 = RHG_STATIC | RHG_DYNAMIC;  // Collide with static and kinematic/dynamic actors
+	filterData.word0 = RHG_STATIC | RHG_DYNAMIC | RHG_CLIP_PLAYER;  // static, kinematic/dynamic, and playerclip brushes
 	
 	physx::PxControllerFilters filters(&filterData);
 

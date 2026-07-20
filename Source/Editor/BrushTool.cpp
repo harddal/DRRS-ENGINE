@@ -29,6 +29,7 @@ namespace
     const SColor kColClipPoint (255,  60, 220, 255);
     const SColor kColClipFront (255,  90, 160, 255);
     const SColor kColClipBack  (255, 255, 110, 110);
+    const SColor kColPaint     (255, 100, 200, 255);
 
     void drawCross(const vector3df& p, float size, SColor color)
     {
@@ -49,12 +50,15 @@ void BrushTool::init(SceneInteractionManager* owner)
     m_vertDragActive = false;
     m_selectedFaces.clear();
     m_clipPoints.clear();
+    m_paintStroke.clear();
+    m_paintLast = FaceRef();
 }
 
 void BrushTool::setMode(BrushToolMode mode)
 {
     if (m_mode == mode)
         return;
+    commitPaintStroke();    // a mode change must not lose the stroke's undo entry
     m_mode = mode;
     // Never leave heavy rebuilds deferred across a mode change
     if (BrushManager::Get())
@@ -97,6 +101,7 @@ void BrushTool::update(float dt)
     case BrushToolMode::FACE:   updateFaceMode();   break;
     case BrushToolMode::VERTEX: updateVertexMode(); break;
     case BrushToolMode::CLIP:   updateClipMode();   break;
+    case BrushToolMode::PAINT:  updatePaintMode();  break;
     default: break;
     }
 }
@@ -130,6 +135,7 @@ void BrushTool::draw()
     case BrushToolMode::FACE:   drawFaceMode();   break;
     case BrushToolMode::VERTEX: drawVertexMode(); break;
     case BrushToolMode::CLIP:   drawClipMode();   break;
+    case BrushToolMode::PAINT:  drawPaintMode();  break;
     default: break;
     }
 }
@@ -746,6 +752,115 @@ void BrushTool::applyMaterialToSelectedFaces(const std::string& material)
             continue;
         brush->faces[ref.faceIndex].materialName = material;
         BrushManager::Get()->markBrushDirty(ref.brushId);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PAINT mode — click/drag applies defaultMaterial to faces under the cursor;
+// Ctrl+click samples a face's material into defaultMaterial instead.  A whole
+// held-button stroke coalesces into one undo entry, committed on release.
+// ---------------------------------------------------------------------------
+
+void BrushTool::updatePaintMode()
+{
+    auto* input = InputManager::Get();
+    const bool ctrl = input->isKeyPressed(KEYBOARD_KEY::KEY_LCONTROL);
+
+    if (ctrl && input->getMousePressOnce(0, &m_paintMouseDown))
+    {
+        uint32_t brushId;
+        int faceIndex;
+        vector3df point;
+        if (cursorBrushHit(brushId, faceIndex, point))
+        {
+            Brush* brush = BrushManager::Get()->getBrush(brushId);
+            if (brush && faceIndex >= 0 && faceIndex < static_cast<int>(brush->faces.size()))
+                defaultMaterial = brush->faces[faceIndex].materialName;
+        }
+        return;
+    }
+
+    if (!input->isMouseButtonPressed(0, true) || ctrl)
+    {
+        // Level check instead of a release edge: the edge can be missed when
+        // the button comes up over an ImGui window (update early-outs there)
+        commitPaintStroke();
+        return;
+    }
+
+    if (defaultMaterial.empty())
+        return;
+
+    uint32_t brushId;
+    int faceIndex;
+    vector3df point;
+    if (!cursorBrushHit(brushId, faceIndex, point))
+        return;
+    if (m_paintLast.brushId == brushId && m_paintLast.faceIndex == faceIndex)
+        return;
+
+    Brush* brush = BrushManager::Get()->getBrush(brushId);
+    if (!brush || faceIndex < 0 || faceIndex >= static_cast<int>(brush->faces.size()))
+        return;
+
+    m_paintLast = { brushId, faceIndex };
+    if (brush->faces[faceIndex].materialName == defaultMaterial)
+        return;
+
+    bool known = false;
+    for (const auto& pre : m_paintStroke)
+        if (pre.id == brushId) { known = true; break; }
+    if (!known)
+        m_paintStroke.push_back(*brush);
+
+    brush->faces[faceIndex].materialName = defaultMaterial;
+    BrushManager::Get()->markBrushDirty(brushId);
+}
+
+void BrushTool::commitPaintStroke()
+{
+    m_paintLast = FaceRef();
+    if (m_paintStroke.empty())
+        return;
+
+    UndoEntry entry;
+    for (auto& pre : m_paintStroke)
+    {
+        BrushSnapshot snap;
+        snap.id = pre.id;
+        snap.existed = true;
+        snap.data = std::move(pre);
+        entry.brushes.push_back(std::move(snap));
+    }
+    m_paintStroke.clear();
+    m_owner->pushUndoEntry(std::move(entry));
+}
+
+void BrushTool::drawPaintMode()
+{
+    // draw() is not behind update()'s ImGui guard — don't outline through UI
+    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+        return;
+
+    uint32_t brushId;
+    int faceIndex;
+    vector3df point;
+    if (!cursorBrushHit(brushId, faceIndex, point))
+        return;
+
+    Brush* brush = BrushManager::Get()->getBrush(brushId);
+    if (!brush || faceIndex < 0 || faceIndex >= static_cast<int>(brush->faces.size()))
+        return;
+    const BrushFace& face = brush->faces[faceIndex];
+    if (face.loop.size() < 3)
+        return;
+
+    auto* rm = RenderManager::Get();
+    for (size_t v = 0; v < face.loop.size(); v++)
+    {
+        const vector3df& a = brush->verts[face.loop[v]];
+        const vector3df& b = brush->verts[face.loop[(v + 1) % face.loop.size()]];
+        rm->renderLine3DOverlay(Line3D(line3df(a, b), kColPaint));
     }
 }
 

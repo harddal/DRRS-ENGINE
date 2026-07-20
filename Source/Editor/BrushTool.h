@@ -17,7 +17,8 @@ enum class BrushToolMode
     CREATE,     // drag out a primitive footprint, then set height
     FACE,       // select faces; gizmo push/pull along the face normal
     VERTEX,     // drag vertex handles through the provisional-commit pipeline
-    CLIP        // place up to 3 points, preview halves, Enter commits
+    CLIP,       // place up to 3 points, preview halves, Enter commits
+    PAINT       // click/drag faces to apply defaultMaterial; Ctrl+click samples
 };
 
 enum class BrushPrimitive
@@ -81,6 +82,11 @@ public:
     // (carver itself is kept; delete it separately if unwanted).
     void carveWithSelected();
 
+    // Transform src's plane points AND its Valve-220 texture frame by the
+    // affine map A (texture lock: axes rotate/scale with the geometry, shift
+    // refit so a reference point keeps its texel coordinates).
+    static BrushFace transformFace(const BrushFace& src, const irr::core::matrix4& A);
+
 private:
     SceneInteractionManager* m_owner = nullptr;
     BrushToolMode m_mode = BrushToolMode::OFF;
@@ -138,6 +144,15 @@ private:
     bool clipPlaneFromPoints(irr::core::plane3df& outPlane,
                              irr::core::vector3df outPts[3]) const;
 
+    // ---- paint mode state ----
+    bool    m_paintMouseDown = false;         // getMousePressOnce edge state (eyedropper)
+    FaceRef m_paintLast;                      // last face painted this stroke
+    std::vector<Brush> m_paintStroke;         // pre-stroke copies, one per touched brush
+
+    void updatePaintMode();
+    void drawPaintMode();
+    void commitPaintStroke();                 // one undo entry for the whole stroke
+
     void updateCreateMode();
     void commitCreateDrag();
     // Cursor ray vs scene (surface hit) or vs the horizontal plane at planeY.
@@ -153,9 +168,4 @@ private:
                         const irr::core::vector3df& center);
     void applyGizmoDrag(const std::vector<uint32_t>& selection);
     void commitGizmoDrag(const std::vector<uint32_t>& selection);
-
-    // Transform src's plane points AND its Valve-220 texture frame by the
-    // affine map A (texture lock: axes rotate/scale with the geometry, shift
-    // refit so a reference point keeps its texel coordinates).
-    static BrushFace transformFace(const BrushFace& src, const irr::core::matrix4& A);
 };

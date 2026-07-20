@@ -482,6 +482,11 @@ void WorldManager::importScene(const std::string& file)
 				BrushManager::Get()->deserialize(ar);
 			}
 			std::remove(tmpBrushes.c_str());
+
+			// Reattach baked chunk lightmaps — must follow deserialize
+			// (compileAll has recreated the chunks, clean) while the zip is
+			// still mounted so getTexture/createAndOpenFile resolve inside it
+			BrushManager::Get()->loadChunkLightmaps(fs, driver);
 		}
 		else if (brushFile)
 		{
@@ -691,7 +696,10 @@ void WorldManager::exportScene(const std::string& file)
 	}
 
 	// 5. Serialize CSG brushes (plane data only — meshes are derived caches)
+	//    plus any baked chunk lightmaps, keyed by chunk key (deterministic
+	//    across save/load for the same brush set and cell size)
 	size_t brushCount = 0;
+	size_t brushLightmapCount = 0;
 	if (BrushManager::Get() && !BrushManager::Get()->getAllBrushes().empty())
 	{
 		std::ostringstream brushStream;
@@ -703,6 +711,18 @@ void WorldManager::exportScene(const std::string& file)
 		mz_zip_writer_add_mem(&zip, "brushes.xml",
 		    brushData.data(), brushData.size(), MZ_DEFAULT_COMPRESSION);
 		brushCount = BrushManager::Get()->getAllBrushes().size();
+
+		auto brushLightmapFiles = BrushManager::Get()->collectChunkLightmapFiles(driver, tempDir);
+		for (auto& blm : brushLightmapFiles)
+		{
+			const std::string pngName    = "brush_lightmap_" + std::to_string(blm.chunkKey) + ".png";
+			const std::string uvmeshName = "brush_lightmap_" + std::to_string(blm.chunkKey) + ".uvmesh";
+			mz_zip_writer_add_mem(&zip, pngName.c_str(),
+			    blm.pngBytes.data(), blm.pngBytes.size(), MZ_DEFAULT_COMPRESSION);
+			mz_zip_writer_add_mem(&zip, uvmeshName.c_str(),
+			    blm.uvmeshBytes.data(), blm.uvmeshBytes.size(), MZ_DEFAULT_COMPRESSION);
+		}
+		brushLightmapCount = brushLightmapFiles.size();
 	}
 
 	if (!mz_zip_writer_finalize_archive(&zip))
@@ -710,8 +730,8 @@ void WorldManager::exportScene(const std::string& file)
 
 	mz_zip_writer_end(&zip);
 
-	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), {} brush(es), navmesh: {})",
-	    file, lightmapFiles.size(), propCount, brushCount, navBytes.empty() ? "no" : "yes");
+	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), {} brush(es), {} brush lightmap(s), navmesh: {})",
+	    file, lightmapFiles.size(), propCount, brushCount, brushLightmapCount, navBytes.empty() ? "no" : "yes");
 }
 
 bool WorldManager::getCVarExists(const std::string& name)

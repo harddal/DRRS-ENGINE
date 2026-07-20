@@ -25,6 +25,12 @@ enum RAYCAST_HIT_GROUP
 	RHG_POSTFILTER = 8,
 	RHG_ANY_HIT    = 16,
 	RHG_NO_BLOCK   = 32,
+
+	// Clip-brush shapes carry ONLY these words (no RHG_STATIC), so queries
+	// masked to the structural groups skip them (see BrushManager::compileHeavy).
+	RHG_CLIP_PLAYER  = 64,
+	RHG_CLIP_MONSTER = 128,
+	RHG_CLIP_WEAPON  = 256,
 };
 
 struct RaycastData
@@ -85,7 +91,7 @@ public:
    // void cookTriangleMesh(physx::PxRigidDynamic*& actor, physx::PxU32 nbVerts, physx::PxU32 triCount, void* verts, void* indices, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1));
     
     void cookTriangleMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidDynamic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1));
-    void cookStaticTriangleMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidStatic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1));
+    void cookStaticTriangleMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidStatic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1), physx::PxU32 queryFilterWord0 = RHG_STATIC);
     void cookConvexMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidStatic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1));
 
     RaycastData raycast(irr::core::vector3df origin, irr::core::vector3df direction, double maxDistance, int group = RHG_ANY_HIT);

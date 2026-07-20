@@ -297,14 +297,14 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 						}
 						ImGui::SameLine();
 						if (ImGui::Button("...##propTex0btn"))
+							show_window_texture_browser("prop_diffuse");
+						if (g_textureBrowserRequestID == "prop_diffuse" && g_currentSelectedTexture != "null")
 						{
-							std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
-							if (!chosen.empty())
-							{
-								prop->textures[0] = chosen;
-								strncpy_s(texBuf0, chosen.c_str(), sizeof(texBuf0) - 1);
-								prop->node->setMaterialTexture(0, driver->getTexture(chosen.c_str()));
-							}
+							prop->textures[0] = g_currentSelectedTexture;
+							strncpy_s(texBuf0, g_currentSelectedTexture.c_str(), sizeof(texBuf0) - 1);
+							prop->node->setMaterialTexture(0, driver->getTexture(g_currentSelectedTexture.c_str()));
+							g_currentSelectedTexture = "null";
+							g_textureBrowserRequestID.clear();
 						}
 
 						ImGui::TableNextRow();
@@ -318,14 +318,14 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 						}
 						ImGui::SameLine();
 						if (ImGui::Button("...##propTex1btn"))
+							show_window_texture_browser("prop_normal");
+						if (g_textureBrowserRequestID == "prop_normal" && g_currentSelectedTexture != "null")
 						{
-							std::string chosen = Utility::RemoveAbsDir(Utility::OpenFileDialog(dialog_filter_image, "content\\texture"));
-							if (!chosen.empty())
-							{
-								prop->textures[1] = chosen;
-								strncpy_s(texBuf1, chosen.c_str(), sizeof(texBuf1) - 1);
-								prop->node->setMaterialTexture(1, driver->getTexture(chosen.c_str()));
-							}
+							prop->textures[1] = g_currentSelectedTexture;
+							strncpy_s(texBuf1, g_currentSelectedTexture.c_str(), sizeof(texBuf1) - 1);
+							prop->node->setMaterialTexture(1, driver->getTexture(g_currentSelectedTexture.c_str()));
+							g_currentSelectedTexture = "null";
+							g_textureBrowserRequestID.clear();
 						}
 
 						ImGui::EndTable();
@@ -703,24 +703,12 @@ void EditorInterface::draw_window_prop_scene()
 		ImGui::Text("Notes");
 
 		if (ImGui::Button("Set Skydome Texture"))
+			show_window_texture_browser("scene_skydome");
+		if (g_textureBrowserRequestID == "scene_skydome" && g_currentSelectedTexture != "null")
 		{
-			auto skydome = Utility::OpenFileDialog(dialog_filter_image, "content\\texture");
-
-			//if (PathFileExistsA(skydome.c_str()))
-			//{
-			std::size_t found = skydome.find("content\\");
-
-			if (found != std::string::npos)
-			{
-				auto skydome_path = skydome.substr(found);
-
-				scenedesc.skydome_texture = skydome_path;
-			}
-			else
-			{
-				Utility::Warning("Assets must exist in local path!");
-			}
-			//}
+			scenedesc.skydome_texture = g_currentSelectedTexture;
+			g_currentSelectedTexture = "null";
+			g_textureBrowserRequestID.clear();
 		}
 
 		ImGui::Spacing();
