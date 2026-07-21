@@ -256,7 +256,12 @@ void BrushTool::drawWholeBrushGizmo()
         return;
 
     const auto cfg = m_owner->getConfiguration();
-    float snap[3] = { cfg.snapX, cfg.snapY, cfg.snapZ };
+    // Position grid for translate/scale; angle (deg) for rotate — ImGuizmo reads snap[0]
+    // as degrees in ROTATE mode.
+    float posSnap[3] = { cfg.snapX, cfg.snapY, cfg.snapZ };
+    float angSnap    = cfg.snapAngle;
+    float* snap = !cfg.useSnap ? nullptr
+                : (m_owner->getWidgetToolMode() == ImTransformControl::ROTATE ? &angSnap : &posSnap[0]);
 
     matrix4 transform;
     if (m_dragActive)
@@ -273,7 +278,7 @@ void BrushTool::drawWholeBrushGizmo()
         RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
         RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
         m_owner->getWidgetToolMode(), m_owner->getWidgetCoordMode(),
-        transform.pointer(), nullptr, cfg.useSnap ? &snap[0] : nullptr);
+        transform.pointer(), nullptr, snap);
 
     if (ImTransformControl::IsUsing())
     {

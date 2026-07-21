@@ -430,11 +430,13 @@ void EditorInterface::draw_window_spawn_entity()
 				{
 					if (path.substr(0, path.find_first_of('\\')) == subpath)
 					{
+						ImGui::PushID(path.c_str());
 						if (ImGui::Button(path.substr(path.find_last_of('\\') + 1).c_str()))
 						{
 							WorldManager::Get()->spawnEntity(_asset_ent(path));
 							g_sceneInteractor.selectNewSpawnedEntityNextFrame();
 						}
+						ImGui::PopID();
 					}
 				}
 			}
@@ -528,13 +530,21 @@ void EditorInterface::draw_window_spawn_prop()
     ImGui::SameLine();
     ImGui::PushItemWidth(200.f);
     ImGui::InputText("##propSpawnShader", shaderBuf, sizeof(shaderBuf));
+    ImGui::SetItemTooltip("Shader for newly placed props: phong_perpixel (default lit),\nfoliage/grass (wind sway), phong_perpixel_transparent (glass).");
     ImGui::PopItemWidth();
 
     ImGui::Checkbox("Receives Lightmap", &receivesLightmap);
+    ImGui::SetItemTooltip("Apply baked lightmap lighting to the prop when lightmaps are baked.");
     ImGui::SameLine();
     ImGui::Checkbox("Cast Shadows", &castShadows);
     ImGui::Checkbox("Has Collision", &hasCollision);
-    if (hasCollision) { ImGui::SameLine(); ImGui::Checkbox("Convex Hull", &useConvexCollision); }
+    ImGui::SetItemTooltip("Give the prop a physics collider so things can't pass through it.");
+    if (hasCollision)
+    {
+        ImGui::SameLine();
+        ImGui::Checkbox("Convex Hull", &useConvexCollision);
+        ImGui::SetItemTooltip("Simplified convex collision instead of exact triangles -\ncheaper; fine for solid chunky objects.");
+    }
 
     if (ImGui::Button("Refresh List")) { s_loadPropMeshList(); }
 
@@ -556,6 +566,7 @@ void EditorInterface::draw_window_spawn_prop()
         }
         for (const auto& f : folder.files)
         {
+            ImGui::PushID(f.second.c_str());
             if (ImGui::Button(f.first.c_str()))
             {
                 if (PropManager::Get())
@@ -578,6 +589,7 @@ void EditorInterface::draw_window_spawn_prop()
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", f.second.c_str());
+            ImGui::PopID();
         }
     };
     drawFolder(s_propMeshRoot);

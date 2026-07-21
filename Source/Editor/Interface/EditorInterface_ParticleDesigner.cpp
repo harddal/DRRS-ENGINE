@@ -361,6 +361,7 @@ static void drawFileManagement()
             s_dirty   = true;
             s_pdStale = true;
         }
+        ImGui::SetItemTooltip("Simulation speed multiplier for the whole effect (1 = normal).");
         EndPropTable();
     }
 }
@@ -429,6 +430,7 @@ static void drawGroupSettings(ParticleGroupDef& grp)
     PropRow("Capacity");
     if (ImGui::InputInt("##pd_cap", &grp.capacity) && grp.capacity < 1)
         grp.capacity = 1;
+    ImGui::SetItemTooltip("Maximum particles alive in this group at once -\nemission stalls until older particles die.");
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Gravity");
@@ -444,6 +446,7 @@ static void drawGroupSettings(ParticleGroupDef& grp)
 
     PropRow("Friction");
     ImGui::DragFloat("##pd_fric", &grp.friction, 0.001f, 0.0f, 100.0f, "%.3f");
+    ImGui::SetItemTooltip("Air drag - how quickly particles lose velocity. 0 = none.");
 
     PropRow("Rotator");
     ImGui::Checkbox("##pd_rot", &grp.useRotator);
@@ -511,6 +514,7 @@ static void drawEmitters(ParticleGroupDef& grp)
     PropRow("Type");
     if (ImGui::Combo("##pd_etype", &emIdx, k_emitTypes, 5))
         em.type = k_emitTypes[emIdx];
+    ImGui::SetItemTooltip("Initial velocity pattern:\nrandom - any direction\nnormal - along the zone's surface normal\nstatic - no initial velocity\nstraight - fixed Direction\nspheric - cone around Direction (Angle Min/Max)");
 
     static const char* k_zoneTypes[] = { "sphere", "point", "aabox" };
     int zIdx = 0;
@@ -518,6 +522,7 @@ static void drawEmitters(ParticleGroupDef& grp)
     PropRow("Zone");
     if (ImGui::Combo("##pd_ztype", &zIdx, k_zoneTypes, 3))
         em.zone.type = k_zoneTypes[zIdx];
+    ImGui::SetItemTooltip("Shape particles spawn from: a sphere, a single point,\nor an axis-aligned box.");
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Center");
@@ -552,9 +557,11 @@ static void drawEmitters(ParticleGroupDef& grp)
 
     PropRow("Full Zone");
     ImGui::Checkbox("##pd_fullz", &em.fullZone);
+    ImGui::SetItemTooltip("Spawn anywhere inside the zone's volume;\nunchecked spawns only on its surface.");
 
     PropRow("Tank");
     if (ImGui::InputInt("##pd_tank", &em.tank) && em.tank < 0) em.tank = 0;
+    ImGui::SetItemTooltip("Total particle budget for this emitter - it stops when the tank is spent.\nEmitted all at once when Flow = -1.");
 
     PropRow("Flow");
     ImGui::DragFloat("##pd_flow", &em.flow, 0.1f, -1.0f, 100000.0f, "%.1f");
@@ -563,6 +570,7 @@ static void drawEmitters(ParticleGroupDef& grp)
 
     PropRow("Force Min");
     ImGui::DragFloat("##pd_fmin", &em.forceMin, 0.01f, 0.0f, 1000.0f);
+    ImGui::SetItemTooltip("Each particle launches with a random initial speed\nbetween Force Min and Force Max.");
     PropRow("Force Max");
     ImGui::DragFloat("##pd_fmax", &em.forceMax, 0.01f, 0.0f, 1000.0f);
 
@@ -840,6 +848,7 @@ static void drawRenderer(ParticleRendererDef& rnd)
     PropRow("Blending");
     if (ImGui::Combo("##pd_blend", &blendIdx, k_blend, 3))
         rnd.blending = k_blend[blendIdx];
+    ImGui::SetItemTooltip("alpha - normal transparency (smoke, dust)\nadd - brightens what's behind (fire, sparks, glows)\nnone - opaque quads");
 
     static const char* k_orient[] = { "camera_plane", "direction_aligned", "fixed" };
     int orientIdx = 0;
@@ -847,6 +856,7 @@ static void drawRenderer(ParticleRendererDef& rnd)
     PropRow("Orientation");
     if (ImGui::Combo("##pd_orient", &orientIdx, k_orient, 3))
         rnd.orientation = k_orient[orientIdx];
+    ImGui::SetItemTooltip("camera_plane - billboard facing the camera\ndirection_aligned - stretched along the particle's velocity (streaks, rain)\nfixed - constant Look/Up orientation");
 
     if (rnd.orientation == "fixed")
     {
@@ -876,6 +886,7 @@ static void drawRenderer(ParticleRendererDef& rnd)
 
     PropRow("Atlas W");
     if (ImGui::InputInt("##pd_aw", &rnd.atlasW) && rnd.atlasW < 1) rnd.atlasW = 1;
+    ImGui::SetItemTooltip("Columns x rows of sub-images in the texture atlas (1x1 = whole texture).\nUsed with the TEXTURE_INDEX parameter to pick/animate frames.");
     PropRow("Atlas H");
     if (ImGui::InputInt("##pd_ah", &rnd.atlasH) && rnd.atlasH < 1) rnd.atlasH = 1;
 
@@ -886,13 +897,16 @@ static void drawRenderer(ParticleRendererDef& rnd)
 
     PropRow("Depth Write");
     ImGui::Checkbox("##pd_dw", &rnd.depthWrite);
+    ImGui::SetItemTooltip("Write particles to the depth buffer. Usually OFF for blended particles -\nON causes hard edges where they overlap.");
 
     PropRow("Alpha Test");
     ImGui::Checkbox("##pd_at", &rnd.alphaTest);
+    ImGui::SetItemTooltip("Discard pixels below the alpha threshold - hard cutout edges\ninstead of soft blending (leaves, debris).");
     if (rnd.alphaTest)
     {
         PropRow("Alpha Thresh");
         ImGui::DragFloat("##pd_ath", &rnd.alphaTestThreshold, 0.001f, 0.0f, 1.0f, "%.3f");
+        ImGui::SetItemTooltip("Alpha value below which pixels are discarded.");
     }
 
     EndPropTable();

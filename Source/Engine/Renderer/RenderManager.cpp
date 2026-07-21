@@ -39,6 +39,40 @@ using namespace video;
 RenderManager* RenderManager::s_Instance = nullptr;
 irr::gui::IGUIFont* g_DefaultTextRenderableFontSm;
 
+// ---------------------------------------------------------------------------
+// Window close interception
+//
+// Irrlicht lets DefWindowProc handle WM_CLOSE, which destroys the window right
+// away — by the time device()->run() reports false there is nothing left to
+// prompt over. Subclassing the window proc turns the title-bar X and ALT+F4
+// into a *request* the app can veto (see Engine::requestQuit), so the editor
+// gets a chance to ask about unsaved work first.
+//
+// Only WM_CLOSE is swallowed; the WM_DESTROY raised by our own closeDevice()
+// still tears the window down normally.
+// ---------------------------------------------------------------------------
+static WNDPROC s_prevWndProc          = nullptr;
+static bool    s_windowCloseRequested = false;
+
+static LRESULT CALLBACK CloseInterceptWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	if (msg == WM_CLOSE)
+	{
+		s_windowCloseRequested = true;
+		return 0;
+	}
+
+	return CallWindowProc(s_prevWndProc, hWnd, msg, wParam, lParam);
+}
+
+bool RenderManager::consumeWindowCloseRequest()
+{
+	if (!s_windowCloseRequested) { return false; }
+
+	s_windowCloseRequested = false;
+	return true;
+}
+
 // Mirrors the std140 "PerFrame" uniform block declared by the lit shaders.
 // std140 rule used here: a vec3 is 16-byte aligned and a float declared right
 // after it packs into the remaining 4 bytes of the same 16-byte row.
@@ -335,6 +369,14 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
     services->setPixelShaderConstant("uTexScroll",    uvScroll,   2);
     services->setPixelShaderConstant("uTexWarpAmp",   &warpAmp,   1);
     services->setPixelShaderConstant("uTexWarpSpeed", &warpSpeed, 1);
+
+    // UV tiling — MaterialTypeParams[0..1]. Passed through raw; the shader treats
+    // 0 as 1.0 so materials that never set it (i.e. all pre-existing ones) are
+    // unaffected. Do NOT substitute the default here — negative values are valid
+    // (they mirror the axis) and only 0 is the "untiled" sentinel.
+    float uvTiling[2] = { m_currentMaterial.MaterialTypeParams[0],
+                          m_currentMaterial.MaterialTypeParams[1] };
+    services->setPixelShaderConstant("uTexTiling",    uvTiling,   2);
 }
 
 void TerrainShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32 userData)
@@ -769,6 +811,154 @@ void RenderManager::drawShadowPass()
     }
 }
 
+void RenderManager::drawSkyboxPass(bool useClusters)
+{
+    // Assumes the scene RTT is bound with a full-screen viewport (drawShadowPass
+    // restores that on exit). Renders the 2D skydome + tagged miniature from the
+    // parallax-scaled sky camera, then clears depth so drawAll() draws on top.
+    auto* mainCam = m_sceneManager->getActiveCamera();
+    if (!mainCam || !m_skyCamera)
+        return;
+
+    // Build the sky camera: it shares the main camera's orientation + lens, but
+    // its origin tracks the main camera scaled about the anchor by 1/scale, so
+    // the miniature parallaxes slowly like a distant, full-size world.
+    // (Irrlicht world space is left-handed: view direction is target - position.)
+    const irr::core::vector3df mainPos = mainCam->getAbsolutePosition();
+    const irr::core::vector3df viewDir = mainCam->getTarget() - mainPos;
+    const irr::core::vector3df skyPos  = m_skyAnchor + mainPos / m_skyScale;
+
+    m_skyCamera->setNearValue(mainCam->getNearValue());
+    m_skyCamera->setFarValue(mainCam->getFarValue());
+    m_skyCamera->setFOV(mainCam->getFOV());
+    m_skyCamera->setAspectRatio(mainCam->getAspectRatio());
+    m_skyCamera->setUpVector(mainCam->getUpVector());
+    m_skyCamera->setPosition(skyPos);
+    m_skyCamera->setTarget(skyPos + viewDir);
+
+    m_sceneManager->setActiveCamera(m_skyCamera);
+    m_skyCamera->updateAbsolutePosition();
+    m_skyCamera->render();            // set driver view/proj to the sky camera
+    updatePerFrameUBO(useClusters);   // shaders reflect the sky camera basis
+
+    // 2D background: the skydome re-centers on the active camera in its own
+    // render() and writes no depth, so it always stays behind the miniature.
+    if (m_defaultSkyDome)
+    {
+        m_defaultSkyDome->updateAbsolutePosition();
+        m_driver->setTransform(irr::video::ETS_WORLD, m_defaultSkyDome->getAbsoluteTransformation());
+        m_defaultSkyDome->render();
+    }
+
+    // The miniature. Buffers are drawn directly rather than via node->render():
+    // render() skips transparent buffers outside drawAll() (getSceneNodeRenderPass()
+    // returns a non-transparent pass), which would silently drop alpha-blended sky
+    // geometry such as scrolling cloud layers. Same workaround as the debug/LDR passes.
+    //
+    // Transparent buffers are deferred to a second, back-to-front sorted phase so
+    // overlapping cloud layers blend in the correct order.
+    struct SkyDrawItem
+    {
+        irr::scene::ISceneNode*   node;
+        irr::scene::IMeshBuffer*  buf;
+        irr::video::SMaterial     mat;
+        irr::f32                  dist;
+    };
+    std::vector<SkyDrawItem> transparentItems;
+
+    auto isTransparentMat = [&](const irr::video::SMaterial& m) -> bool
+    {
+        auto* r = m_driver->getMaterialRenderer(m.MaterialType);
+        return r && r->isTransparent();
+    };
+
+    auto drawSkyNode = [&](irr::scene::ISceneNode* n)
+    {
+        n->updateAbsolutePosition();
+        m_driver->setTransform(irr::video::ETS_WORLD, n->getAbsoluteTransformation());
+
+        irr::scene::IMesh* mesh = nullptr;
+        const auto ntype = n->getType();
+        if (ntype == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* an = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
+            if (an->getMesh())
+                mesh = an->getMesh()->getMesh(an->getFrameNr());
+        }
+        else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+        {
+            mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
+        }
+
+        if (!mesh)
+        {
+            n->render();   // billboards, particles, and other non-mesh nodes
+            return;
+        }
+
+        for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+        {
+            const irr::video::SMaterial& mtl = n->getMaterial(b);
+            if (isTransparentMat(mtl))
+            {
+                SkyDrawItem it;
+                it.node = n;
+                it.buf  = mesh->getMeshBuffer(b);
+                it.mat  = mtl;
+                it.dist = (n->getAbsolutePosition() - skyPos).getLengthSQ();
+                transparentItems.push_back(it);
+            }
+            else
+            {
+                m_driver->setMaterial(mtl);
+                m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+            }
+        }
+    };
+
+    for (size_t i = 0; i < m_skyboxNodes.size(); ++i)
+    {
+        auto* n = m_skyboxNodes[i];
+        if (!n) continue;
+
+        drawSkyNode(n);
+
+        // render()/direct draws cover only the node itself — walk the subtree.
+        std::vector<irr::scene::ISceneNode*> stack;
+        for (auto* child : n->getChildren())
+            stack.push_back(child);
+        while (!stack.empty())
+        {
+            auto* child = stack.back(); stack.pop_back();
+            if (!child->isVisible()) continue;
+            drawSkyNode(child);
+            for (auto* gc : child->getChildren())
+                stack.push_back(gc);
+        }
+    }
+
+    // Transparent sky geometry (cloud layers) — farthest first.
+    std::sort(transparentItems.begin(), transparentItems.end(),
+        [](const SkyDrawItem& a, const SkyDrawItem& b) { return a.dist > b.dist; });
+    for (auto& it : transparentItems)
+    {
+        it.node->updateAbsolutePosition();
+        m_driver->setTransform(irr::video::ETS_WORLD, it.node->getAbsoluteTransformation());
+        m_driver->setMaterial(it.mat);
+        m_driver->drawMeshBuffer(it.buf);
+    }
+
+    // Restore the main camera + UBO for drawAll().
+    m_sceneManager->setActiveCamera(mainCam);
+    mainCam->updateAbsolutePosition();
+    mainCam->render();
+    updatePerFrameUBO(useClusters);
+
+    // Wipe the miniature's depth so the real world always occludes it, regardless
+    // of the miniature's tiny actual distances.
+    m_driver->clearZBuffer();
+}
+
 void RenderManager::drawPrePass()
 {
     if (m_prepassMat < 0 || !m_prepassRTT)
@@ -1153,6 +1343,10 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	BOOL dark = TRUE;
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
 
+	// See CloseInterceptWndProc — makes the title-bar X vetoable.
+	s_prevWndProc = reinterpret_cast<WNDPROC>(
+		SetWindowLongPtr(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&CloseInterceptWndProc)));
+
 	//m_driver->setAllowZWriteOnTransparent(true);
 
     m_sceneManager = m_device->getSceneManager();
@@ -1271,6 +1465,10 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 
 	// Make a default camera
 	m_defaultCamera = m_sceneManager->addCameraSceneNode();
+
+	// Dedicated camera for the 3D skybox pass (never the active gameplay camera).
+	m_skyCamera = m_sceneManager->addCameraSceneNode(nullptr,
+		irr::core::vector3df(0, 0, 0), irr::core::vector3df(0, 0, 1), -1, false);
 
 	m_device->getCursorControl()->setVisible(false);
 
@@ -1474,12 +1672,32 @@ void RenderManager::draw(f32 dt)
         m_ldrEffectNodes[i]->setVisible(false);
     }
 
+    // Hide the 3D-skybox miniature (and, when enabled, the skydome) so they are
+    // excluded from the shadow/main/pre passes. They are drawn in drawSkyboxPass()
+    // below with the scaled sky camera. When 3D sky is off, the skydome stays
+    // visible and renders normally inside drawAll() — no behavior change.
+    std::vector<bool> skyboxWasVisible(m_skyboxNodes.size());
+    for (size_t i = 0; i < m_skyboxNodes.size(); ++i)
+    {
+        skyboxWasVisible[i] = m_skyboxNodes[i]->isVisible();
+        m_skyboxNodes[i]->setVisible(false);
+    }
+    bool skydomeWasVisible = m_defaultSkyDome ? m_defaultSkyDome->isVisible() : false;
+    if (m_sky3dEnabled && m_defaultSkyDome)
+        m_defaultSkyDome->setVisible(false);
+
     // Shadow depth pre-pass — renders each assigned caster into its atlas quadrant.
     drawShadowPass();
 
     // Refresh the UBO with this frame's shadow matrices/rects (the earlier fill
     // ran before the shadow pass and carried last frame's).
     updatePerFrameUBO(clustersOn);
+
+    // 3D skybox: draw the miniature + skydome from the parallax-scaled camera,
+    // then clear depth so the real world composites over it. Restores the main
+    // camera + UBO before returning. Skipped entirely when no sky camera exists.
+    if (m_sky3dEnabled)
+        drawSkyboxPass(clustersOn);
 
     m_sceneManager->drawAll();
 
@@ -1564,6 +1782,12 @@ void RenderManager::draw(f32 dt)
     // Restore LDR effect node visibility for game logic / next frame
     for (size_t i = 0; i < m_ldrEffectNodes.size(); ++i)
         m_ldrEffectNodes[i]->setVisible(ldrWasVisible[i]);
+
+    // Restore skybox miniature / skydome visibility
+    for (size_t i = 0; i < m_skyboxNodes.size(); ++i)
+        m_skyboxNodes[i]->setVisible(skyboxWasVisible[i]);
+    if (m_defaultSkyDome)
+        m_defaultSkyDome->setVisible(skydomeWasVisible);
 
     // Stamp viewmodels into the prepass at their true depth (their subtree
     // transforms were updated by the viewmodel pass above) — otherwise the gun

@@ -65,8 +65,9 @@ static const BuilderComponentEntry k_builderComponents[] = {
     { "Tween",                 ENTITY_COMPONENT::TWEEN,               false },
     { "Nav Agent",             ENTITY_COMPONENT::NAVAGENT,            false },
     { "Water",                 ENTITY_COMPONENT::WATER,               false },
+    { "Skybox",                ENTITY_COMPONENT::SKYBOX,              false },
 };
-static constexpr int k_builderComponentCount = 28;
+static constexpr int k_builderComponentCount = 29;
 
 static void s_previewEnsureInfra()
 {
@@ -224,6 +225,7 @@ void EditorInterface::draw_window_entity_builder()
         const char* typeList = "NULL\0STATIC\0DYNAMIC\0PLAYER\0MARKER\0DEBUG\0\0";
         ImGui::PushID("BuilderType");
         ImGui::Combo("Type", &s_builderType, typeList, 6);
+        ImGui::SetItemTooltip("STATIC = immovable scenery (included in lightmap baking).\nDYNAMIC = can move at runtime.\nPLAYER/MARKER/DEBUG are for engine-managed special entities.");
         ImGui::PopID();
 
         ImGui::Spacing();
@@ -254,7 +256,9 @@ void EditorInterface::draw_window_entity_builder()
         ImGui::Separator();
         ImGui::Spacing();
 
-        if (ImGui::Button("Create Entity"))
+        bool createClicked = ImGui::Button("Create Entity");
+        ImGui::SetItemTooltip("Create a working copy with the checked components and open\nthe property editors + 3D preview. Nothing is saved until Export.");
+        if (createClicked)
         {
             if (s_builderExportPath[0] == '\0')
             {
@@ -385,7 +389,9 @@ void EditorInterface::draw_window_entity_builder()
             }
         }
 
-        if (ImGui::Button("Export"))
+        bool exportClicked = ImGui::Button("Export");
+        ImGui::SetItemTooltip("Write the entity to the .ent file at the path above,\nso it can be spawned from the entity list.");
+        if (exportClicked)
         {
             const std::string path(s_builderExportPath);
             if (!path.empty())
@@ -405,12 +411,14 @@ void EditorInterface::draw_window_entity_builder()
         ImGui::SameLine();
         if (ImGui::Button("Reset"))
             s_builderResetAll();
+        ImGui::SetItemTooltip("Discard the working entity and start over. Unexported changes are lost.");
         ImGui::SameLine();
         if (ImGui::Button("Close"))
         {
             s_builderKillEntity();
             m_windowData.draw_window_entity_builder = false;
         }
+        ImGui::SetItemTooltip("Close the builder and discard the working entity. Unexported changes are lost.");
     }
 
     ImGui::End();

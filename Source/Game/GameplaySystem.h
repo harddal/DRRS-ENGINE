@@ -50,8 +50,9 @@ private:
 	// tokens, mirroring the per-frame LOGIC pass.
 	void fireReceiverList(const std::string& csv);
 
-	// CONTENT_TRIGGER brushes: exact convex player-overlap test, fire the
-	// brush's receiver list on enter (edge-triggered, re-arms on exit).
-	void updateBrushTriggers();
+	// Per-frame player-vs-brush volume tests: CONTENT_TRIGGER brushes fire
+	// their receiver list on enter (edge-triggered, re-arms on exit);
+	// CONTENT_LADDER overlap feeds PlayerController::setOnLadder.
+	void updateBrushVolumes();
 
 };

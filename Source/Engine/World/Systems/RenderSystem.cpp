@@ -222,10 +222,16 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 		node->getMaterial(i).SpecularColor.setAlpha(0);   // dielectric
 	*/
 
+	// Opacity feeds uAlpha in phong_perpixel.frag via the DiffuseColor alpha.
+	// Default 1.0 -> 255, which matches the previous hardcoded behavior.
+	const u32 diffuseAlpha = static_cast<u32>(
+		irr::core::clamp(meshComponent.opacity, 0.0f, 1.0f) * 255.0f);
+
 	for (auto i = 0; i < meshComponent.node->getMaterialCount(); i++)
 	{
 		meshComponent.node->getMaterial(i).Shininess = 0.f;
 		meshComponent.node->getMaterial(i).SpecularColor.setAlpha(0);
+		meshComponent.node->getMaterial(i).DiffuseColor.setAlpha(diffuseAlpha);
         for (u32 p = 0; p < 8; ++p)
             meshComponent.node->getMaterial(i).MaterialTypeParams[p] = meshComponent.materialTypeParams[p];
 	}
@@ -726,6 +732,8 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 			RenderManager::Get()->unregisterViewmodelNode(mc.node);
 		if (entity.getComponent<RenderComponent>().isDebug && mc.node)
 			RenderManager::Get()->unregisterDebugNode(mc.node);
+		if (mc.node)
+			RenderManager::Get()->unregisterSkyboxNode(mc.node); // no-op if not registered
 
 		mc.node->remove();
         mc.selector->drop();
@@ -786,11 +794,12 @@ void RenderSystem::update()
 		auto& transform = entity.getComponent<TransformComponent>();
         
 		if (entity.hasComponent<MeshComponent>()) {
-			auto& node = entity.getComponent<MeshComponent>().node;
+			auto& mc = entity.getComponent<MeshComponent>();
+			auto& node = mc.node;
 
             node->setID(entity.getComponent<DescriptorComponent>().id);
 
-			if (entity.getComponent<MeshComponent>().isPreview)
+			if (mc.isPreview)
 			{
 				node->setVisible(false);
 			}
@@ -800,6 +809,20 @@ void RenderSystem::update()
 			}
 
 			node->updateAbsolutePosition();
+
+			// Keep 3D-skybox registration in sync with the SkyboxComponent tag,
+			// so toggling the tag in the editor takes effect live.
+			bool wantSky = entity.hasComponent<SkyboxComponent>();
+			if (wantSky && !mc.registeredSky)
+			{
+				RenderManager::Get()->registerSkyboxNode(node);
+				mc.registeredSky = true;
+			}
+			else if (!wantSky && mc.registeredSky)
+			{
+				RenderManager::Get()->unregisterSkyboxNode(node);
+				mc.registeredSky = false;
+			}
 		}
         
 		if (entity.hasComponent<LightComponent>()) {

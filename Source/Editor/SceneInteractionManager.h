@@ -71,6 +71,7 @@ struct EditorConfiguration
 		useSnap;
 
 	float snapX, snapY, snapZ;
+	float snapAngle; // rotation snap increment, in degrees
 
 	template <class Archive>
 	void serialize(Archive& archive)
@@ -80,7 +81,8 @@ struct EditorConfiguration
 			CEREAL_NVP(useSnap),
 			CEREAL_NVP(snapX),
 			CEREAL_NVP(snapY),
-			CEREAL_NVP(snapZ));
+			CEREAL_NVP(snapZ),
+			CEREAL_NVP(snapAngle));
 	}
 
 	EditorConfiguration() :
@@ -88,7 +90,8 @@ struct EditorConfiguration
 		useSnap(false),
 		snapX(0.25f),
 		snapY(0.25f),
-		snapZ(0.25f)
+		snapZ(0.25f),
+		snapAngle(15.0f)
 	{}
 };
 
@@ -314,6 +317,16 @@ public:
         return m_snap[0];
     }
 
+    void setSnapAngle(float deg)
+    {
+		m_configuration.snapAngle = m_snapAngle = deg;
+		saveConfiguration(m_configuration);
+    }
+    float getSnapAngle()
+    {
+        return m_snapAngle;
+    }
+
     ImTransformControl::OPERATION getWidgetToolMode() { return m_widgetType; }
     ImTransformControl::MODE getWidgetCoordMode() { return m_widgetCoordSet; }
     std::string getWidgetToolModeStr() { return m_selectedWidgetType; }
@@ -360,6 +373,16 @@ private:
     bool m_isWidgetDrawn, m_useSnap, m_selectNewSpawnedEntity;
 
     float m_snap[3];
+    float m_snapAngle; // rotation snap increment, in degrees
+
+    // Snap pointer for the active gizmo operation: the angle value in ROTATE
+    // mode (ImGuizmo reads snap[0] as degrees), the position grid otherwise.
+    // Returns nullptr when snapping is disabled.
+    float* activeSnap()
+    {
+        if (!m_useSnap) return nullptr;
+        return (m_widgetType == ImTransformControl::ROTATE) ? &m_snapAngle : &m_snap[0];
+    }
 
     int m_clipboardSize = 0;
 

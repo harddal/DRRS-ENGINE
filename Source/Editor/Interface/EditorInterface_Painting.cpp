@@ -39,21 +39,25 @@ void EditorInterface::draw_window_vegetation_painter()
     {
         if (ImGui::Button("Paint Mode: OFF", ImVec2(-1, 0))) painter.m_active = true;
     }
+    ImGui::SetItemTooltip("While ON, click/drag in the viewport to scatter the palette meshes\nonto the surface under the cursor.");
 
     ImGui::Text("Brush");
 
     ImGui::Text("Radius:");      ImGui::SameLine(); ImGui::PushItemWidth(80);
     ImGui::InputFloat("##vp_radius",   &painter.m_radius,   0.f, 0.f, "%.1f");
+    ImGui::SetItemTooltip("Radius of the scatter area around the cursor, world units.");
     if (painter.m_radius < 0.1f) painter.m_radius = 0.1f;
     ImGui::PopItemWidth();
 
     ImGui::Text("Per tick:");    ImGui::SameLine(); ImGui::PushItemWidth(80);
     ImGui::InputInt("##vp_count", &painter.m_countPerTick);
+    ImGui::SetItemTooltip("How many props are placed each paint tick while the brush is held.");
     if (painter.m_countPerTick < 1) painter.m_countPerTick = 1;
     ImGui::PopItemWidth();
 
     ImGui::Text("Interval (s):"); ImGui::SameLine(); ImGui::PushItemWidth(80);
     ImGui::InputFloat("##vp_interval", &painter.m_interval, 0.f, 0.f, "%.2f");
+    ImGui::SetItemTooltip("Seconds between paint ticks while the brush is held down.");
     if (painter.m_interval < 0.01f) painter.m_interval = 0.01f;
     ImGui::PopItemWidth();
 
@@ -68,9 +72,11 @@ void EditorInterface::draw_window_vegetation_painter()
     ImGui::Text("Shader:");
     if (ImGui::Combo("##vp_shader", &vpCurrentShader, vpShaderNames, vpShaderCount))
         painter.m_shader = vpShaderNames[vpCurrentShader];
+    ImGui::SetItemTooltip("Shader given to painted props - foliage/grass add wind sway.");
 
     ImGui::Text("Scale min:"); ImGui::SameLine(); ImGui::PushItemWidth(60);
     ImGui::InputFloat("##vp_scalemin", &painter.m_scaleMin, 0.f, 0.f, "%.2f");
+    ImGui::SetItemTooltip("Each placed prop gets a random scale between min and max\nfor natural variation.");
     if (painter.m_scaleMin < 0.01f) painter.m_scaleMin = 0.01f;
     ImGui::PopItemWidth();
     ImGui::SameLine();
@@ -81,6 +87,7 @@ void EditorInterface::draw_window_vegetation_painter()
 
     ImGui::Text("Cull dist:"); ImGui::SameLine(); ImGui::PushItemWidth(80);
     ImGui::InputFloat("##vp_cull", &painter.m_cullDistance, 0.f, 0.f, "%.1f");
+    ImGui::SetItemTooltip("Camera distance beyond which painted props are hidden -\nkeeps dense vegetation cheap in the distance.");
     if (painter.m_cullDistance < 0.f) painter.m_cullDistance = 0.f;
     ImGui::PopItemWidth();
 
@@ -199,6 +206,7 @@ void EditorInterface::draw_window_texture_painter()
                 const int resValues[] = { 256, 512, 1024 };
                 s_splatRes = resValues[resIndex];
             }
+            ImGui::SetItemTooltip("Splat-map resolution - higher gives finer paint detail\nat the cost of memory.");
             ImGui::PopItemWidth();
 
             if (ImGui::Button("Enable Texture Painting", ImVec2(-1, 0)))
@@ -206,6 +214,7 @@ void EditorInterface::draw_window_texture_painter()
                 PropManager::Get()->enablePainting(selId, s_splatRes);
                 tp.targetProp = PropManager::Get()->getProp(selId);
             }
+            ImGui::SetItemTooltip("Give this prop a splat map and switch it to the terrain shader\nso up to 4 detail textures can be painted onto it.");
         }
         else
         {
@@ -255,6 +264,7 @@ void EditorInterface::draw_window_texture_painter()
 
     ImGui::Text("Strength:"); ImGui::SameLine(); ImGui::PushItemWidth(80);
     ImGui::SliderFloat("##tp_strength", &tp.strength, 0.01f, 1.0f);
+    ImGui::SetItemTooltip("Opacity added per stroke - low values blend layers gradually.");
     ImGui::PopItemWidth();
 
     ImGui::Separator();
@@ -329,7 +339,9 @@ void EditorInterface::draw_window_texture_painter()
         ImGui::Text("Tiling (all layers)");
         float* tiling = RenderManager::Get()->terrainCallback()->tiling;
         ImGui::PushItemWidth(50);
-        ImGui::InputFloat("A##til", &tiling[0], 0.f, 0.f, "%.1f"); ImGui::SameLine();
+        ImGui::InputFloat("A##til", &tiling[0], 0.f, 0.f, "%.1f");
+        ImGui::SetItemTooltip("Texture repeats per layer across the surface.");
+        ImGui::SameLine();
         ImGui::InputFloat("B##til", &tiling[1], 0.f, 0.f, "%.1f"); ImGui::SameLine();
         ImGui::InputFloat("C##til", &tiling[2], 0.f, 0.f, "%.1f"); ImGui::SameLine();
         ImGui::InputFloat("D##til", &tiling[3], 0.f, 0.f, "%.1f");
@@ -339,6 +351,7 @@ void EditorInterface::draw_window_texture_painter()
 
         if (ImGui::Button("Save Splat Map", ImVec2(-1, 0)))
             PropManager::Get()->saveSplatMaps();
+        ImGui::SetItemTooltip("Write painted splat maps to disk - unsaved painting is lost\nwhen the scene reloads.");
     }
 
     ImGui::End();

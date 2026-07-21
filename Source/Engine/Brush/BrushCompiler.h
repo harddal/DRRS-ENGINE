@@ -29,12 +29,20 @@ namespace BrushCompiler
         CLIP,       // tool brushes whose clipMask() equals clipMask, all faces
         TOOL,       // all tool brushes, all faces — editor overlay mesh
                     // (vertices emitted with alpha for EMT_TRANSPARENT_VERTEX_ALPHA)
+        MOVER,      // SOLID_ENTITY brushes only, FACE_NODRAW faces skipped
     };
 
     // Build a world-space SMesh from the given brushes per the filter.
+    // SOLID_ENTITY (mover) brushes are excluded from every filter but MOVER.
     // Returns nullptr when there is nothing to emit; caller drops.
     irr::scene::SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes,
                                       MeshFilter filter, irr::u32 clipMask = 0);
+
+    // Mover entity mesh: MOVER-filtered build translated into pivot-local
+    // space.  UVs are emitted from the world-space positions first, so the
+    // Valve-220 texture alignment survives the re-basing.  Caller drops.
+    irr::scene::SMesh* buildMoverMesh(const std::vector<const Brush*>& group,
+                                      const irr::core::vector3df& pivot);
 
     // Create/refresh/destroy the chunk's scene node from its member brushes,
     // using the rebuild-in-place pattern (new SAnimatedMesh + setMesh, then

@@ -68,6 +68,7 @@ static void function_upgrade_entity_files()
     schemaEntity.addComponent<NPCComponent>();
     schemaEntity.addComponent<TriggerZoneComponent>();
     schemaEntity.addComponent<WaterComponent>();
+    schemaEntity.addComponent<SkyboxComponent>();
 
     const std::string tempPath = g_entity_path + "_upgrade_schema_tmp_.ent";
     wm->exportEntity(schemaEntity, tempPath, false);
@@ -320,7 +321,7 @@ void EditorInterface::draw_menubar_main()
 
 			if (ImGui::MenuItem("Quit", "ALT+F4"))
 			{
-				Engine::Get()->exit();
+				Engine::Get()->requestQuit();
 			}
 
 			ImGui::EndMenu();
@@ -404,10 +405,13 @@ void EditorInterface::draw_menubar_main()
 			if (ImGui::MenuItem("Entity Properties Menu", "CTRL+P")) { m_windowData.draw_window_prop_ent = true; }
 			if (ImGui::MenuItem("Entity Spawn Menu", "CTRL+E")) { m_windowData.draw_window_spawn_entity = true; }
 			if (ImGui::MenuItem("Entity Builder", "CTRL+B")) { m_windowData.draw_window_entity_builder = true; }
+			ImGui::SetItemTooltip("Author a new entity type (.ent file) with a live 3D preview.");
 			if (ImGui::MenuItem("Prop Spawn Menu", "")) { m_windowData.draw_window_spawn_prop = true; }
+			ImGui::SetItemTooltip("Place static decoration meshes as lightweight props -\ncheaper than full entities, ideal for set dressing.");
 			if (ImGui::MenuItem("Vegetation Painter", "")) { m_windowData.draw_window_vegetation_painter = true; }
+			ImGui::SetItemTooltip("Paint grass/foliage props across surfaces with a brush.");
 			if (ImGui::MenuItem("Texture Painter",    "")) { m_windowData.draw_window_texture_painter    = true; }
-			if (ImGui::MenuItem("Brush Editor",       "")) { m_windowData.draw_window_brush_editor       = true; }
+			ImGui::SetItemTooltip("Paint blended texture layers onto terrain-style meshes.");
 
 			ImGui::Separator();
 
@@ -419,7 +423,9 @@ void EditorInterface::draw_menubar_main()
 					MB_OK | MB_ICONERROR);
 			}
 
-			if (ImGui::MenuItem("Format Entity Files"))
+			bool formatEntClicked = ImGui::MenuItem("Format Entity Files");
+			ImGui::SetItemTooltip("Upgrade every .ent file to the current format: add missing fields,\nfix bool values, remove duplicate tags. Makes a backup first.");
+			if (formatEntClicked)
 			{
 				if (MessageBoxA(nullptr,
 					"This will modify all .ent files in content/entity/ to add missing fields, fix bool values, and remove duplicate tags.\n\nA backup of content/entity/ will be created automatically before any changes are made.\n\nContinue?",
@@ -476,6 +482,8 @@ void EditorInterface::draw_menubar_main()
 
 			ImGui::Separator();
 
+			if (ImGui::MenuItem("Brush Editor", "")) { m_windowData.draw_window_brush_editor = true; }
+
 			if (ImGui::MenuItem("Script Editor", ""))
 			{
 				m_windowData.draw_window_script_editor = true;
@@ -484,7 +492,9 @@ void EditorInterface::draw_menubar_main()
 			if (ImGui::MenuItem("Particle Designer", ""))
 				m_windowData.draw_window_particle_designer = true;
 
-			if (ImGui::MenuItem("Export Script Functions"))
+			bool exportFuncsClicked = ImGui::MenuItem("Export Script Functions");
+			ImGui::SetItemTooltip("Write every engine function exposed to AngelScript into a text file -\na quick API reference for script authors.");
+			if (exportFuncsClicked)
 			{
 				std::ofstream file(Utility::SaveFileDialog("Text Files\0*.txt\0Any File\0*.*\0"));
 

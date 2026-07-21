@@ -258,6 +258,9 @@ entityid WorldManager::deserializeEntity(const string& file, entityid id, bool u
             if (has("particle"))
                 loadComponent<XMLInputArchive, ParticleComponent>(archive, "particle", entity, entityName);
 
+            if (has("skybox"))
+                loadComponent<XMLInputArchive, SkyboxComponent>(archive, "skybox", entity, entityName);
+
             // --- Game-specific components ---
             GameState::deserializeComponent(entity, archive, info.components, entityName);
 

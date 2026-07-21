@@ -28,8 +28,11 @@ enum BrushFaceFlags : irr::u8
 
 enum BrushSolidClass : irr::u8
 {
-    SOLID_WORLD = 0,        // static world geometry, chunk-batched (only v1 value)
-    // reserved: SOLID_DETAIL, SOLID_ENTITY
+    SOLID_WORLD  = 0,       // static world geometry, chunk-batched
+    SOLID_DETAIL = 1,       // reserved
+    SOLID_ENTITY = 2,       // mover source brush: owned by the entity named in
+                            // Brush::owner, excluded from every static-world
+                            // pipeline (chunks/collision/nav/lightmaps/picking)
 };
 
 // Per-brush content semantics.  0 = normal structural brush (renders, blocks
@@ -44,13 +47,15 @@ enum BrushContentFlags : irr::u32
     CONTENT_TRIGGER      = 1 << 3,  // fires `receiver` entity list on player overlap
     CONTENT_SKY          = 1 << 4,  // sky marker; no runtime behavior in v1
     CONTENT_TRIGGER_ONCE = 1 << 5,  // modifier on CONTENT_TRIGGER: fire once per session
+    CONTENT_LADDER       = 1 << 6,  // player can climb while overlapping the volume
 
     CONTENT_CLIP_MASK = CONTENT_CLIP_PLAYER | CONTENT_CLIP_MONSTER | CONTENT_CLIP_WEAPON,
 };
 
 // brushes.xml schema version, written as a <version> header element by
 // BrushManager::serialize.  Files without the element load as version 0.
-constexpr uint32_t BRUSHES_XML_VERSION = 1;
+// v1: contentFlags + receiver.  v2: owner (mover brushes).
+constexpr uint32_t BRUSHES_XML_VERSION = 2;
 
 struct BrushFace
 {
@@ -125,6 +130,8 @@ struct Brush
     irr::u32    contentFlags = 0;               // BrushContentFlags; 0 = normal structural brush
     std::string receiver;                       // trigger targets: CSV entity names
                                                 // (LogicComponent::receiver convention, empty = unset)
+    std::string owner;                          // SOLID_ENTITY only: name of the mover entity whose
+                                                // mesh this brush compiles into; empty for world brushes
 
     // ---- derived (never serialized) ----
     std::vector<irr::core::vector3df> verts;    // welded shared vertex pool
@@ -139,6 +146,7 @@ struct Brush
 
     bool isToolBrush() const { return contentFlags != 0; }
     irr::u32 clipMask() const { return contentFlags & CONTENT_CLIP_MASK; }
+    bool isMoverBrush() const { return solidClass == SOLID_ENTITY; }
 
     template<class Archive>
     void save(Archive& ar) const
@@ -152,7 +160,8 @@ struct Brush
            CEREAL_NVP(castShadows),
            CEREAL_NVP(receivesLightmap),
            CEREAL_NVP(contentFlags),
-           CEREAL_NVP(receiver));
+           CEREAL_NVP(receiver),
+           CEREAL_NVP(owner));
     }
 
     // Called manually by BrushManager::deserialize with the file-level schema
@@ -174,5 +183,7 @@ struct Brush
         if (version >= 1)
             ar(CEREAL_NVP(contentFlags),
                CEREAL_NVP(receiver));
+        if (version >= 2)
+            ar(CEREAL_NVP(owner));
     }
 };

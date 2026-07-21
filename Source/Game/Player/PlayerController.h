@@ -9,6 +9,8 @@
 #include "InventoryController.h"
 #include "WeaponController.h"
 
+namespace physx { class PxRigidDynamic; }
+
 //#define DISABLE_HUD_AND_INV
 //#define DISPLAY_PLAYER_STATS
 
@@ -50,6 +52,9 @@ public:
 	void setIsSwimming(bool swimming = true) { m_isSwimming = swimming; }
 	bool isHeadUnderWater() { return m_isHeadUnderWater; }
 	void setIHeadUnderWater(bool under = true) { m_isHeadUnderWater = under; }
+	// Set per frame by GameplaySystem's ladder-brush volume test (swim pattern)
+	bool isOnLadder() { return m_isOnLadder; }
+	void setOnLadder(bool on = true) { m_isOnLadder = on; }
 	bool isBlocking() { return m_isBlocking; }
 	void setIsBlocking (bool blocking = true) { m_isBlocking = blocking; }
 
@@ -65,6 +70,11 @@ protected:
 
 private:
     bool m_locked = false, m_isMoving = false, m_firstUpdate = true, m_isSwimming = false, m_isHeadUnderWater = false, m_isBlocking = false, m_isSliding = false;
+
+	// Ladder climbing (CONTENT_LADDER brush volumes)
+	bool m_isOnLadder = false;
+	int  m_ladderIgnoreUntil = 0;   // jump-detach grace: the volume test re-grabs
+	                                // every frame, so detaching needs a timer
 
 	// Clean camera orientation (no FX baked in) — driven by mouse input,
 	// used as the authoritative base so recoil offsets decay back to the
@@ -92,6 +102,11 @@ private:
 	const int m_coyoteTime = 110;               // Grace period for jumping after leaving ground (ms)
 	const int m_jumpBufferTime = 120;           // Time to buffer jump inputs (ms)
 
+	// Fall damage tuning (landing speed, units/sec — see m_lastAirVelocityY)
+	const float m_fallDamageMinSpeed = 15.0f;    // below this: no damage, just landing bob
+	const float m_fallDamageMaxSpeed = 25.0f;    // at/above this: instant kill
+	const float m_fallDamageMax      = 30.0f;    // falloff damage just under the instakill speed
+
 	// Dodge mechanic (Unreal-style double-tap)
 	int   m_lastForwardTapTime  = -1000;
 	int   m_lastBackwardTapTime = -1000;
@@ -116,9 +131,22 @@ private:
 	// Footstep sound timing
 	int m_lastFootstepTime = 0;                  // Last time a footstep sound played
 	const int m_minFootstepInterval = 400;       // Minimum time between footsteps (ms)
-	
+
 	// Ground detection state (used for reliable footstep triggering)
 	int m_airborneFrameCount = 0;                // Consecutive frames without ground collision
+
+	// Movement/physics state — deliberately members, not function-local statics.
+	// GameManager fully destroys and reconstructs PlayerController on every
+	// game<->editor toggle, but a local static in update() would survive that
+	// swap, carrying stale state (e.g. velocity from falling into the void)
+	// into the new instance. m_smoothedY/m_lastCCTPosition are seeded from the
+	// live CCT the first time update() runs on this instance (see m_firstUpdate).
+	irr::core::vector3df m_playerVelocity  = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	irr::core::vector3df m_lastCCTPosition = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	float m_smoothedY  = 0.0f;
+	bool  m_isCrouched = false;
+	physx::PxRigidDynamic* m_groundMover = nullptr;
+	irr::core::vector3df   m_groundMoverLastPos = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 
 	HUDController         m_hudController;
 	InteractionController m_interactionController;

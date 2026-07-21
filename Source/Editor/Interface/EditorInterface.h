@@ -48,10 +48,19 @@ namespace EditorInterface
     void loadTextureList();
 
 	void function_open_scene();
-	void funtion_save_scene();
-	void function_save_scene_as();
+
+	// Return true only when the scene actually reached disk — a cancelled
+	// Save As dialog reports false so callers (the quit prompt) can stay put.
+	bool funtion_save_scene();
+	bool function_save_scene_as();
+
 	void function_play_scene();
 	void function_showhide_menubar();
+
+	// Installed as Engine's quit-request handler for the lifetime of the editor
+	// state. Always vetoes the immediate quit and raises draw_quit_prompt().
+	bool function_request_quit();
+	void draw_quit_prompt();
 
 	void draw_menubar_main();
 	void draw_window_spawn_entity();

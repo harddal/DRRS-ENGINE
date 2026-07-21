@@ -81,7 +81,17 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
         if (!brush || !brush->geometryValid)
             continue;
 
-        if (filter == MeshFilter::CLIP)
+        if (filter == MeshFilter::MOVER)
+        {
+            if (!brush->isMoverBrush())
+                continue;
+        }
+        else if (brush->isMoverBrush())
+        {
+            // Mover source brushes never enter the static-world pipelines
+            continue;
+        }
+        else if (filter == MeshFilter::CLIP)
         {
             if (!brush->isToolBrush() || brush->clipMask() != clipMask)
                 continue;
@@ -93,7 +103,8 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
 
         for (const BrushFace& face : brush->faces)
         {
-            if ((face.flags & FACE_NODRAW) && filter == MeshFilter::RENDER)
+            if ((face.flags & FACE_NODRAW) &&
+                (filter == MeshFilter::RENDER || filter == MeshFilter::MOVER))
                 continue;
             if (face.loop.size() < 3)
                 continue;
@@ -172,6 +183,25 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
 
     if (mesh)
         mesh->recalculateBoundingBox();
+    return mesh;
+}
+
+SMesh* buildMoverMesh(const std::vector<const Brush*>& group, const vector3df& pivot)
+{
+    SMesh* mesh = buildChunkMesh(group, MeshFilter::MOVER);
+    if (!mesh)
+        return nullptr;
+
+    // UVs were emitted from the world-space positions above; localizing the
+    // positions afterwards keeps texel alignment exact under the re-basing.
+    for (u32 b = 0; b < mesh->getMeshBufferCount(); b++)
+    {
+        auto* buf = static_cast<CMeshBuffer<S3DVertex2TCoords>*>(mesh->getMeshBuffer(b));
+        for (u32 v = 0; v < buf->Vertices.size(); v++)
+            buf->Vertices[v].Pos -= pivot;
+        buf->recalculateBoundingBox();
+    }
+    mesh->recalculateBoundingBox();
     return mesh;
 }
 
@@ -275,9 +305,9 @@ void updateChunkNode(BrushChunk& chunk, const std::vector<const Brush*>& brushes
 
     // Trigger-zone overlay recipe (RenderSystem), except vertex alpha carries
     // the transparency so opaque tool textures still render see-through.
-    chunk.toolNode->setMaterialType(EMT_TRANSPARENT_VERTEX_ALPHA);
+    chunk.toolNode->setMaterialType(EMT_TRANSPARENT_ALPHA_CHANNEL);
     chunk.toolNode->setMaterialFlag(EMF_ZWRITE_ENABLE,     false);
-    chunk.toolNode->setMaterialFlag(EMF_BACK_FACE_CULLING, false);
+    chunk.toolNode->setMaterialFlag(EMF_BACK_FACE_CULLING, true);
     chunk.toolNode->setMaterialFlag(EMF_LIGHTING,          false);
     chunk.toolNode->setVisible(BrushManager::Get()->isToolOverlayVisible());
 }

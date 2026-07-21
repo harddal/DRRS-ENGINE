@@ -81,6 +81,7 @@ void SceneInteractionManager::init()
 	m_snap[0] = m_configuration.snapX;
 	m_snap[1] = m_configuration.snapY;
 	m_snap[2] = m_configuration.snapZ;
+	m_snapAngle = m_configuration.snapAngle;
 
 	m_selectedWidgetType = "Translate";
 	m_selectedTransType = "World";
@@ -319,6 +320,7 @@ void SceneInteractionManager::draw()
 	m_snap[0] = m_configuration.snapX;
 	m_snap[1] = m_configuration.snapY;
 	m_snap[2] = m_configuration.snapZ;
+	m_snapAngle = m_configuration.snapAngle;
 
 	// --- Prop gizmo (independent of the entity selection state) ---
 	if (m_selectedPropId != UINT32_MAX && PropManager::Get())
@@ -361,7 +363,7 @@ void SceneInteractionManager::draw()
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
 				m_widgetType, m_widgetCoordSet,
-				transform.pointer(), nullptr, m_useSnap ? &m_snap[0] : nullptr);
+				transform.pointer(), nullptr, activeSnap());
 
 			if (ImTransformControl::IsUsing())
 			{
@@ -452,7 +454,7 @@ void SceneInteractionManager::draw()
 						RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 						RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
 						m_widgetType, m_widgetCoordSet,
-						transform.pointer(), nullptr, m_useSnap ? &m_snap[0] : nullptr);
+						transform.pointer(), nullptr, activeSnap());
 
 					if (!m_gizmoWasUsing && ImTransformControl::IsUsing())
 					{
@@ -628,7 +630,7 @@ void SceneInteractionManager::draw()
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
 				m_widgetType, m_widgetCoordSet,
-				transform.pointer(), nullptr, m_useSnap ? &m_snap[0] : nullptr);
+				transform.pointer(), nullptr, activeSnap());
 
 			if (!m_gizmoWasUsing && ImTransformControl::IsUsing())
 			{

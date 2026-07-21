@@ -88,6 +88,17 @@ struct MeshComponent : anax::Component
     // Per-material shader params uploaded as MaterialTypeParams[0..7] on node creation.
     float materialTypeParams[8] = {};
 
+    // Per-material opacity multiplier (uAlpha in phong_perpixel.frag), applied via
+    // the material's DiffuseColor alpha. 1.0 = fully opaque (default, matches the
+    // previous hardcoded behavior). Only visible on transparent material types —
+    // used to fade skybox cloud layers and other alpha-blended geometry.
+    float opacity = 1.0f;
+
+    // Runtime-only: tracks whether this node is currently registered with the
+    // RenderManager 3D-skybox pass. Kept in sync each frame by RenderSystem
+    // against the presence of a SkyboxComponent. Not serialized.
+    bool registeredSky = false;
+
 	template <class Archive>
 	void serialize(Archive& archive)
 	{
@@ -110,6 +121,7 @@ struct MeshComponent : anax::Component
         try { archive(CEREAL_NVP(texRoughness)); } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(texMetallic));  } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(texEmission));  } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(opacity));      } catch (cereal::Exception&) {}
 	}
 
 	MeshComponent() :

@@ -604,6 +604,11 @@ public:
 		const irr::core::vector3df& objectWorldPos,
 		int maxLights);
 
+    // True once (then cleared) after the OS window's close button or ALT+F4 was
+    // pressed. The WM_CLOSE itself is swallowed, so the app owns the decision to
+    // actually quit — Engine::update() forwards this to Engine::requestQuit().
+    bool consumeWindowCloseRequest();
+
     irr::IrrlichtDevice*                 device()             const { return m_device; }
     irr::video::IVideoDriver*            driver()             const { return m_driver; }
     irr::scene::ISceneManager*           sceneManager()       const { return m_sceneManager; }
@@ -801,6 +806,30 @@ public:
         if (it != m_debugNodes.end()) m_debugNodes.erase(it);
     }
 
+    // 3D skybox (Source-style): nodes registered here are the tagged miniature.
+    // They are hidden during the shadow/main/pre passes and instead rendered in
+    // drawSkyboxPass() from a parallax-scaled sky camera, then depth-cleared so
+    // the real world composites on top. The anchor + scale come from an
+    // MT_SKY_CAMERA marker, fed in each frame via setSkyCamera(). Always
+    // unregister a node before removing it to avoid a dangling pointer.
+    void registerSkyboxNode(irr::scene::ISceneNode* node)
+    {
+        if (std::find(m_skyboxNodes.begin(), m_skyboxNodes.end(), node) == m_skyboxNodes.end())
+            m_skyboxNodes.push_back(node);
+    }
+    void unregisterSkyboxNode(irr::scene::ISceneNode* node)
+    {
+        auto it = std::find(m_skyboxNodes.begin(), m_skyboxNodes.end(), node);
+        if (it != m_skyboxNodes.end()) m_skyboxNodes.erase(it);
+    }
+    void setSkyCamera(const irr::core::vector3df& anchor, float scale, bool enabled)
+    {
+        m_skyAnchor    = anchor;
+        m_skyScale     = (scale > 0.0001f) ? scale : 1.0f;
+        m_sky3dEnabled = enabled;
+    }
+    bool isSky3dEnabled() const { return m_sky3dEnabled; }
+
 
     // Additive/transparent effect nodes (muzzle flashes, particle systems) that were
     // tuned for LDR. Like debug nodes they are excluded from the HDR scene capture and
@@ -912,6 +941,11 @@ private:
     // Sorted transparent pass - called from draw() after opaque scene
     void drawTransparentPass();
 
+    // 3D skybox pass — draws the 2D skydome + tagged miniature from the
+    // parallax-scaled sky camera, then clears depth so the world draws on top.
+    // Called just before drawAll() when m_sky3dEnabled.
+    void drawSkyboxPass(bool useClusters);
+
     bool m_drawDebugStatistics;
 
     irr::scene::ICameraSceneNode* m_defaultCamera;
@@ -973,6 +1007,15 @@ private:
     // LDR-composited effect nodes — same hide/restore/render-after-PP pattern as
     // debug nodes, but for gameplay effects (muzzle flashes, SPARK particles).
     std::vector<irr::scene::ISceneNode*> m_ldrEffectNodes;
+
+    // 3D skybox pass state. m_skyboxNodes are hidden during the shadow/main/pre
+    // passes and manually rendered in drawSkyboxPass() with m_skyCamera, whose
+    // position tracks the main camera scaled about m_skyAnchor by 1/m_skyScale.
+    std::vector<irr::scene::ISceneNode*> m_skyboxNodes;
+    irr::scene::ICameraSceneNode* m_skyCamera = nullptr;
+    irr::core::vector3df m_skyAnchor;
+    float m_skyScale     = 16.0f;
+    bool  m_sky3dEnabled = false;
 
     // FBO ID of the scene RTT, captured each frame after setRenderTarget(m_sceneRTT).
     // Used to blit world depth into the backbuffer before LDR effect rendering.

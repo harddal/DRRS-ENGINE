@@ -101,7 +101,7 @@ void GameplaySystem::fireReceiverList(const std::string& csv)
     }
 }
 
-void GameplaySystem::updateBrushTriggers()
+void GameplaySystem::updateBrushVolumes()
 {
     if (!BrushManager::Get())
         return;
@@ -115,9 +115,25 @@ void GameplaySystem::updateBrushTriggers()
 
     const irr::core::vector3df p = player.getComponent<TransformComponent>().position;
 
+    // Ladder test points: feet and chest.  Two points make topping-out
+    // smooth — you stay climbable until your feet clear the volume.
+    const irr::core::vector3df ladderFeet  = p + irr::core::vector3df(0.0f, 0.3f, 0.0f);
+    const irr::core::vector3df ladderChest = p + irr::core::vector3df(0.0f, 1.3f, 0.0f);
+    bool onLadder = false;
+
     for (auto& brush : BrushManager::Get()->getAllBrushesMutable())
     {
-        if (!(brush.contentFlags & CONTENT_TRIGGER) || !brush.geometryValid)
+        if (!brush.geometryValid || brush.isMoverBrush())
+            continue;
+
+        if ((brush.contentFlags & CONTENT_LADDER) && !onLadder)
+        {
+            onLadder =
+                (brush.bounds.isPointInside(ladderFeet)  && BrushGeometry::containsPoint(brush, ladderFeet)) ||
+                (brush.bounds.isPointInside(ladderChest) && BrushGeometry::containsPoint(brush, ladderChest));
+        }
+
+        if (!(brush.contentFlags & CONTENT_TRIGGER))
             continue;
         if ((brush.contentFlags & CONTENT_TRIGGER_ONCE) && brush.triggerFired)
             continue;
@@ -131,6 +147,9 @@ void GameplaySystem::updateBrushTriggers()
         }
         brush.triggerInside = inside;
     }
+
+    if (g_PlayerController)
+        g_PlayerController->setOnLadder(onLadder);
 }
 
 static void s_drawLinkArrow(const irr::core::vector3df& from, const irr::core::vector3df& to,
@@ -278,7 +297,7 @@ void GameplaySystem::update()
 {
 	m_waterZones.clear();
 
-	updateBrushTriggers();
+	updateBrushVolumes();
 
 	// Stops zones from overwriting each other if there are more than one, only works for player
 	static bool player_in_trigger_zone = false, player_in_water_zone = false;
@@ -586,6 +605,13 @@ void GameplaySystem::update()
 						spdlog::debug("MT_FREECAMERA did not spawn a freecamera controller, one already exists");
 					}
 				}
+				break;
+
+			case MT_SKY_CAMERA:
+				// Feed the 3D-skybox anchor + parallax scale to the renderer.
+				// Anchor is static during play, but this is cheap enough to set each frame.
+				RenderManager::Get()->setSkyCamera(
+					transformComponent.getPosition(), markerComponent.skyScale, true);
 				break;
 
 			case MT_WAYPOINT:

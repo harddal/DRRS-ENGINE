@@ -99,9 +99,10 @@ void EditorInterface::draw_window_add_component()
 			"Nav Agent\0"
 			"Water\0"
 			"Particle\0"
-			"Behavior\0\0"; // 30
+			"Behavior\0"
+			"Skybox\0\0"; // 31
 
-		ImGui::Combo("Component", &current_selected_component, component_list, 30);
+		ImGui::Combo("Component", &current_selected_component, component_list, 31);
 		ImGui::SameLine();
 
 		{
@@ -232,6 +233,10 @@ void EditorInterface::draw_window_add_component()
 					case ENTITY_COMPONENT::BEHAVIOR:
 						if (entity.hasComponent<BehaviorComponent>()) break;
 						entity.addComponent<BehaviorComponent>();
+						break;
+					case ENTITY_COMPONENT::SKYBOX:
+						if (entity.hasComponent<SkyboxComponent>()) break;
+						entity.addComponent<SkyboxComponent>();
 						break;
 					}
 
@@ -381,6 +386,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Animated");
 				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##bb_anim", &billboardsprite.animated);
+				ImGui::SetItemTooltip("Play the sprite as a flipbook animation.\nThe texture is treated as a sprite sheet and cut into frames of Frame Width x Frame Height pixels.");
 
 				if (billboardsprite.animated)
 				{
@@ -392,16 +398,19 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("FPS");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputInt("##bb_fps", &billboardsprite.fps);
+					ImGui::SetItemTooltip("Flipbook playback speed in frames per second.");
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Frame Width");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputInt("##bb_fw", &billboardsprite.split_x);
+					ImGui::SetItemTooltip("Width in pixels of a single frame in the sprite sheet.");
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Frame Height");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputInt("##bb_fh", &billboardsprite.split_y);
+					ImGui::SetItemTooltip("Height in pixels of a single frame in the sprite sheet.");
 				}
 
 				ImGui::TableNextRow();
@@ -425,18 +434,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			memset(buf, '\0', 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
 
-			ImGui::PushID("textureInputManager::Get()_");
-			if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+			if (ImGui::InputText("##bb_sprite_tex", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				tstr = buf;
 				billboardsprite.node->setMaterialTexture(0, RenderManager::Get()->driver()->getTexture(tstr.c_str()));
 			}
-			ImGui::PopID();
 			ImGui::SameLine();
-			ImGui::PushID("texture_browse_");
-			if (ImGui::Button("..."))
+			if (ImGui::Button("...##bb_sprite_browse"))
 				show_window_texture_browser("mesh2d_sprite");
-			ImGui::PopID();
 
 			if (g_textureBrowserRequestID == "mesh2d_sprite" && g_currentSelectedTexture != "null")
 			{
@@ -464,6 +469,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("World Camera");
 				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##world_cam", &camera.isWorldCamera);
+				ImGui::SetItemTooltip("When checked, this camera does not become the active view when it spawns.\nUse for cameras that are switched to later (cutscenes, sky camera, security monitors).");
 
 				float fl3_off[3]; camera.offset.getAs3Values(fl3_off);
 				ImGui::TableNextRow();
@@ -471,6 +477,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputFloat3("##cam_off", fl3_off, "%.2f"))
 					camera.offset = irr::core::vector3df(fl3_off[0], fl3_off[1], fl3_off[2]);
+				ImGui::SetItemTooltip("Camera position offset from the entity's origin.");
 
 				float fl3_tar[3]; camera.target.getAs3Values(fl3_tar);
 				ImGui::TableNextRow();
@@ -478,6 +485,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputFloat3("##cam_tar", fl3_tar, "%.2f"))
 					camera.target = irr::core::vector3df(fl3_tar[0], fl3_tar[1], fl3_tar[2]);
+				ImGui::SetItemTooltip("Look-at target point relative to the entity - a position the camera aims at,\nnot Euler angles (default 0,0,100 looks straight ahead).");
 
 				ImGui::EndTable();
 			}
@@ -500,6 +508,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1);
 				if (ImGui::Checkbox("##cct_active", &cct.active))
 					WorldManager::Get()->renderSystem()->forceTransformUpdate();
+				ImGui::SetItemTooltip("Enable the physics character-controller capsule that moves this entity\nand collides it with the world (used by the player and walking NPCs).");
 				ImGui::EndTable();
 			}
 
@@ -519,6 +528,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Health");
 				ImGui::TableSetColumnIndex(1); ImGui::InputInt("##health", &dam.threshold);
+				ImGui::SetItemTooltip("Total damage this entity can take before it dies.\nAlso used as its starting health (default 100).");
 				ImGui::EndTable();
 			}
 
@@ -555,6 +565,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			if (ImGui::Button("Add Slot"))
 				data.data.emplace_back(std::string());
+			ImGui::SetItemTooltip("Add a free-form text slot. Slots hold arbitrary strings that\nscripts and game code can read from this entity.");
 
 			break;
 		}
@@ -568,7 +579,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			char buf[256];
 			memset(buf, 0, 256);
 			for (auto i = 0U; i < debugmesh.mesh.size() && i < 256; i++) buf[i] = debugmesh.mesh[i];
-			if (ImGui::InputText("Mesh", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+			if (ImGui::InputText("Mesh##debugmesh", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				debugmesh.mesh = buf;
 				WorldManager::Get()->renderSystem()->setDebugMeshComponentData(entity);
@@ -579,18 +590,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			memset(buf, 0, 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
 
-			ImGui::PushID("textureInputManager::Get()_");
-			if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+			if (ImGui::InputText("##debugmesh_tex", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				tstr = buf;
 				debugmesh.node->setMaterialTexture(0, RenderManager::Get()->driver()->getTexture(tstr.c_str()));
 			}
-			ImGui::PopID();
 			ImGui::SameLine();
-			ImGui::PushID("texture_browse_");
-			if (ImGui::Button("..."))
+			if (ImGui::Button("...##debugmesh_browse"))
 				show_window_texture_browser("debugmesh_texture");
-			ImGui::PopID();
 
 			if (g_textureBrowserRequestID == "debugmesh_texture" && g_currentSelectedTexture != "null")
 			{
@@ -616,18 +623,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			memset(buf, '\0', 256);
 			for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
 
-			ImGui::PushID("textureInputManager::Get()_");
-			if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+			if (ImGui::InputText("##debugsprite_tex", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				tstr = buf;
 				debugsprite.node->setMaterialTexture(0, RenderManager::Get()->driver()->getTexture(tstr.c_str()));
 			}
-			ImGui::PopID();
 			ImGui::SameLine();
-			ImGui::PushID("texture_browse_");
-			if (ImGui::Button("..."))
+			if (ImGui::Button("...##debugsprite_browse"))
 				show_window_texture_browser("debugsprite_texture");
-			ImGui::PopID();
 
 			if (g_textureBrowserRequestID == "debugsprite_texture" && g_currentSelectedTexture != "null")
 			{
@@ -691,6 +694,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					ect = ect < 0 ? 0 : (ect > 2 ? 2 : ect);
 					descriptor.type = static_cast<ENTITY_TYPE>(ect);
 				}
+				ImGui::SetItemTooltip("0 = NULL, 1 = STATIC, 2 = DYNAMIC.\nSTATIC marks immovable scenery - only static entities are included in lightmap baking.\nDYNAMIC entities can move at runtime.");
 				ImGui::PopID();
 
 				ImGui::EndTable();
@@ -753,6 +757,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Radius");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				ImGui::InputFloat("##light_radius", &light.radius, 0.1f, 0.0f, "%.2f");
+				ImGui::SetItemTooltip("Reach of the light in world units - illumination falls off to zero at this distance.");
 
 				if (light.type == LT_SPOT)
 				{
@@ -760,23 +765,26 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Inner Cone");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputFloat("##light_inner", &light.innerCone, 0.1f, 0.0f, "%.2f");
+					ImGui::SetItemTooltip("Cone angle (degrees) that receives full brightness.");
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Outer Cone");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputFloat("##light_outer", &light.outerCone, 0.1f, 0.0f, "%.2f");
+					ImGui::SetItemTooltip("Cone angle (degrees) at which the light has faded to nothing.\nWiden the gap to Inner Cone for a softer spotlight edge.");
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Attenuation");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::InputFloat("##light_atten", &light.falloff, 0.1f, 0.0f, "%.2f");
+					ImGui::SetItemTooltip("Falloff exponent between the inner and outer cone - higher values give a sharper edge.");
 				}
 
 				ImGui::EndTable();
 			}
 
 			ImColor color(light.color_diffuse.r, light.color_diffuse.g, light.color_diffuse.b, light.color_diffuse.a);
-			ImColorPicker("", &color);
+			ImColorPicker("##light_color", &color);
 			light.color_diffuse.r = color.Value.x;
 			light.color_diffuse.g = color.Value.y;
 			light.color_diffuse.b = color.Value.z;
@@ -788,6 +796,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			{
 				bool coronaChanged = ImGui::Checkbox("Corona", &light.showCorona);
+				ImGui::SetItemTooltip("Draw a camera-facing glow sprite at the light's position\n(visible bulb glow / distant light flare).");
 				if (light.showCorona) {
 					ImGui::PushID("CORONA_PROPS");
 					if (ImGui::BeginTable("##corona_tbl", 2, ImGuiTableFlags_SizingFixedFit)) {
@@ -798,16 +807,19 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Size");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						ImGui::DragFloat("##corona_size", &light.coronaSize, 0.05f, 0.1f, 20.0f, "%.2f");
+						ImGui::SetItemTooltip("World-space size of the glow sprite.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Full Range");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						ImGui::DragFloat("##corona_near", &light.coronaFadeNear, 0.25f, 0.0f, 200.0f, "%.1f");
+						ImGui::SetItemTooltip("Camera distance up to which the corona shows at full brightness.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fade Range");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						ImGui::DragFloat("##corona_far", &light.coronaFadeFar, 0.5f, 0.0f, 500.0f, "%.1f");
+						ImGui::SetItemTooltip("Camera distance at which the corona has fully faded out\n(fades linearly between Full Range and this).");
 
 						ImGui::EndTable();
 					}
@@ -842,6 +854,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##logic_recv", buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					logic.receiver = buf;
+				ImGui::SetItemTooltip("Comma-separated names of entities to activate when this entity fires\n(doors opening, lights toggling, sounds playing...).");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
@@ -863,15 +876,38 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto& marker = entity.getComponent<MarkerComponent>();
 
-			std::string str_type;
-			switch (marker.type)
+			// Editable marker type. String order must match the MARKER_TYPE enum.
+			const char* marker_types =
+				"MT_NULL\0"
+				"MT_PLAYER_START\0"
+				"MT_FREECAMERA\0"
+				"MT_WAYPOINT\0"
+				"MT_SKY_CAMERA\0\0";
+			int type_idx = static_cast<int>(marker.type);
+			if (ImGui::Combo("Type", &type_idx, marker_types, 5))
+				marker.type = static_cast<MARKER_TYPE>(type_idx);
+			ImGui::SetItemTooltip("PLAYER_START - where the player spawns\nFREECAMERA - free-fly camera start point\nWAYPOINT - NPC patrol route node (link waypoints by name)\nSKY_CAMERA - anchor of the 3D skybox miniature");
+
+			if (marker.type == MARKER_TYPE::MT_SKY_CAMERA)
 			{
-			case MARKER_TYPE::MT_NULL:         str_type = "MT_NULL";             break;
-			case MARKER_TYPE::MT_PLAYER_START: str_type = "MT_PLAYER_START";     break;
-			case MARKER_TYPE::MT_FREECAMERA:   str_type = "MT_FREECAMERA_START"; break;
+				ImGui::DragFloat("Sky Scale", &marker.skyScale, 0.5f, 1.0f, 1000.0f);
+				ImGui::TextWrapped(
+					"3D skybox parallax scale. The sky camera moves 1/scale as far "
+					"as the player, so the tagged miniature reads as 'scale' times "
+					"larger and farther. 16 is typical.");
 			}
 
-			ImGui::Text(std::string("Type: " + str_type).c_str());
+			break;
+		}
+	case ENTITY_COMPONENT::SKYBOX:
+		{
+			if (!entity.hasComponent<SkyboxComponent>())
+				return false;
+
+			ImGui::TextWrapped(
+				"This entity's mesh is rendered into the 3D skybox miniature "
+				"(distant, parallaxing background). Place an MT_SKY_CAMERA marker "
+				"to set the anchor and parallax scale.");
 
 			break;
 		}
@@ -911,11 +947,86 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				WorldManager::Get()->renderSystem()->setMeshComponentData(entity);
 				s_loadAnimList(mesh);
 			}
+			ImGui::SetItemTooltip("Load the mesh as an animated model and read its clips\nfrom the matching .anim file next to the mesh.");
 			ImGui::Checkbox("Cast Shadows   ", &mesh.castShadows);
 			ImGui::Checkbox("Receive Shadows", &mesh.receiveShadows);
 			ImGui::Checkbox("Use Point Filtering", &mesh.texturePointFilter);
+			ImGui::SetItemTooltip("Nearest-neighbour texture sampling - crisp pixelated texels\ninstead of smooth blurring. Good for low-res/retro textures.");
 			ImGui::Checkbox("Recalculate Normals", &mesh.recalculateNormals);
+			ImGui::SetItemTooltip("Rebuild vertex normals when the mesh loads.\nUse when an imported mesh shades wrong (black faces, inverted lighting).");
 			ImGui::Checkbox("Cook Navigation", &mesh.navCookable);
+			ImGui::SetItemTooltip("Include this mesh's triangles when building the NPC navigation mesh\n(walkable floors, blocking walls).");
+			if (ImGui::Checkbox("Transparent", &mesh.transparent))
+				WorldManager::Get()->renderSystem()->setMeshComponentData(entity);
+			ImGui::SetItemTooltip("Draw with alpha blending in the transparent pass.\nRequired for the Opacity slider and for textures with soft alpha.");
+			if (ImGui::Checkbox("Disable Z Write", &mesh.disableZDraw))
+				WorldManager::Get()->renderSystem()->setMeshComponentData(entity);
+			ImGui::SetItemTooltip("Don't write this mesh to the depth buffer, so it can't hide things drawn after it.\nUse for glow layers and overlapping transparent effects that sort badly.");
+
+			// Opacity -> uAlpha (via DiffuseColor alpha). Only visible on transparent
+			// material types; lets mappers fade cloud layers without re-exporting textures.
+			if (ImGui::DragFloat("Opacity", &mesh.opacity, 0.01f, 0.0f, 1.0f, "%.2f"))
+			{
+				if (mesh.node)
+				{
+					const irr::u32 a = static_cast<irr::u32>(
+						irr::core::clamp(mesh.opacity, 0.0f, 1.0f) * 255.0f);
+					for (auto i = 0U; i < mesh.node->getMaterialCount(); i++)
+						mesh.node->getMaterial(i).DiffuseColor.setAlpha(a);
+				}
+			}
+			if (!mesh.transparent)
+				ImGui::TextDisabled("(Opacity needs a transparent material)");
+
+			// UV animation (MaterialTypeParams[4..7]) — drives uTexScroll/uTexWarp*
+			// in phong_perpixel.frag. Used for scrolling cloud layers, water, etc.
+			{
+				// Tiling lives in params[0..1]; 0 means "untiled" in the shader, so
+				// show it as 1.0 rather than a confusing 0.00 on untouched meshes.
+				float uvTiling[2] = {
+					mesh.materialTypeParams[0] != 0.0f ? mesh.materialTypeParams[0] : 1.0f,
+					mesh.materialTypeParams[1] != 0.0f ? mesh.materialTypeParams[1] : 1.0f };
+				bool tilingChanged = ImGui::DragFloat2("UV Tiling", uvTiling, 0.1f, -64.0f, 64.0f, "%.2f");
+				ImGui::SetItemTooltip("How many times the texture repeats across the surface (1 = unchanged mapping).\nNegative values mirror the texture.");
+				if (tilingChanged)
+				{
+					mesh.materialTypeParams[0] = uvTiling[0];
+					mesh.materialTypeParams[1] = uvTiling[1];
+					if (mesh.node)
+						for (auto i = 0U; i < mesh.node->getMaterialCount(); i++)
+						{
+							mesh.node->getMaterial(i).MaterialTypeParams[0] = uvTiling[0];
+							mesh.node->getMaterial(i).MaterialTypeParams[1] = uvTiling[1];
+						}
+				}
+
+				float uvScroll[2] = { mesh.materialTypeParams[4], mesh.materialTypeParams[5] };
+				bool scrollChanged = ImGui::DragFloat2("UV Scroll", uvScroll, 0.01f, -5.0f, 5.0f, "%.3f");
+				ImGui::SetItemTooltip("Constant texture scroll speed in UVs per second - scrolling clouds,\nwaterfalls, conveyors. Needs a shader that supports scrolling\n(phong variants do; additive_color does not).");
+				if (scrollChanged)
+				{
+					mesh.materialTypeParams[4] = uvScroll[0];
+					mesh.materialTypeParams[5] = uvScroll[1];
+					if (mesh.node)
+						for (auto i = 0U; i < mesh.node->getMaterialCount(); i++)
+						{
+							mesh.node->getMaterial(i).MaterialTypeParams[4] = uvScroll[0];
+							mesh.node->getMaterial(i).MaterialTypeParams[5] = uvScroll[1];
+						}
+				}
+
+				if (ImGui::DragFloat("UV Warp Amp", &mesh.materialTypeParams[6], 0.005f, 0.0f, 0.5f, "%.3f"))
+					if (mesh.node)
+						for (auto i = 0U; i < mesh.node->getMaterialCount(); i++)
+							mesh.node->getMaterial(i).MaterialTypeParams[6] = mesh.materialTypeParams[6];
+				ImGui::SetItemTooltip("Strength of the sine-wave UV wobble (heat haze, underwater shimmer). 0 = off.");
+
+				if (ImGui::DragFloat("UV Warp Speed", &mesh.materialTypeParams[7], 0.1f, 0.0f, 20.0f, "%.1f"))
+					if (mesh.node)
+						for (auto i = 0U; i < mesh.node->getMaterialCount(); i++)
+							mesh.node->getMaterial(i).MaterialTypeParams[7] = mesh.materialTypeParams[7];
+				ImGui::SetItemTooltip("How fast the UV wobble oscillates.");
+			}
 
 			ImGui::Text("Texture(s):");
 
@@ -936,8 +1047,8 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::SameLine();
 
 				for (auto c = 0U; c < tstr.size(); c++) buf[c] = tstr[c];
-				ImGui::PushID(("textureInputManager::Get()_" + std::to_string(iter)).c_str());
-				if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+				ImGui::PushID(("mesh_tex_input_" + std::to_string(iter)).c_str());
+				if (ImGui::InputText("##path", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 				{
 					tstr = buf;
 					if (mesh.node)
@@ -964,7 +1075,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				iter++;
 			}
 
-			if (ImGui::Button("Add"))
+			if (ImGui::Button("Add##mesh_texture"))
 			{
 				if (mesh.textures.size() < _IRR_MATERIAL_MAX_TEXTURES_)
 					mesh.textures.emplace_back(std::string());
@@ -1033,18 +1144,24 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					for (irr::u32 mi = 0; mi < mesh.node->getMaterialCount(); ++mi)
 						mesh.node->getMaterial(mi).MaterialType = mat;
 				}
+				ImGui::SetItemTooltip("Shader material used to draw this mesh (lit, transparent, additive...).");
 			}
 
 			ImGui::DragFloat("Roughness", &mesh.node->getMaterial(0).Shininess, 1.0f, 0.0f, 128.00);
+			ImGui::SetItemTooltip("Specular glossiness: 0 = matte, 128 = tight sharp highlight.\nA Roughness map, if assigned above, takes precedence per-pixel.");
 
 			static auto specular = static_cast<irr::f32>(mesh.node->getMaterial(0).SpecularColor.getAlpha()) / 255.0f;
 			if (ImGui::DragFloat("Emissive", &specular, 0.05f, 0.0f, 1.0f))
 				mesh.node->getMaterial(0).SpecularColor.setAlpha(static_cast<irr::u32>(specular * 255.0f));
+			ImGui::SetItemTooltip("Self-illumination amount (0-1): the surface glows regardless of scene lighting.\nAn Emission map, if assigned above, adds on top of this.");
 
 			ImGui::Spacing();
 
 			if (mesh.isAnimated)
+			{
 				ImGui::InputInt("FPS", &mesh.fps, 1.f, 1.f, 1);
+				ImGui::SetItemTooltip("Animation playback rate in frames per second (initial value comes from the .anim file).");
+			}
 
 			if (mesh.animationList.size() > 0)
 			{
@@ -1143,21 +1260,25 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Vision Range");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				ImGui::InputFloat("##npc_vision", &npc.visionRange, 1, 10, "%.2f");
+				ImGui::SetItemTooltip("Distance (world units) at which the NPC can spot its target and react.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Chase Range");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				ImGui::InputFloat("##npc_chase", &npc.chaseRange, 1, 10, "%.2f");
+				ImGui::SetItemTooltip("Maximum pursuit distance - beyond this the NPC gives up the chase.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Attack Range");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				ImGui::InputFloat("##npc_atk", &npc.attackRange, 1, 10, "%.2f");
+				ImGui::SetItemTooltip("Distance at which the NPC stops moving and starts attacking.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Attack Delay");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				ImGui::InputFloat("##npc_delay", &npc.attackDelay, 1, 10, "%.2f");
+				ImGui::SetItemTooltip("Time between attacks, in seconds.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("AI State");
@@ -1172,6 +1293,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					mtype = mtype < 0 ? 0 : (mtype > 7 ? 0 : mtype);
 					npc.state = static_cast<NPC_AI_STATE>(mtype);
 				}
+				ImGui::SetItemTooltip("Starting/current AI state:\n0 INACTIVE, 1 IDLE, 2 PATROL, 3 ALERT, 4 ATTACK, 5 CHASE, 6 FLEE, 7 DEAD");
 				ImGui::PopID();
 
 				ImGui::TableNextRow();
@@ -1187,6 +1309,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					mtype1 = mtype1 < 0 ? 0 : (mtype1 > 2 ? 0 : mtype1);
 					npc.disposition = static_cast<NPC_AI_DISPOSITION>(mtype1);
 				}
+				ImGui::SetItemTooltip("Attitude toward the player:\n0 NEUTRAL, 1 ENEMY (attacks on sight), 2 FRIENDLY");
 				ImGui::PopID();
 
 				ImGui::TableNextRow();
@@ -1194,12 +1317,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##npc_wp", npc_wp_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 					npc.start_waypoint = npc_wp_buf;
+				ImGui::SetItemTooltip("Name of the WAYPOINT marker where this NPC begins its patrol route.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Curr Waypoint");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##npc_cwp", npc_cwp_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 					npc.current_waypoint = npc_cwp_buf;
+				ImGui::SetItemTooltip("Waypoint the NPC is currently heading to. Runtime state - normally leave alone.");
 
 				ImGui::EndTable();
 			}
@@ -1243,6 +1368,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					pct = pct < 0 ? 0 : (pct > 5 ? 5 : pct);
 					physics.type = static_cast<PHYSICS_COLLIDER_TYPE>(pct);
 				}
+				ImGui::SetItemTooltip("Collision shape:\n0 BOX, 1 CAPSULE, 2 CONVEX (simplified hull), 3 PLANE, 4 SPHERE,\n5 TRIANGLE (exact static mesh - immovable, uses the collision mesh below)");
 				ImGui::PopID();
 
 				if (physics.type == PHYSICS_COLLIDER_TYPE::PCT_TRIANGLE)
@@ -1262,6 +1388,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						else
 							Utility::Warning("Assets must exist in local path!");
 					}
+					ImGui::SetItemTooltip("Mesh used for exact triangle collision.\nCan be a simplified version of the visual mesh for performance.");
 					ImGui::PopID();
 				}
 				else
@@ -1269,11 +1396,13 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Kinematic");
 					ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##phys_kin", &physics.kinematic);
+					ImGui::SetItemTooltip("Body is moved only by code/animation: it pushes dynamic objects around\nbut ignores gravity and forces itself (moving platforms, doors).");
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Density");
 					ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 					ImGui::DragFloat("##phys_density", &physics.density, 0.5f, 0.0f, 10.0f, "%.0f");
+					ImGui::SetItemTooltip("Mass per unit of volume - determines how heavy the body is\nand how hard it is to push.");
 				}
 
 				ImGui::EndTable();
@@ -1304,6 +1433,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					prefab.parent = buf;
 					prefab.isChild = prefab.parent.length() > 0;
 				}
+				ImGui::SetItemTooltip("Name of the parent entity this prefab member belongs to.\nLeave empty to make this entity the prefab root.");
 				ImGui::EndTable();
 			}
 
@@ -1345,7 +1475,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::Text("Script: ");
 			ImGui::SameLine();
 			ImGui::PushID("ScriptFile");
-			if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+			if (ImGui::InputText("##script_path", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 			{
 				script.script = buf;
 				script.script_data.clear();
@@ -1402,6 +1532,10 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						if (var_name.at(0) == 'g' && var_name.at(1) == '_')
 							var_name = var_name.substr(2);
 					}
+
+					// Unique per-slot ID: exposed globals can share a display name
+					// with each other or with behavior properties in the same window
+					ImGui::PushID(("script_gbl_" + std::to_string(i)).c_str());
 
 					switch (script.global_values.at(i).first)
 					{
@@ -1460,6 +1594,8 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					default:
 						break;
 					}
+
+					ImGui::PopID();
 				}
 
 				i++;
@@ -1483,6 +1619,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::SameLine();
 			if (ImGui::InputText("##behaviortype", typeBuf, sizeof(typeBuf), ImGuiInputTextFlags_EnterReturnsTrue))
 				bc.behaviorType = typeBuf;
+			ImGui::SetItemTooltip("Name of the C++ behavior class to attach - must match a type\nregistered in the BehaviorFactory. Its properties appear below in game mode.");
 
 			if (bc.behavior)
 			{
@@ -1490,8 +1627,13 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::Separator();
 				ImGui::Spacing();
 
+				int behaviorPropIdx = 0;
 				for (auto prop : bc.behavior->getProperties())
 				{
+					// Unique per-property ID: names can collide with script globals
+					// or component labels elsewhere in the window
+					ImGui::PushID(("behavior_prop_" + std::to_string(behaviorPropIdx++)).c_str());
+
 					switch (prop.type)
 					{
 					case BehaviorPropType::INT:
@@ -1533,6 +1675,8 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					}
 					default: break;
 					}
+
+					ImGui::PopID();
 				}
 			}
 			else
@@ -1606,11 +1750,13 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Min Dist");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						ImGui::DragFloat("##snd_mindist", &s.minDist, 0.1f, 0.1f, 100.0f, "%.1f");
+						ImGui::SetItemTooltip("Distance within which the sound plays at full volume;\nit attenuates with distance beyond this.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("3D");
 						ImGui::TableSetColumnIndex(1);
 						ImGui::Checkbox("##snd_3d", &s.is3D);
+						ImGui::SetItemTooltip("Positional audio: volume and panning follow the listener's distance and direction.\nUncheck for music and UI sounds.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Loop");
@@ -1621,6 +1767,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Start Paused");
 						ImGui::TableSetColumnIndex(1);
 						ImGui::Checkbox("##snd_paused", &s.startPaused);
+						ImGui::SetItemTooltip("Load the sound silent; playback must be started later\nby a script or trigger.");
 
 						ImGui::EndTable();
 					}
@@ -1772,8 +1919,9 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 				static char buf[8];
 				ImGui::InputText("Add Child by ID", buf, 8, ImGuiInputTextFlags_CharsDecimal);
+				ImGui::SetItemTooltip("Attach another entity as a transform child using its numeric entity ID\n(shown in that entity's Descriptor component).");
 				ImGui::SameLine();
-				if (ImGui::Button("Add"))
+				if (ImGui::Button("Add##transform_child"))
 				{
 					auto &new_child = WorldManager::Get()->managerSystem()->getEntityByID(std::stoi(std::string(buf)));
 					memset(buf, 0, 8);
@@ -1820,6 +1968,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##zone_ent", zone_ent_buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					zone.entity = zone_ent_buf;
+				ImGui::SetItemTooltip("Name of the entity whose position is tested against this zone.\nOnly used when Mask is 2 (ENTITY_NAME).");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
@@ -1831,6 +1980,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##zone_trig", zone_trig_buf, 512, ImGuiInputTextFlags_EnterReturnsTrue))
 					zone.triggered_entity = zone_trig_buf;
+				ImGui::SetItemTooltip("Comma-separated names of entities activated when the zone fires\n(their Logic events fire, lights toggle, sounds play...).");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
@@ -1852,19 +2002,23 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					mtype = mtype < 0 ? 0 : (mtype > 2 ? 0 : mtype);
 					zone.mask = static_cast<TRIGGER_ZONE_MASK>(mtype);
 				}
+				ImGui::SetItemTooltip("Who can fire the zone:\n0 NONE (disabled), 1 PLAYER_ONLY, 2 ENTITY_NAME (only the Detect Entity above)");
 				ImGui::PopID();
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Single Use");
 				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##zone_single", &zone.single_use);
+				ImGui::SetItemTooltip("Fire once and never reset.\nUncheck to let the zone fire again after being left.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Toggle");
 				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##zone_toggle", &zone.toggle);
+				ImGui::SetItemTooltip("Each firing toggles the target's state (e.g. light on/off)\ninstead of setting it one way.");
 
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Invert Output");
 				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##zone_invert", &zone.invert);
+				ImGui::SetItemTooltip("Deactivate targets instead of activating them\n(e.g. turn a light off rather than on).");
 
 				ImGui::EndTable();
 			}
@@ -1897,15 +2051,15 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::SameLine();
 
 				for (auto c = 0U; c < dstr.size(); c++) buf[c] = dstr[c];
-				ImGui::PushID(("textureInputManager::Get()_" + std::to_string(iter)).c_str());
-				if (ImGui::InputText("", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+				ImGui::PushID(("dialog_input_" + std::to_string(iter)).c_str());
+				if (ImGui::InputText("##text", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 					dstr = buf;
 				ImGui::PopID();
 
 				iter++;
 			}
 
-			if (ImGui::Button("Add"))
+			if (ImGui::Button("Add##dialog_line"))
 			{
 				if (dialog_component.data.size() < 128)
 					dialog_component.data.emplace_back(std::string());
@@ -1921,6 +2075,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			auto& tw = entity.getComponent<TweenComponent>();
 
 			ImGui::Text("Buffer Index: %d", tw.movingBufferIndex);
+			ImGui::SetItemTooltip("Which mesh buffer of the model is the moving part\n(e.g. the button cap, the switch lever). Set in the .ent file.");
 			ImGui::SameLine();
 			ImGui::TextDisabled("(requires reload to change)");
 			ImGui::Spacing();
@@ -1929,6 +2084,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			tw.startPosition.getAs3Values(start_pos);
 			if (ImGui::InputFloat3("Start Pos", start_pos, "%.3f"))
 				tw.startPosition = irr::core::vector3df(start_pos[0], start_pos[1], start_pos[2]);
+			ImGui::SetItemTooltip("Local position of the moving part when the tween is inactive (resting pose).");
 
 			float start_rot[3];
 			tw.startRotation.getAs3Values(start_rot);
@@ -1941,6 +2097,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			tw.targetPosition.getAs3Values(target_pos);
 			if (ImGui::InputFloat3("Target Pos", target_pos, "%.3f"))
 				tw.targetPosition = irr::core::vector3df(target_pos[0], target_pos[1], target_pos[2]);
+			ImGui::SetItemTooltip("Local position when the tween is active (e.g. a button's pushed-in pose).");
 
 			float target_rot[3];
 			tw.targetRotation.getAs3Values(target_rot);
@@ -1949,6 +2106,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			ImGui::Spacing();
 			ImGui::SliderFloat("Speed", &tw.speed, 0.01f, 1.0f, "%.2f");
+			ImGui::SetItemTooltip("Interpolation speed between start and target - higher = snappier.");
 			ImGui::Spacing();
 			ImGui::Separator();
 			ImGui::Spacing();
@@ -1967,7 +2125,9 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			auto& agent = entity.getComponent<NavAgentComponent>();
 
 			ImGui::InputFloat("Move Speed",      &agent.moveSpeed,      0.1f, 1.0f, "%.2f");
+			ImGui::SetItemTooltip("Movement speed along the navmesh path, world units per second.");
 			ImGui::InputFloat("Arrival Radius",  &agent.arrivalRadius,  0.05f, 0.25f, "%.2f");
+			ImGui::SetItemTooltip("Distance at which a path corner counts as reached and the agent\nmoves on to the next one. Too small can cause circling on the spot.");
 
 			ImGui::Spacing();
 			ImGui::Separator();
@@ -1997,7 +2157,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::Text("Shallow Color");
 			ImColor shallowCol(water.shallowColor[0], water.shallowColor[1], water.shallowColor[2]);
 			ImGui::PushID("water_shallow");
-			if (ImColorPicker("", &shallowCol))
+			if (ImColorPicker("##water_shallow_col", &shallowCol))
 			{
 				water.shallowColor[0] = shallowCol.Value.x;
 				water.shallowColor[1] = shallowCol.Value.y;
@@ -2011,7 +2171,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::Text("Deep Color");
 			ImColor deepCol(water.deepColor[0], water.deepColor[1], water.deepColor[2]);
 			ImGui::PushID("water_deep");
-			if (ImColorPicker("", &deepCol))
+			if (ImColorPicker("##water_deep_col", &deepCol))
 			{
 				water.deepColor[0] = deepCol.Value.x;
 				water.deepColor[1] = deepCol.Value.y;
@@ -2081,6 +2241,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##pc_name", nameBuf, sizeof(nameBuf), ImGuiInputTextFlags_EnterReturnsTrue))
 					pc.effectName = nameBuf;
+				ImGui::SetItemTooltip("Name the effect is precached/spawned under.\nLeave empty to use the .psys file name.");
 
 				// Loop
 				ImGui::TableNextRow();
@@ -2184,6 +2345,7 @@ void EditorInterface::add_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::WATER:               entity.addComponent<WaterComponent>();             break;
 	case ENTITY_COMPONENT::PARTICLE:            entity.addComponent<ParticleComponent>();          break;
 	case ENTITY_COMPONENT::BEHAVIOR:            entity.addComponent<BehaviorComponent>();          break;
+	case ENTITY_COMPONENT::SKYBOX:              entity.addComponent<SkyboxComponent>();            break;
 	}
 }
 
@@ -2221,6 +2383,7 @@ bool EditorInterface::has_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::WATER:               return entity.hasComponent<WaterComponent>();
 	case ENTITY_COMPONENT::PARTICLE:            return entity.hasComponent<ParticleComponent>();
 	case ENTITY_COMPONENT::BEHAVIOR:            return entity.hasComponent<BehaviorComponent>();
+	case ENTITY_COMPONENT::SKYBOX:              return entity.hasComponent<SkyboxComponent>();
 	default:                                    return false;
 	}
 }

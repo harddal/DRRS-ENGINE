@@ -32,6 +32,7 @@ const float
 	g_jumpSpeed        =  10.5f,   // units/sec — initial upward velocity
 	g_gravity          = 20.0f,   // units/sec² — base downward acceleration (rising)
 	g_fallGravityMult  =  1.4f,   // extra gravity while falling — snappier, less floaty arc
+	g_climbSpeed       =  3.0f,   // units/sec — ladder climb rate (CONTENT_LADDER brushes)
 	g_groundAccel      = 10.0f,   // GoldSrc sv_accelerate equivalent
 	g_groundFriction   =  8.0f,   // GoldSrc sv_friction equivalent (default, overridden per material)
 	g_airAccel         = 16.0f,   // air acceleration — responsive air steering
@@ -213,8 +214,6 @@ void PlayerController::update(float dt)
 		return;
 	}
 
-	static bool is_crouched = false;
-
 	g_PlayerData.currentHealth = player.getComponent<DamageReceiverComponent>().health;
 
 	auto currentTime = static_cast<int>(Engine::Get()->getCurrentTime());
@@ -237,7 +236,6 @@ void PlayerController::update(float dt)
 	transform.node->setRotation(vector3df(transform.node->getRotation().X, transform.node->getRotation().Y, 0.0f));
 
 	static vector3df lastPlayerPosition = transform.position;
-	static vector3df player_velocity = vector3df(0.0f, 0.0f, 0.0f);
 
 	float
 		x_move = 0.0,
@@ -254,6 +252,17 @@ void PlayerController::update(float dt)
 		m_cameraPitch = camera.camera->getRotation().X;
 		m_cameraYaw   = camera.camera->getRotation().Y;
 		InputManager::Get()->centerMouse();
+
+		// Seed CCT-position-derived tracking state from the live controller so
+		// this fresh instance doesn't start from (0,0,0) and read a huge bogus
+		// delta on its first frame.
+		vector3df cctPos(
+			static_cast<float>(cct.controller->getPosition().x),
+			static_cast<float>(cct.controller->getPosition().y),
+			static_cast<float>(cct.controller->getPosition().z));
+		m_smoothedY = cctPos.Y;
+		m_lastCCTPosition = cctPos;
+
 		m_firstUpdate = false;
 	}
 
@@ -308,7 +317,7 @@ void PlayerController::update(float dt)
 
 	// Ground detection set from collision flags after CCT move (with buffering to prevent jitter)
 
-	if (is_crouched)
+	if (m_isCrouched)
 	{
 		targetSpeed = g_crouchSpeed;
 	}
@@ -341,6 +350,24 @@ void PlayerController::update(float dt)
 		}
 	}
 
+	// Ladder climbing (CONTENT_LADDER brush volumes, flag set per frame by
+	// GameplaySystem).  Fixed-vertical controls: forward climbs up, backward
+	// climbs down, strafe steps off sideways.  Water takes precedence, and
+	// the jump-detach grace timer stops the volume from instantly re-grabbing.
+	const bool onLadder = m_isOnLadder && !isSwimming() && currentTime >= m_ladderIgnoreUntil;
+	if (onLadder)
+	{
+		// Ladder movement is fully input-driven: set velocity directly and
+		// consume the inputs so the accel paths are skipped — MoveAir has no
+		// air friction, so momentum carried onto the ladder would otherwise
+		// persist and the capsule drifts while hanging still.
+		m_playerVelocity.Y = z_move * g_climbSpeed;
+		m_playerVelocity.X = x_move * g_climbSpeed;   // sidestep off at climb rate
+		m_playerVelocity.Z = 0.0f;                    // never drive into the wall
+		x_move = 0.0f;
+		z_move = 0.0f;
+	}
+
 	// True on any frame a jump fires — used to skip ground friction so horizontal
 	// momentum carries into the jump (fluid chained re-jumps).
 	bool jumpedThisFrame = false;
@@ -358,10 +385,10 @@ void PlayerController::update(float dt)
 		//playJumpSound(player);
 
 		// Execute buffered jump if jump was pressed recently
-		if (!is_crouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime)
+		if (!m_isCrouched && currentTime - m_lastJumpInputTime < m_jumpBufferTime)
 		{
 			// Start buffered jump
-			player_velocity.Y = g_jumpSpeed;
+			m_playerVelocity.Y = g_jumpSpeed;
 
 			m_isJumping = true;
 			m_jumpConsumed = true;  // Mark input as consumed to prevent repeat jumps
@@ -383,17 +410,31 @@ void PlayerController::update(float dt)
 			if (!m_jumpConsumed)
 				m_lastJumpInputTime = currentTime;
 
-			if (!isSwimming())
+			if (onLadder)
+			{
+				// Detach: hop off and ignore the ladder briefly so the volume
+				// test doesn't re-grab us on the next frame
+				if (!m_jumpConsumed)
+				{
+					m_playerVelocity.Y = g_jumpSpeed * 0.6f;
+
+					m_isJumping = true;
+					m_jumpConsumed = true;
+					jumpedThisFrame = true;
+					m_ladderIgnoreUntil = currentTime + 400;
+				}
+			}
+			else if (!isSwimming())
 			{
 				// No cooldown: tap-to-rejump fires the instant we touch ground.
 				// m_jumpConsumed (reset on button release) keeps it tap-based, not auto-bhop.
 				bool canJump = (g_isOnSurface || currentTime - m_lastGroundedTime < m_coyoteTime) &&
-				               !is_crouched &&
+				               !m_isCrouched &&
 				               !m_jumpConsumed;
 
 				if (canJump)
 				{
-					player_velocity.Y = g_jumpSpeed;
+					m_playerVelocity.Y = g_jumpSpeed;
 
 					m_isJumping = true;
 					m_jumpConsumed = true;
@@ -404,7 +445,7 @@ void PlayerController::update(float dt)
 			else
 			{
 				// Swim up
-				player_velocity.Y = g_walkSpeed;
+				m_playerVelocity.Y = g_walkSpeed;
 			}
 		}
 		// Jump cut: reduce velocity when jump button released mid-jump
@@ -414,9 +455,9 @@ void PlayerController::update(float dt)
 			m_jumpConsumed = false;
 			
 			// Apply jump cut if releasing during upward movement
-			if (m_isJumping && player_velocity.Y > 0)
+			if (m_isJumping && m_playerVelocity.Y > 0)
 			{
-				player_velocity.Y *= m_jumpCutMultiplier;
+				m_playerVelocity.Y *= m_jumpCutMultiplier;
 				m_isJumping = false;
 			}
 		}
@@ -426,15 +467,15 @@ void PlayerController::update(float dt)
 			{
 				// Set target height for smooth lerp transition to crouched state
 				m_targetCrouchHeight = 0.5f;
-				is_crouched = true;
+				m_isCrouched = true;
 			}
 			else
 			{
 				// Swim down - apply to vertical velocity
-				player_velocity.Y = -g_walkSpeed;
+				m_playerVelocity.Y = -g_walkSpeed;
 			}
 		}
-		else if (is_crouched)
+		else if (m_isCrouched)
 		{
 			// Raycast in the center and at each edge of the controller to prevent standing up inside of geometry
 			if (!PhysicsManager::Get()->raycast(transform.getPosition() + irr::core::vector3df(0.0f, 0.57f, 0.0f), irr::core::vector3df(0.0, 1.0, 0.0), 0.5).hit &&
@@ -445,7 +486,7 @@ void PlayerController::update(float dt)
 			{
 				// Set target height for smooth lerp transition to standing state
 				m_targetCrouchHeight = 2.0f;
-				is_crouched = false;
+				m_isCrouched = false;
 			}
 		}
 
@@ -470,7 +511,7 @@ void PlayerController::update(float dt)
 		}
 
 		// Double-tap dodge detection (Unreal-style)
-		if (!isSwimming())
+		if (!isSwimming() && !onLadder)
 		{
 			bool lftPressed = InputManager::Get()->isActionPressed("strafel");
 			bool rgtPressed = InputManager::Get()->isActionPressed("strafer");
@@ -479,15 +520,15 @@ void PlayerController::update(float dt)
 			{
 				if (pressed && !prevPressed)
 				{
-					if (g_isOnSurface && !m_isDodging && !is_crouched &&
+					if (g_isOnSurface && !m_isDodging && !m_isCrouched &&
 						currentTime - m_lastDodgeTime >= m_dodgeCooldown)
 					{
 						if (currentTime - lastTapTime < m_dodgeDoubleTapWindow)
 						{
 							// Local space (X=strafe, Z=forward) — displacement step applies camera yaw.
-							player_velocity.X = dvX * m_dodgeSpeed;
-							player_velocity.Z = dvZ * m_dodgeSpeed;
-							player_velocity.Y = g_jumpSpeed * 0.4f;
+							m_playerVelocity.X = dvX * m_dodgeSpeed;
+							m_playerVelocity.Z = dvZ * m_dodgeSpeed;
+							m_playerVelocity.Y = g_jumpSpeed * 0.4f;
 							m_isDodging      = true;
 							m_dodgeStartTime = currentTime;
 							m_lastDodgeTime  = currentTime;
@@ -512,22 +553,22 @@ void PlayerController::update(float dt)
 	if (m_isDodging)
 	{
 		if (currentTime - m_dodgeStartTime >= m_dodgeDuration ||
-			(g_isOnSurface && player_velocity.Y <= 0.0f))
+			(g_isOnSurface && m_playerVelocity.Y <= 0.0f))
 		{
 			m_isDodging = false;
 		}
 	}
 
-	// Apply gravity continuously (unless swimming).
+	// Apply gravity continuously (unless swimming or holding a ladder).
 	// Falling uses stronger gravity for a snappier, less floaty arc.
-	if (!isSwimming())
+	if (!isSwimming() && !onLadder)
 	{
-		float gravity = (player_velocity.Y < 0.0f) ? g_gravity * g_fallGravityMult : g_gravity;
-		player_velocity.Y -= gravity * (dt / 1000.0f);
+		float gravity = (m_playerVelocity.Y < 0.0f) ? g_gravity * g_fallGravityMult : g_gravity;
+		m_playerVelocity.Y -= gravity * (dt / 1000.0f);
 	}
 
 	// Reset vertical velocity and jump state when landing
-	if (g_isOnSurface && player_velocity.Y < 0)
+	if (g_isOnSurface && m_playerVelocity.Y < 0)
 	{
 		if (m_lastAirVelocityY < -4.0f)
 		{
@@ -537,7 +578,29 @@ void PlayerController::update(float dt)
 			float magnitude = powf(excess, 1.5f) * 0.15f;
 			g_CameraFX.addLandingBob(std::min(magnitude, 4.0f));
 		}
-		player_velocity.Y = 0;
+
+		// Fall damage: linear falloff between min/max landing speed, instant
+		// kill at/above max. Routed through damageEntity() (the same chokepoint
+		// weapons use) so invulnerable/buddha and the hurt sound just work.
+		if (!m_isDead)
+		{
+			float fallSpeed = -m_lastAirVelocityY;
+			auto& descriptor = player.getComponent<DescriptorComponent>();
+
+			if (fallSpeed >= m_fallDamageMaxSpeed)
+			{
+				WorldManager::Get()->gameplaySystem()->damageEntity(descriptor.id, 9999);
+			}
+			else if (fallSpeed > m_fallDamageMinSpeed)
+			{
+				float t = (fallSpeed - m_fallDamageMinSpeed) / (m_fallDamageMaxSpeed - m_fallDamageMinSpeed);
+				unsigned int fallDamage = static_cast<unsigned int>(m_fallDamageMax * t);
+				if (fallDamage > 0)
+					WorldManager::Get()->gameplaySystem()->damageEntity(descriptor.id, fallDamage);
+			}
+		}
+
+		m_playerVelocity.Y = 0;
 		m_isJumping = false;
 		m_lastAirVelocityY = 0.0f;
 	}
@@ -548,7 +611,7 @@ void PlayerController::update(float dt)
 	if (wishdir.getLength() > 0.001f) wishdir.normalize();
 
 	// Apply ground or air movement to horizontal velocity only
-	vector3df horizontal_velocity = vector3df(player_velocity.X, 0, player_velocity.Z);
+	vector3df horizontal_velocity = vector3df(m_playerVelocity.X, 0, m_playerVelocity.Z);
 
 	if (g_isOnSurface && jumpedThisFrame)
 	{
@@ -704,15 +767,15 @@ void PlayerController::update(float dt)
 		m_isSliding = false;
 		m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 		m_lastSlopeNormal     = irr::core::vector3df(0.0f, 1.0f, 0.0f);
-		m_lastAirVelocityY = player_velocity.Y;
+		m_lastAirVelocityY = m_playerVelocity.Y;
 		if (!m_isDodging)
 			horizontal_velocity = MoveAir(wishdir, horizontal_velocity, g_airAccel, g_airSpeedCap, dt / 1000.0f);
 		// While dodging, preserve the impulse velocity — no steering input applied
 	}
 
 	// Update player velocity with new horizontal velocity
-	player_velocity.X = horizontal_velocity.X;
-	player_velocity.Z = horizontal_velocity.Z;
+	m_playerVelocity.X = horizontal_velocity.X;
+	m_playerVelocity.Z = horizontal_velocity.Z;
 
 	// Stick-to-slope: when sliding on ice, override Y so the total displacement
 	// is tangent to the slope surface. Without this, horizontal slide velocity
@@ -725,11 +788,11 @@ void PlayerController::update(float dt)
 	// Flat ground has Y = 1.0 so this is a no-op there.
 	if (g_isOnSurface && !jumpedThisFrame && m_lastSlopeNormal.Y < 0.999f && m_lastSlopeNormal.Y > 0.3f)
 	{
-		float worldVelX = player_velocity.Z * sinf(moveDirection) + player_velocity.X * sinf(moveDirection + __pi / 2.0f);
-		float worldVelZ = player_velocity.Z * cosf(moveDirection) + player_velocity.X * cosf(moveDirection + __pi / 2.0f);
+		float worldVelX = m_playerVelocity.Z * sinf(moveDirection) + m_playerVelocity.X * sinf(moveDirection + __pi / 2.0f);
+		float worldVelZ = m_playerVelocity.Z * cosf(moveDirection) + m_playerVelocity.X * cosf(moveDirection + __pi / 2.0f);
 		float stickY = -(worldVelX * m_lastSlopeNormal.X + worldVelZ * m_lastSlopeNormal.Z) / m_lastSlopeNormal.Y;
 		if (stickY < 0.0f)
-			player_velocity.Y = stickY;
+			m_playerVelocity.Y = stickY;
 	}
 
 	// Configure collision filters to detect static geometry
@@ -741,9 +804,42 @@ void PlayerController::update(float dt)
 	float elapsedSeconds = dt / 1000.0f;
 
 	cct.displacement = physx::PxVec3(
-		(player_velocity.Z * sinf(moveDirection) + player_velocity.X * sinf(moveDirection + __pi / 2.0f)) * elapsedSeconds,
-		player_velocity.Y * elapsedSeconds,
-		(player_velocity.Z * cosf(moveDirection) + player_velocity.X * cosf(moveDirection + __pi / 2.0f)) * elapsedSeconds);
+		(m_playerVelocity.Z * sinf(moveDirection) + m_playerVelocity.X * sinf(moveDirection + __pi / 2.0f)) * elapsedSeconds,
+		m_playerVelocity.Y * elapsedSeconds,
+		(m_playerVelocity.Z * cosf(moveDirection) + m_playerVelocity.X * cosf(moveDirection + __pi / 2.0f)) * elapsedSeconds);
+
+	// Ride kinematic movers (elevators, doors): PhysX CCTs are not carried by
+	// kinematic platforms, so track the actor under our feet and add its
+	// per-frame pose delta to our displacement while grounded.
+	{
+		physx::PxRigidDynamic* mover = nullptr;
+		if (g_isOnSurface)
+		{
+			const physx::PxExtendedVec3 foot = cct.controller->getFootPosition();
+			auto ray = PhysicsManager::Get()->raycast(
+				irr::core::vector3df(static_cast<float>(foot.x),
+				                     static_cast<float>(foot.y) + 0.2f,
+				                     static_cast<float>(foot.z)),
+				irr::core::vector3df(0.0f, -1.0f, 0.0f), 0.6);
+			if (ray.hit && ray.data.hasBlock && ray.data.block.actor)
+			{
+				auto* dyn = ray.data.block.actor->is<physx::PxRigidDynamic>();
+				// The CCT's own capsule is also a kinematic dynamic — skip self
+				if (dyn && dyn != cct.controller->getActor() &&
+					(dyn->getRigidBodyFlags() & physx::PxRigidBodyFlag::eKINEMATIC))
+					mover = dyn;
+			}
+		}
+
+		if (mover)
+		{
+			const physx::PxVec3 pos = mover->getGlobalPose().p;
+			if (mover == m_groundMover)
+				cct.displacement += pos - physx::PxVec3(m_groundMoverLastPos.X, m_groundMoverLastPos.Y, m_groundMoverLastPos.Z);
+			m_groundMoverLastPos = irr::core::vector3df(pos.x, pos.y, pos.z);
+		}
+		m_groundMover = mover;
+	}
 
 	PxControllerCollisionFlags collisionFlags = cct.controller->move(cct.displacement, 0.001f, elapsedSeconds, filters);
 	
@@ -775,7 +871,6 @@ void PlayerController::update(float dt)
 	// Position update: snap horizontal for instant, snappy response; smooth only
 	// the vertical axis (framerate-independent) to absorb stair-step and PhysX
 	// overlap-recovery jitter without dragging horizontal movement behind input.
-	static float smoothedY = static_cast<float>(cct.controller->getPosition().y);
 	vector3df targetPosition = vector3df(
 		static_cast<float>(cct.controller->getPosition().x),
 		static_cast<float>(cct.controller->getPosition().y),
@@ -783,9 +878,9 @@ void PlayerController::update(float dt)
 
 	const float kVerticalSmoothRate = 18.0f;  // higher = snappier, lower = smoother
 	float yFactor = 1.0f - expf(-kVerticalSmoothRate * (dt / 1000.0f));
-	smoothedY += (targetPosition.Y - smoothedY) * yFactor;
+	m_smoothedY += (targetPosition.Y - m_smoothedY) * yFactor;
 
-	vector3df smoothedPosition(targetPosition.X, smoothedY, targetPosition.Z);
+	vector3df smoothedPosition(targetPosition.X, m_smoothedY, targetPosition.Z);
 
 	transform.setPosition(smoothedPosition);
 
@@ -819,18 +914,13 @@ void PlayerController::update(float dt)
 	}
 
 	// Movement detection for head bob - use actual CCT position, not interpolated transform
-	static vector3df lastCCTPosition = vector3df(
-		static_cast<float>(cct.controller->getPosition().x),
-		static_cast<float>(cct.controller->getPosition().y),
-		static_cast<float>(cct.controller->getPosition().z));
-	
 	vector3df currentCCTPosition = vector3df(
 		static_cast<float>(cct.controller->getPosition().x),
 		static_cast<float>(cct.controller->getPosition().y),
 		static_cast<float>(cct.controller->getPosition().z));
 
-	if (currentCCTPosition.X > lastCCTPosition.X || currentCCTPosition.Z > lastCCTPosition.Z ||
-		currentCCTPosition.X < lastCCTPosition.X || currentCCTPosition.Z < lastCCTPosition.Z)
+	if (currentCCTPosition.X > m_lastCCTPosition.X || currentCCTPosition.Z > m_lastCCTPosition.Z ||
+		currentCCTPosition.X < m_lastCCTPosition.X || currentCCTPosition.Z < m_lastCCTPosition.Z)
 	{
 		m_isMoving = true;
 		
@@ -857,7 +947,7 @@ void PlayerController::update(float dt)
 		// Play footstep when bob crosses zero going down (foot hits ground)
 		// Use airborne frame count instead of g_isOnSurface for more reliable ground detection
 		// m_airborneFrameCount < 3 means player is effectively on ground (even if PhysX collision flags flicker)
-		if (!isSwimming() && !m_isSliding && m_airborneFrameCount < 3)
+		if (!isSwimming() && !onLadder && !m_isSliding && m_airborneFrameCount < 3)
 		{
 			// Only play if enough time has elapsed since last footstep
 			if (/*g_lastHeadBobValue > 0.0f && bobValue <= 0.0f &&*/ currentTime - m_lastFootstepTime >= m_minFootstepInterval && !isSwimming())
@@ -883,7 +973,7 @@ void PlayerController::update(float dt)
 		g_lastHeadBobValue = 0.0f;
 	}
 
-	lastCCTPosition = currentCCTPosition;
+	m_lastCCTPosition = currentCCTPosition;
 	lastPlayerPosition = transform.getPosition();
 
 	// CRITICAL: Update weapon AFTER all camera/CCT updates complete

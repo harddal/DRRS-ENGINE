@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <cereal>
 	<value0>
-		<drawPointLightBounds>true</drawPointLightBounds>
+		<drawPointLightBounds>false</drawPointLightBounds>
 		<useSnap>true</useSnap>
 		<snapX>0.5</snapX>
 		<snapY>0.5</snapY>
 		<snapZ>0.5</snapZ>
+		<snapAngle>5</snapAngle>
 	</value0>
 </cereal>
 

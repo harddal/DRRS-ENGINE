@@ -428,6 +428,41 @@ void WorldManager::importScene(const std::string& file)
 			ofs.write(buf.data(), static_cast<std::streamsize>(buf.size()));
 		}
 
+		// Load CSG brushes BEFORE the entities (plane data is the source of
+		// truth; chunk meshes, selectors and collision are recompiled by
+		// deserialize -> compileAll).  Mover entities reference brush-compiled
+		// meshes through the mesh cache ("brushmover:<name>"), so those cache
+		// entries must exist before RenderSystem/PhysicsSystem create the
+		// entities' nodes and actors.
+		irr::io::IReadFile* brushFile = fs->createAndOpenFile("brushes.xml");
+		if (brushFile && BrushManager::Get())
+		{
+			std::vector<char> brushBuf(static_cast<size_t>(brushFile->getSize()));
+			brushFile->read(brushBuf.data(), static_cast<irr::u32>(brushBuf.size()));
+			brushFile->drop();
+
+			std::string tmpBrushes = file.substr(0, file.size() - 4) + "_tmp_brushes.xml";
+			{
+				std::ofstream ofs(tmpBrushes, std::ios::binary);
+				ofs.write(brushBuf.data(), static_cast<std::streamsize>(brushBuf.size()));
+			}
+			{
+				std::ifstream ifs(tmpBrushes);
+				cereal::XMLInputArchive ar(ifs);
+				BrushManager::Get()->deserialize(ar);
+			}
+			std::remove(tmpBrushes.c_str());
+
+			// Reattach baked chunk lightmaps — must follow deserialize
+			// (compileAll has recreated the chunks, clean) while the zip is
+			// still mounted so getTexture/createAndOpenFile resolve inside it
+			BrushManager::Get()->loadChunkLightmaps(fs, driver);
+		}
+		else if (brushFile)
+		{
+			brushFile->drop();
+		}
+
 		deserializeEntity(tmpScn, _entity_null_value, true);
 		std::remove(tmpScn.c_str());
 
@@ -462,36 +497,7 @@ void WorldManager::importScene(const std::string& file)
 			propsFile->drop();
 		}
 
-		// Load CSG brushes (plane data is the source of truth; chunk meshes,
-		// selectors and collision are recompiled by deserialize -> compileAll)
-		irr::io::IReadFile* brushFile = fs->createAndOpenFile("brushes.xml");
-		if (brushFile && BrushManager::Get())
-		{
-			std::vector<char> brushBuf(static_cast<size_t>(brushFile->getSize()));
-			brushFile->read(brushBuf.data(), static_cast<irr::u32>(brushBuf.size()));
-			brushFile->drop();
-
-			std::string tmpBrushes = file.substr(0, file.size() - 4) + "_tmp_brushes.xml";
-			{
-				std::ofstream ofs(tmpBrushes, std::ios::binary);
-				ofs.write(brushBuf.data(), static_cast<std::streamsize>(brushBuf.size()));
-			}
-			{
-				std::ifstream ifs(tmpBrushes);
-				cereal::XMLInputArchive ar(ifs);
-				BrushManager::Get()->deserialize(ar);
-			}
-			std::remove(tmpBrushes.c_str());
-
-			// Reattach baked chunk lightmaps — must follow deserialize
-			// (compileAll has recreated the chunks, clean) while the zip is
-			// still mounted so getTexture/createAndOpenFile resolve inside it
-			BrushManager::Get()->loadChunkLightmaps(fs, driver);
-		}
-		else if (brushFile)
-		{
-			brushFile->drop();
-		}
+		// (CSG brushes were loaded before the entities — see above)
 
 		// Load baked navmesh if present
 		if (NavigationManager::Get())
@@ -563,6 +569,13 @@ void WorldManager::importScene(const std::string& file)
 	RenderManager::Get()->posterizeCallback()->strength = m_currentSceneDescriptor.posterizeStrength;
 	RenderManager::Get()->setFilmGrainEnabled(m_currentSceneDescriptor.useFilmGrain);
 	RenderManager::Get()->filmGrainCallback()->strength = m_currentSceneDescriptor.filmGrainStrength;
+
+	RenderManager::Get()->setSSAOEnabled(m_currentSceneDescriptor.useSSAO);
+	if (auto* ssao = RenderManager::Get()->ssaoGenCallback())
+	{
+		ssao->radius    = m_currentSceneDescriptor.ssaoRadius;
+		ssao->intensity = m_currentSceneDescriptor.ssaoIntensity;
+	}
 
 	if (PropManager::Get() && !Engine::Get()->isEditorMode())
 		PropManager::Get()->setVegetationBatched(true);

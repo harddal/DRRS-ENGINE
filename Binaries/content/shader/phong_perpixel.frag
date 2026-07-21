@@ -77,6 +77,12 @@ uniform vec2  uTexScroll;     // UV offset per second; (0,0) = static
 uniform float uTexWarpAmp;    // sine warp amplitude in UV units; 0 = no warp
 uniform float uTexWarpSpeed;  // warp oscillation speed (radians/second)
 
+// UV tiling — MaterialTypeParams[0..1].  ZERO MEANS 1.0 (no tiling): the params
+// default to 0 on every material, so 0 must be treated as "untiled" or all
+// existing meshes would collapse their UVs to a single texel.  Negative values
+// are honored and mirror the axis.
+uniform vec2  uTexTiling;
+
 // Environment map (equirectangular) for ambient specular reflections
 uniform sampler2D tEnvMap;
 // Camera world-space basis vectors — used to convert the view-space reflection
@@ -155,9 +161,16 @@ float shadowFactorPCF(vec4 clip, vec4 rect)
 // ---------------------------------------------------------------------------
 void main()
 {
-    // UV scroll + sine warp.  Both use the unmodified vTexCoord as the sin input
-    // to avoid feedback discontinuities (same pattern as the water shader).
-    vec2 animUV = vTexCoord + uTexScroll * uTime;
+    // UV tiling, then scroll + sine warp.  Tiling of 0 means "untiled" (see the
+    // uTexTiling declaration) so untouched materials behave exactly as before.
+    // Scroll is applied in tiled space, so its units are texture repeats/second.
+    // The warp still uses the unmodified vTexCoord as the sin input to avoid
+    // feedback discontinuities (same pattern as the water shader).
+    vec2 tiling = vec2(
+        uTexTiling.x != 0.0 ? uTexTiling.x : 1.0,
+        uTexTiling.y != 0.0 ? uTexTiling.y : 1.0
+    );
+    vec2 animUV = vTexCoord * tiling + uTexScroll * uTime;
     animUV += vec2(
         sin(vTexCoord.y * 6.2831 + uTime * uTexWarpSpeed)       * uTexWarpAmp,
         sin(vTexCoord.x * 6.2831 + uTime * uTexWarpSpeed * 0.7) * uTexWarpAmp

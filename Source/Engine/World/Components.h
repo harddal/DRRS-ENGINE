@@ -12,6 +12,7 @@
 #include "Engine/World/Components/PrefabComponent.h"
 #include "Engine/World/Components/RenderComponent.h"
 #include "Engine/World/Components/ScriptComponent.h"
+#include "Engine/World/Components/SkyboxComponent.h"
 #include "Engine/World/Components/SoundComponent.h"
 #include "Engine/World/Components/SoundListenerComponent.h"
 #include "Engine/World/Components/TransformComponent.h"

@@ -100,6 +100,40 @@ public:
     bool isToolOverlayVisible() const { return m_toolOverlayVisible; }
     void setToolOverlayVisible(bool visible);
 
+    // NavMesh bake input: one world-space mesh of everything NPCs collide
+    // with — structural brush geometry (NODRAW faces included) plus
+    // monsterclip volumes as solid obstructions.  Other tool brushes
+    // (playerclip/weaponclip/trigger/sky) are invisible to pathfinding.
+    // Returns nullptr when there is nothing to cook; caller drops.
+    irr::scene::SMesh* buildNavGeometry();
+
+    // -----------------------------------------------------------------------
+    // Mover brushes (solidClass == SOLID_ENTITY, grouped by owner entity name)
+    // The group's compiled pivot-local mesh lives in Irrlicht's mesh cache
+    // under moverMeshName(owner); the mover entity's MeshComponent references
+    // that name, so RenderSystem loads it through the normal getMesh() path.
+    // -----------------------------------------------------------------------
+    static std::string moverMeshName(const std::string& owner) { return "brushmover:" + owner; }
+
+    // Convert brushes into a mover group: clears content flags, marks them
+    // SOLID_ENTITY/owner, pulls them out of their chunks, compiles + registers
+    // the group mesh.  Returns the group pivot (entity spawn position).
+    irr::core::vector3df markAsMover(const std::vector<uint32_t>& ids, const std::string& owner);
+
+    // Undo a conversion: clears the marks and rejoins the brushes to the
+    // world chunks.  The owning entity is the caller's to remove.
+    void revertMover(const std::string& owner);
+
+    // Rebuild + cache-register one group's mesh; outPivot receives the pivot.
+    // False when the group has no valid geometry.
+    bool registerMoverMesh(const std::string& owner, irr::core::vector3df* outPivot = nullptr);
+
+    // Rebuild every group (scene load / compileAll).
+    void registerMoverMeshes();
+
+    // Distinct (owner, brushCount) pairs, for the editor's mover list.
+    std::vector<std::pair<std::string, int>> getMoverGroups() const;
+
     // -----------------------------------------------------------------------
     // Picking
     // -----------------------------------------------------------------------

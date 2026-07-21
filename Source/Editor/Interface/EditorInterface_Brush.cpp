@@ -11,13 +11,14 @@
 #include "Engine/Resource/FilePaths.h"
 #include "Editor/BrushTool.h"
 #include "Utility/Utility.h"
+#include "Game/Components.h"
 
 #include <string>
 
 namespace
 {
     // Mode button that highlights when active and enforces painter exclusivity.
-    void modeButton(const char* label, BrushToolMode mode, BrushTool& tool)
+    void modeButton(const char* label, BrushToolMode mode, BrushTool& tool, const char* tooltip = nullptr)
     {
         const bool active = (tool.mode() == mode);
         if (active)
@@ -37,6 +38,8 @@ namespace
         }
         if (active)
             ImGui::PopStyleColor(2);
+        if (tooltip)
+            ImGui::SetItemTooltip("%s", tooltip);
     }
 
     // Tool-brush type presets: one click sets contentFlags AND applies the
@@ -54,6 +57,7 @@ namespace
         { "Weapon Clip",  CONTENT_CLIP_WEAPON,  "content/texture/tool/weaponclip.png"  },
         { "Trigger",      CONTENT_TRIGGER,      "content/texture/tool/trigger.png"     },
         { "Sky",          CONTENT_SKY,          "content/texture/tool/sky.png"         },
+        { "Ladder",       CONTENT_LADDER,       "content/texture/tool/ladder.png"      },
     };
 
     // One undo entry snapshotting every selected brush (whole-brush snapshots,
@@ -120,7 +124,7 @@ void EditorInterface::draw_window_brush_editor()
 
     BrushTool& tool = g_sceneInteractor.getBrushTool();
 
-    ImGui::SetNextWindowSize(DPI_SCALED_IMVEC2(280, 460), ImGuiCond_FirstUseEver);
+    //ImGui::SetNextWindowSize(DPI_SCALED_IMVEC2(280, 460));
     if (!ImGui::Begin("Brush Editor", &m_windowData.draw_window_brush_editor))
     {
         ImGui::End();
@@ -129,11 +133,16 @@ void EditorInterface::draw_window_brush_editor()
 
     // ---- Tool modes ----
     ImGui::Text("Tool");
-    modeButton("Create", BrushToolMode::CREATE, tool); ImGui::SameLine();
-    modeButton("Face",   BrushToolMode::FACE,   tool); ImGui::SameLine();
-    modeButton("Vertex", BrushToolMode::VERTEX, tool); ImGui::SameLine();
-    modeButton("Clip",   BrushToolMode::CLIP,   tool); ImGui::SameLine();
-    modeButton("Texture", BrushToolMode::PAINT, tool);
+    modeButton("Create", BrushToolMode::CREATE, tool,
+        "Draw new brush geometry: drag a footprint in the viewport,\nrelease to extrude it to the Height below."); ImGui::SameLine();
+    modeButton("Face",   BrushToolMode::FACE,   tool,
+        "Select individual faces and push/pull them along their normal.\nAlso edits per-face texture and UVs below."); ImGui::SameLine();
+    modeButton("Vertex", BrushToolMode::VERTEX, tool,
+        "Drag corner vertices to reshape a brush.\nEdits that would make an invalid shape revert."); ImGui::SameLine();
+    modeButton("Clip",   BrushToolMode::CLIP,   tool,
+        "Slice brushes along a plane defined by 2-3 clicked points.\nTab flips which side is kept, Enter commits."); ImGui::SameLine();
+    modeButton("Texture", BrushToolMode::PAINT, tool,
+        "Paint the Material below onto faces by clicking/dragging.\nCtrl+click samples a face's existing material.");
 
     switch (tool.mode())
     {
@@ -180,6 +189,7 @@ void EditorInterface::draw_window_brush_editor()
     ImGui::SameLine();
     ImGui::SetNextItemWidth(80);
     ImGui::InputFloat("##brush_height", &tool.defaultHeight, 0.0f, 0.0f, "%.2f");
+    ImGui::SetItemTooltip("Extrusion height (world units) given to newly created brushes.");
     if (tool.defaultHeight < 0.1f) tool.defaultHeight = 0.1f;
 
     // ---- Material ----
@@ -211,6 +221,7 @@ void EditorInterface::draw_window_brush_editor()
     if (s_cellSize <= 0.0f)
         s_cellSize = BrushManager::Get()->cellSize();
     ImGui::InputFloat("##brush_cell", &s_cellSize, 0.0f, 0.0f, "%.1f");
+    ImGui::SetItemTooltip("Edge length of the world cells brushes are batched into for rendering.\nSmaller cells = faster edits/finer rebuilds, larger cells = fewer draw calls.\nTakes effect on Apply (rebuilds all chunks).");
     ImGui::SameLine();
     if (ImGui::Button("Apply##brush_cell"))
     {
@@ -250,6 +261,75 @@ void EditorInterface::draw_window_brush_editor()
             tool.carveWithSelected();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Subtract the selected brush from every brush it overlaps.\nThe carver itself is kept — delete it afterwards if unwanted.");
+
+        ImGui::SameLine();
+        if (ImGui::Button("Convert to Mover"))
+        {
+            // Unique name across live entities AND existing mover groups
+            std::string moverName;
+            for (int n = 1;; n++)
+            {
+                moverName = "mover_" + std::to_string(n);
+                bool taken = WorldManager::Get()->managerSystem()->doesEntityExist(moverName);
+                if (!taken)
+                {
+                    for (auto& g : BrushManager::Get()->getMoverGroups())
+                        if (g.first == moverName) { taken = true; break; }
+                }
+                if (!taken)
+                    break;
+            }
+
+            const std::vector<uint32_t> ids = sel;  // copy — selection cleared below
+            const irr::core::vector3df pivot = BrushManager::Get()->markAsMover(ids, moverName);
+
+            // Same component set as the slidingdoor.ent prefab; the mesh comes
+            // from the cache-registered brush compile instead of a file.
+            auto entity = WorldManager::Get()->world()->createEntity();
+
+            entity.addComponent<DescriptorComponent>();
+            auto& desc = entity.getComponent<DescriptorComponent>();
+            desc.id             = WorldManager::Get()->getNewID();
+            desc.name           = moverName;
+            desc.type           = ET_DYNAMIC;
+            desc.isSerializable = true;
+            desc.isDebug        = false;
+            desc.isAlive        = true;
+
+            entity.addComponent<TransformComponent>();
+            entity.getComponent<TransformComponent>().setPosition(pivot);
+
+            entity.addComponent<RenderComponent>();
+
+            entity.addComponent<MeshComponent>();
+            auto& mc = entity.getComponent<MeshComponent>();
+            mc.mesh        = BrushManager::moverMeshName(moverName);
+            mc.navCookable = false;
+
+            entity.addComponent<PhysicsComponent>();
+            auto& pc = entity.getComponent<PhysicsComponent>();
+            pc.type      = PCT_BOX;
+            pc.kinematic = true;
+            pc.active    = true;
+
+            entity.addComponent<LogicComponent>();
+
+            entity.addComponent<ScriptComponent>();
+            entity.getComponent<ScriptComponent>().script = "content/script/object/sliding_door.asc";
+
+            entity.addComponent<SoundComponent>();
+            auto& snd = entity.getComponent<SoundComponent>();
+            snd.add(sSoundData("content/sound/effect/switch7.wav", "open",  true, false, 100.0f, 5.0f, 100.0f));
+            snd.add(sSoundData("content/sound/effect/switch7.wav", "close", true, false, 100.0f, 5.0f, 100.0f));
+
+            entity.activate();
+            WorldManager::Get()->world()->refresh();
+
+            g_sceneInteractor.clearSelectedBrushes();
+            g_sceneInteractor.setSelectedEntity(desc.id);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Turn the selected brushes into a door/elevator entity.\nDefaults to sliding_door.asc — swap the script for elevator.asc in the property panel.\nUse the Movers list below to revert.");
     }
 
     // ---- Brush type / content flags ----
@@ -262,7 +342,7 @@ void EditorInterface::draw_window_brush_editor()
         // Preset buttons: flags + matching tool texture in one undoable click.
         // Active preset highlights (TRIGGER_ONCE modifier ignored for the match).
         const irr::u32 matchFlags = primary->contentFlags & ~CONTENT_TRIGGER_ONCE;
-        auto presetButton = [&](const char* label, irr::u32 flags, const char* texture)
+        auto presetButton = [&](const char* label, irr::u32 flags, const char* texture, const char* tooltip)
         {
             const bool active = (matchFlags == flags);
             if (active)
@@ -274,14 +354,24 @@ void EditorInterface::draw_window_brush_editor()
                 applyToolPreset(sel, flags, texture);
             if (active)
                 ImGui::PopStyleColor(2);
+            if (tooltip)
+                ImGui::SetItemTooltip("%s", tooltip);
         };
 
-        presetButton("Solid", 0, nullptr);
-        ImGui::SameLine(); presetButton(kToolPresets[0].label, kToolPresets[0].flags, kToolPresets[0].texture);
-        ImGui::SameLine(); presetButton(kToolPresets[1].label, kToolPresets[1].flags, kToolPresets[1].texture);
-        presetButton(kToolPresets[2].label, kToolPresets[2].flags, kToolPresets[2].texture);
-        ImGui::SameLine(); presetButton(kToolPresets[3].label, kToolPresets[3].flags, kToolPresets[3].texture);
-        ImGui::SameLine(); presetButton(kToolPresets[4].label, kToolPresets[4].flags, kToolPresets[4].texture);
+        presetButton("Solid", 0, nullptr,
+            "Normal visible world geometry.");
+        ImGui::SameLine(); presetButton(kToolPresets[0].label, kToolPresets[0].flags, kToolPresets[0].texture,
+            "Invisible in-game; blocks only the player.\nSmooths stairs/edges, fences off out-of-bounds areas.");
+        ImGui::SameLine(); presetButton(kToolPresets[1].label, kToolPresets[1].flags, kToolPresets[1].texture,
+            "Invisible in-game; blocks only NPCs.\nKeeps AI out of places players can go.");
+        presetButton(kToolPresets[2].label, kToolPresets[2].flags, kToolPresets[2].texture,
+            "Invisible in-game; blocks only weapon fire and projectiles.");
+        ImGui::SameLine(); presetButton(kToolPresets[3].label, kToolPresets[3].flags, kToolPresets[3].texture,
+            "Invisible volume that signals its target entities when entered.\nSet targets in the Trigger section below.");
+        ImGui::SameLine(); presetButton(kToolPresets[4].label, kToolPresets[4].flags, kToolPresets[4].texture,
+            "Marks sky: stripped from the game's render mesh so the skybox shows through.");
+        presetButton(kToolPresets[5].label, kToolPresets[5].flags, kToolPresets[5].texture,
+            "Invisible climbable volume: W climbs up, S climbs down, jump detaches.\nPlace it flush against the wall/ladder mesh the player climbs.");
 
         if (primary->isToolBrush())
             ImGui::TextDisabled("Tool brush: stripped from the game's render mesh");
@@ -290,6 +380,7 @@ void EditorInterface::draw_window_brush_editor()
         // These touch flags only — textures stay as they are.
         if (ImGui::TreeNode("Flags##brush_content"))
         {
+            ImGui::SetItemTooltip("Raw content flags for combinations the presets don't cover.\nUnlike the presets these leave face textures untouched.");
             auto flagCheckbox = [&](const char* label, irr::u32 flag)
             {
                 bool on = (primary->contentFlags & flag) != 0;
@@ -301,6 +392,7 @@ void EditorInterface::draw_window_brush_editor()
             flagCheckbox("Weapon clip",  CONTENT_CLIP_WEAPON);
             flagCheckbox("Trigger",      CONTENT_TRIGGER);
             flagCheckbox("Sky",          CONTENT_SKY);
+            flagCheckbox("Ladder",       CONTENT_LADDER);
             ImGui::TreePop();
         }
 
@@ -359,6 +451,34 @@ void EditorInterface::draw_window_brush_editor()
         }
     }
 
+    // ---- Movers ----
+    const auto moverGroups = BrushManager::Get()->getMoverGroups();
+    if (!moverGroups.empty())
+    {
+        ImGui::Separator();
+        ImGui::Text("Movers");
+        for (const auto& group : moverGroups)
+        {
+            ImGui::PushID(group.first.c_str());
+            ImGui::Text("%s (%d brush%s)", group.first.c_str(), group.second,
+                        group.second == 1 ? "" : "es");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Revert to Brushes"))
+            {
+                for (auto* e : WorldManager::Get()->managerSystem()->getEntitiesByName(group.first))
+                {
+                    if (e && e->isValid())
+                        WorldManager::Get()->killEntityByID(
+                            e->getComponent<DescriptorComponent>().id);
+                }
+                BrushManager::Get()->revertMover(group.first);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Delete the mover entity and return its brushes to the world");
+            ImGui::PopID();
+        }
+    }
+
     // ---- Face properties ----
     const auto& faces = tool.selectedFaces();
     if (tool.mode() == BrushToolMode::FACE && !faces.empty())
@@ -391,8 +511,10 @@ void EditorInterface::draw_window_brush_editor()
             bool changed = false;
             ImGui::SetNextItemWidth(150);
             changed |= ImGui::DragFloat2("Offset##face_shift", &face.shiftU, 0.05f);
+            ImGui::SetItemTooltip("Slide the texture across the face (U/V, world units).");
             ImGui::SetNextItemWidth(150);
             changed |= ImGui::DragFloat2("Tile size##face_scale", &face.scaleU, 0.05f, 0.05f, 64.0f);
+            ImGui::SetItemTooltip("World units per texture repeat - larger values stretch the texture.");
             if (face.scaleU < 0.05f) face.scaleU = 0.05f;
             if (face.scaleV < 0.05f) face.scaleV = 0.05f;
 

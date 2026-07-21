@@ -6,6 +6,8 @@
 
 #include "Engine/Renderer/RenderManager.h"
 
+#include "Game/Components/MarkerComponent.h"
+
 SceneInteractionManager g_sceneInteractor;
 
 void EditorState::init(std::string args)
@@ -24,9 +26,13 @@ void EditorState::init(std::string args)
 	
 	g_sceneInteractor.init();
 
+	// Take over quit requests (title-bar X, ALT+F4, File > Quit) so closing the
+	// editor prompts about the current scene instead of dropping it.
+	Engine::Get()->setQuitRequestHandler(&EditorInterface::function_request_quit);
+
 	Engine::Get()->stateManager()->initState(ESID_EDITORGAME);
 
-	WorldManager::Get()->importScene(_asset_scn_pak("dm_turbine"));
+	WorldManager::Get()->importScene(_asset_scn_pak("TempleDungeon"));
 }
 
 void EditorState::update(float dt)
@@ -41,6 +47,28 @@ void EditorState::update(float dt)
 
 	if (BrushManager::Get())
 		BrushManager::Get()->rebuildDirtyChunks();
+
+	// Feed the 3D-skybox anchor from the MT_SKY_CAMERA marker so the editor
+	// previews parallax live as the marker or camera moves. No marker → sky off.
+	{
+		bool found = false;
+		for (auto e : WorldManager::Get()->world()->getEntities())
+		{
+			if (e.hasComponent<MarkerComponent>() && e.hasComponent<TransformComponent>())
+			{
+				auto& mk = e.getComponent<MarkerComponent>();
+				if (mk.type == MT_SKY_CAMERA)
+				{
+					RenderManager::Get()->setSkyCamera(
+						e.getComponent<TransformComponent>().getPosition(), mk.skyScale, true);
+					found = true;
+					break;
+				}
+			}
+		}
+		if (!found)
+			RenderManager::Get()->setSkyCamera(irr::core::vector3df(0, 0, 0), 16.0f, false);
+	}
 }
 
 void EditorState::updateUI(float dt)
@@ -52,7 +80,11 @@ void EditorState::destroy()
 {
 	m_camera.destroy();
 	g_sceneInteractor.destroy();
-	
+
+	// The prompt cannot be drawn once the editor UI is gone — let quit requests
+	// through unmodified again.
+	Engine::Get()->setQuitRequestHandler(nullptr);
+
 	Engine::Get()->clearScene();
 }
 

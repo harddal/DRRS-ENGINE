@@ -101,8 +101,13 @@ void Engine::update()
 {
     while (m_renderManager.device()->run() && !m_exit)
     {
+		// Title-bar X / ALT+F4 arrive here as a vetoable request (RenderManager
+		// swallows the WM_CLOSE) so the editor can prompt about unsaved work.
+		if (m_renderManager.consumeWindowCloseRequest())
+			requestQuit();
+
 		m_currentTick = static_cast<float>(GetCounter());
-		
+
 		// Calculate raw frame time in seconds
 		float frameTime = (m_currentTick - m_lastTick) / 1000.0f;
 		

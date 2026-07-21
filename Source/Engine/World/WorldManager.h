@@ -105,6 +105,11 @@ struct SceneDescriptor
 	bool  useFilmGrain      = false;
 	float filmGrainStrength = 0.025f;
 
+	// SSAO (screen-space ambient occlusion) — matches RenderManager defaults
+	bool  useSSAO       = true;
+	float ssaoRadius    = 1.0f;
+	float ssaoIntensity = 1.0f;
+
 	template <class Archive>
 	void serialize(Archive& archive)
 	{
@@ -133,6 +138,9 @@ struct SceneDescriptor
 		try { archive(CEREAL_NVP(posterizeStrength)); } catch (...) {}
 		try { archive(CEREAL_NVP(useFilmGrain)); } catch (...) {}
 		try { archive(CEREAL_NVP(filmGrainStrength)); } catch (...) {}
+		try { archive(CEREAL_NVP(useSSAO)); } catch (...) {}
+		try { archive(CEREAL_NVP(ssaoRadius)); } catch (...) {}
+		try { archive(CEREAL_NVP(ssaoIntensity)); } catch (...) {}
 	}
 	
     SceneDescriptor& operator=(SceneDescriptor desc)
@@ -175,6 +183,10 @@ struct SceneDescriptor
 
 		std::swap(useFilmGrain,      desc.useFilmGrain);
 		std::swap(filmGrainStrength, desc.filmGrainStrength);
+
+		std::swap(useSSAO,       desc.useSSAO);
+		std::swap(ssaoRadius,    desc.ssaoRadius);
+		std::swap(ssaoIntensity, desc.ssaoIntensity);
 
         return *this;
     }

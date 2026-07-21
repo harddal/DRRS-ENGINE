@@ -204,6 +204,14 @@ void WorldManager::serializeEntity(Entity& entity, XMLOutputArchive& archive, bo
             archive.finishNode();
         }
 
+        if (entity.hasComponent<SkyboxComponent>())
+        {
+            archive.setNextName("skybox");
+            archive.startNode();
+            archive(entity.getComponent<SkyboxComponent>());
+            archive.finishNode();
+        }
+
         GameState::serializeComponent(entity, archive);
 
         archive.finishNode();

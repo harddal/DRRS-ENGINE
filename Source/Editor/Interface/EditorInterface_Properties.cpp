@@ -178,23 +178,27 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 							prop->defaultShader = shaderNames[currentShader];
 							PropManager::Get()->applyShaders(selectedId);
 						}
+						ImGui::SetItemTooltip("Shader used to draw this prop. 'foliage'/'grass' add wind sway;\n'phong_perpixel_transparent' enables glass/fresnel settings.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Cull Dist.");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						if (ImGui::InputFloat("##propCull", &prop->cullDistance, 0.0f, 0.0f, "%.1f"))
 							if (prop->cullDistance < 0.0f) prop->cullDistance = 0.0f;
+						ImGui::SetItemTooltip("Camera distance beyond which the prop is hidden - keeps dense\nvegetation/detail cheap in the distance.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Vegetation");
 						ImGui::TableSetColumnIndex(1);
 						if (ImGui::Checkbox("##propVeg", &prop->isVegetation))
 							PropManager::Get()->applyShaders(selectedId);
+						ImGui::SetItemTooltip("Treat as vegetation: gets the swaying foliage shader\nand distance-based hide/show handled by the prop manager.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Rcv Lightmap");
 						ImGui::TableSetColumnIndex(1);
 						ImGui::Checkbox("##propRlm", &prop->receivesLightmap);
+						ImGui::SetItemTooltip("Apply baked lightmap lighting to this prop when lightmaps are baked.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Cast Shadows");
@@ -219,6 +223,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 								prop->useConvexCollision = ucc;
 								PropManager::Get()->applyCollision(selectedId);
 							}
+							ImGui::SetItemTooltip("Use a simplified convex hull instead of exact triangle collision -\nmuch cheaper; fine for solid chunky objects, wrong for hollow ones.");
 						}
 
 						ImGui::TableNextRow();
@@ -227,6 +232,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 						if (ImGui::DragFloat("##propRoughness", &prop->roughness, 1.0f, 0.0f, 128.0f))
 							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 								prop->node->getMaterial(i).Shininess = prop->roughness;
+						ImGui::SetItemTooltip("Specular glossiness: 0 = matte, 128 = tight sharp highlight.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Emissive");
@@ -235,12 +241,35 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 								prop->node->getMaterial(i).SpecularColor.setAlpha(
 									static_cast<irr::u32>(prop->emissive * 255.0f));
+						ImGui::SetItemTooltip("Self-illumination amount (0-1): the surface glows regardless of scene lighting.");
+
+						// Tiling is params[0..1]; the shader reads 0 as 1.0 (untiled),
+						// so display 1.0 rather than a confusing 0.00 on untouched props.
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("UV Tiling");
+						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
+						float uvTiling[2] = {
+							prop->materialTypeParams[0] != 0.0f ? prop->materialTypeParams[0] : 1.0f,
+							prop->materialTypeParams[1] != 0.0f ? prop->materialTypeParams[1] : 1.0f };
+						bool propTilingChanged = ImGui::DragFloat2("##propUVTiling", uvTiling, 0.1f, -64.0f, 64.0f, "%.2f");
+						ImGui::SetItemTooltip("How many times the texture repeats across the surface (1 = unchanged mapping).");
+						if (propTilingChanged)
+						{
+							prop->materialTypeParams[0] = uvTiling[0];
+							prop->materialTypeParams[1] = uvTiling[1];
+							for (auto i = 0; i < prop->node->getMaterialCount(); i++) {
+								prop->node->getMaterial(i).MaterialTypeParams[0] = uvTiling[0];
+								prop->node->getMaterial(i).MaterialTypeParams[1] = uvTiling[1];
+							}
+						}
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("UV Scroll");
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 						float uvScroll[2] = { prop->materialTypeParams[4], prop->materialTypeParams[5] };
-						if (ImGui::DragFloat2("##propUVScroll", uvScroll, 0.01f, -5.0f, 5.0f, "%.2f"))
+						bool propScrollChanged = ImGui::DragFloat2("##propUVScroll", uvScroll, 0.01f, -5.0f, 5.0f, "%.2f");
+						ImGui::SetItemTooltip("Constant texture scroll speed in UVs per second (clouds, waterfalls, conveyors).");
+						if (propScrollChanged)
 						{
 							prop->materialTypeParams[4] = uvScroll[0];
 							prop->materialTypeParams[5] = uvScroll[1];
@@ -256,6 +285,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 						if (ImGui::DragFloat("##propUVWarpAmp", &prop->materialTypeParams[6], 0.005f, 0.0f, 0.5f, "%.3f"))
 							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 								prop->node->getMaterial(i).MaterialTypeParams[6] = prop->materialTypeParams[6];
+						ImGui::SetItemTooltip("Strength of the sine-wave UV wobble (heat haze, underwater shimmer). 0 = off.");
 
 						ImGui::TableNextRow();
 						ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Warp Speed");
@@ -263,6 +293,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 						if (ImGui::DragFloat("##propUVWarpSpd", &prop->materialTypeParams[7], 0.1f, 0.0f, 20.0f, "%.1f"))
 							for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 								prop->node->getMaterial(i).MaterialTypeParams[7] = prop->materialTypeParams[7];
+						ImGui::SetItemTooltip("How fast the UV wobble oscillates.");
 
 						ImGui::EndTable();
 					}
@@ -350,6 +381,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 									prop->node->getMaterial(i).DiffuseColor.setAlpha(
 										static_cast<irr::u32>(prop->crystalTransparency * 255.0f));
+							ImGui::SetItemTooltip("Base opacity of the glass (0 = invisible, 1 = solid).");
 
 							ImGui::TableNextRow();
 							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fresnel Glow");
@@ -357,6 +389,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 							if (ImGui::DragFloat("##propGlassGlow", &prop->crystalGlow, 0.01f, 0.0f, 5.0f, "%.2f"))
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 									prop->node->getMaterial(i).MaterialTypeParams[2] = prop->crystalGlow;
+							ImGui::SetItemTooltip("Strength of the rim glow on silhouette edges (fresnel effect).");
 
 							ImGui::TableNextRow();
 							ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fresnel Power");
@@ -364,6 +397,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 							if (ImGui::DragFloat("##propGlassPower", &prop->crystalShimmer, 0.1f, 0.5f, 20.0f, "%.1f"))
 								for (auto i = 0; i < prop->node->getMaterialCount(); i++)
 									prop->node->getMaterial(i).MaterialTypeParams[3] = prop->crystalShimmer;
+							ImGui::SetItemTooltip("Fresnel exponent - higher confines the glow to grazing angles/edges.");
 
 							ImGui::EndTable();
 						}
@@ -405,6 +439,7 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 					}
 					if (ImGui::SmallButton("+ Add Override"))
 						prop->bufferShaderOverrides.push_back({ 0, "phong_perpixel" });
+					ImGui::SetItemTooltip("Draw one mesh buffer with a different shader than the rest\n(e.g. glass windows on an otherwise opaque building mesh).");
 				}
 
 				// --- Delete ---
@@ -555,6 +590,12 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 				}
 
 				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+				if (entity.hasComponent<SkyboxComponent>() && ImGui::CollapsingHeader("Skybox"))
+				{
+					draw_component_properties(ENTITY_COMPONENT::SKYBOX, entity);
+				}
+
+				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 				if (entity.hasComponent<TriggerZoneComponent>() && ImGui::CollapsingHeader("Trigger Zone"))
 				{
 					draw_component_properties(ENTITY_COMPONENT::TRIGGERZONE, entity);
@@ -664,7 +705,7 @@ void EditorInterface::draw_window_prop_scene()
 			buf_name[i] = scenedesc.name[i];
 		}
 		ImGui::PushID("SceneNameInput");
-		if (ImGui::InputText("", buf_name, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+		if (ImGui::InputText("##scene_name", buf_name, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 		{
 			scenedesc.name = buf_name;
 		}
@@ -679,7 +720,7 @@ void EditorInterface::draw_window_prop_scene()
 			buf_creator[i] = scenedesc.creator[i];
 		}
 		ImGui::PushID("SceneCreatorInput");
-		if (ImGui::InputText("", buf_creator, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+		if (ImGui::InputText("##scene_creator", buf_creator, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 		{
 			scenedesc.creator = buf_creator;
 		}
@@ -694,7 +735,7 @@ void EditorInterface::draw_window_prop_scene()
 			buf_notes[i] = scenedesc.notes[i];
 		}
 		ImGui::PushID("SceneNotesInput");
-		if (ImGui::InputText("", buf_notes, 256, ImGuiInputTextFlags_EnterReturnsTrue))
+		if (ImGui::InputText("##scene_notes", buf_notes, 256, ImGuiInputTextFlags_EnterReturnsTrue))
 		{
 			scenedesc.notes = buf_notes;
 		}
@@ -704,6 +745,7 @@ void EditorInterface::draw_window_prop_scene()
 
 		if (ImGui::Button("Set Skydome Texture"))
 			show_window_texture_browser("scene_skydome");
+		ImGui::SetItemTooltip("Choose the panoramic sky texture for this scene.\nApplied when you press Save below.");
 		if (g_textureBrowserRequestID == "scene_skydome" && g_currentSelectedTexture != "null")
 		{
 			scenedesc.skydome_texture = g_currentSelectedTexture;
@@ -726,19 +768,25 @@ void EditorInterface::draw_window_prop_scene()
 
 		ImGui::Text("Bloom:");
 		ImGui::SliderFloat("Threshold", &RenderManager::Get()->bloomBrightCallback()->threshold, 0.0f, 1.0f, "%.2f");
+		ImGui::SetItemTooltip("Brightness a pixel must exceed before it blooms - lower = more of the scene glows.");
 		ImGui::PushID("BLOOM_STR");
 		ImGui::SliderFloat("Strength", &RenderManager::Get()->bloomCompositeCallback()->strength, 0.0f, 2.0f, "%.2f");
 		ImGui::PopID();
 		ImGui::Text("Tonemapping:");
 		ImGui::SliderFloat("Exposure", &RenderManager::Get()->tonemapCallback()->exposure, 0.0f, 15.0f, "%.2f");
+		ImGui::SetItemTooltip("Overall scene brightness before tonemapping - like a camera's exposure setting.");
 		ImGui::SliderFloat("White Point", &RenderManager::Get()->tonemapCallback()->whitePoint, 0.0f, 20.0f, "%.2f");
+		ImGui::SetItemTooltip("Brightness that maps to pure white - lower makes highlights blow out sooner.");
 		ImGui::Text("Sharpening:");
 		ImGui::PushID("SHARPEN_STR");
 		ImGui::SliderFloat("Strength", &RenderManager::Get()->sharpenCallback()->strength, 0.0f, 2.0f, "%.2f");
 		ImGui::PopID();
 		ImGui::Text("Pixelation:");
-		ImGui::Checkbox("##usePixelate", &scenedesc.usePixelate);
-		RenderManager::Get()->setPixelateEnabled(scenedesc.usePixelate);
+		{
+			bool usePixelate = RenderManager::Get()->isPixelateEnabled();
+			if (ImGui::Checkbox("##usePixelate", &usePixelate))
+				RenderManager::Get()->setPixelateEnabled(usePixelate);
+		}
 		ImGui::SameLine();
 		ImGui::PushID("PIXELATE_SIZE");
 		ImGui::SliderFloat("Size", &RenderManager::Get()->pixelateCallback()->pixelSize, 1.0f, 32.0f, "%.1f");
@@ -757,9 +805,11 @@ void EditorInterface::draw_window_prop_scene()
 			cb->fogColor[0] = fogArr[0]; cb->fogColor[1] = fogArr[1]; cb->fogColor[2] = fogArr[2];
 			ImGui::PushID("FOG_DENSITY");
 			ImGui::SliderFloat("Density",    &cb->fogDensity, 0.0f, 0.1f, "%.4f");
+			ImGui::SetItemTooltip("Fog thickness - how quickly things dissolve into the fog color. 0 disables fog.");
 			ImGui::PopID();
 			ImGui::PushID("FOG_START");
 			ImGui::SliderFloat("Start Dist", &cb->fogStart,   0.0f, 200.0f, "%.1f");
+			ImGui::SetItemTooltip("Distance from the camera where fog begins to appear.");
 			ImGui::PopID();
 		}
 
@@ -769,8 +819,11 @@ void EditorInterface::draw_window_prop_scene()
 
 		// ---- Color Grading ----
 		ImGui::Text("Color Grading:");
-		ImGui::Checkbox("##useColorGrade", &scenedesc.useColorGrade);
-		RenderManager::Get()->setColorGradeEnabled(scenedesc.useColorGrade);
+		{
+			bool useColorGrade = RenderManager::Get()->isColorGradeEnabled();
+			if (ImGui::Checkbox("##useColorGrade", &useColorGrade))
+				RenderManager::Get()->setColorGradeEnabled(useColorGrade);
+		}
 		ImGui::SameLine();
 		ImGui::PushID("CG_SAT");
 		ImGui::SliderFloat("Saturation", &RenderManager::Get()->colorGradeCallback()->saturation, 0.0f, 4.0f, "%.2f");
@@ -782,11 +835,15 @@ void EditorInterface::draw_window_prop_scene()
 
 		// ---- Posterize ----
 		ImGui::Text("Posterize:");
-		ImGui::Checkbox("##usePosterize", &scenedesc.usePosterize);
-		RenderManager::Get()->setPosterizeEnabled(scenedesc.usePosterize);
+		{
+			bool usePosterize = RenderManager::Get()->isPosterizeEnabled();
+			if (ImGui::Checkbox("##usePosterize", &usePosterize))
+				RenderManager::Get()->setPosterizeEnabled(usePosterize);
+		}
 		ImGui::SameLine();
 		ImGui::PushID("PZ_LEVELS");
 		ImGui::SliderFloat("Levels",   &RenderManager::Get()->posterizeCallback()->levels,   4.0f, 64.0f, "%.0f");
+		ImGui::SetItemTooltip("Number of color steps per channel - fewer = more banded, cartoon-like look.");
 		ImGui::PopID();
 		ImGui::PushID("PZ_STR");
 		ImGui::SliderFloat("Strength", &RenderManager::Get()->posterizeCallback()->strength, 0.0f, 1.0f,  "%.2f");
@@ -794,8 +851,11 @@ void EditorInterface::draw_window_prop_scene()
 
 		// ---- Film Grain ----
 		ImGui::Text("Film Grain:");
-		ImGui::Checkbox("##useFilmGrain", &scenedesc.useFilmGrain);
-		RenderManager::Get()->setFilmGrainEnabled(scenedesc.useFilmGrain);
+		{
+			bool useFilmGrain = RenderManager::Get()->isFilmGrainEnabled();
+			if (ImGui::Checkbox("##useFilmGrain", &useFilmGrain))
+				RenderManager::Get()->setFilmGrainEnabled(useFilmGrain);
+		}
 		ImGui::SameLine();
 		ImGui::PushID("FG_STR");
 		ImGui::SliderFloat("Strength", &RenderManager::Get()->filmGrainCallback()->strength, 0.0f, 0.2f, "%.3f");
@@ -807,6 +867,7 @@ void EditorInterface::draw_window_prop_scene()
 			bool clustered = clm->isEnabled();
 			if (ImGui::Checkbox("Clustered Lighting", &clustered))
 				clm->setEnabled(clustered);
+			ImGui::SetItemTooltip("Clustered forward lighting path - supports many dynamic lights at once.\nUncheck to fall back to the legacy 8-light path (comparison/debugging).");
 			if (clustered)
 			{
 				ImGui::SameLine();
@@ -819,11 +880,13 @@ void EditorInterface::draw_window_prop_scene()
 			bool ssaoOn = RenderManager::Get()->isSSAOEnabled();
 			if (ImGui::Checkbox("SSAO", &ssaoOn))
 				RenderManager::Get()->setSSAOEnabled(ssaoOn);
+			ImGui::SetItemTooltip("Screen-space ambient occlusion - soft contact shadowing\nin corners, crevices and where objects meet.");
 			if (ssaoOn)
 			{
 				auto* cb = RenderManager::Get()->ssaoGenCallback();
 				ImGui::PushID("SSAO_RADIUS");
 				ImGui::SliderFloat("Radius", &cb->radius, 0.1f, 5.0f, "%.2f");
+				ImGui::SetItemTooltip("World-space radius sampled around each pixel - larger = broader, softer occlusion.");
 				ImGui::PopID();
 				ImGui::PushID("SSAO_INTENSITY");
 				ImGui::SliderFloat("Intensity", &cb->intensity, 0.0f, 2.0f, "%.2f");
@@ -837,10 +900,12 @@ void EditorInterface::draw_window_prop_scene()
 			static bool s_softParticles = RenderManager::Get()->softParticleShaderEnabled();
 			if (ImGui::Checkbox("Soft Particles", &s_softParticles))
 				ParticleManager::Get()->setSoftParticleShader(s_softParticles);
+			ImGui::SetItemTooltip("Fade particles where they intersect world geometry,\navoiding hard clipping lines through smoke and fog sprites.");
 			if (s_softParticles)
 			{
 				ImGui::PushID("SOFT_PART");
 				ImGui::SliderFloat("Fade Dist", &spc->softDistance, 0.0f, 2.0f, "%.2f");
+				ImGui::SetItemTooltip("Distance over which a particle fades out as it approaches a surface.");
 				ImGui::PopID();
 			}
 		}
@@ -935,7 +1000,9 @@ void EditorInterface::draw_window_prop_scene()
 		ImGui::Separator();
 		ImGui::Spacing();
 
-		if (ImGui::Button("Save"))
+		bool sceneSaveClicked = ImGui::Button("Save");
+		ImGui::SetItemTooltip("Apply the skydome and store all settings above into the scene descriptor,\nso they persist when the scene file is saved.");
+		if (sceneSaveClicked)
 		{
 			RenderManager::Get()->swapSkyDomeTexture(scenedesc.skydome_texture);
 
@@ -945,6 +1012,7 @@ void EditorInterface::draw_window_prop_scene()
 			scenedesc.tonemapwhitePoint = RenderManager::Get()->tonemapCallback()->whitePoint;
 			scenedesc.sharpenStrength   = RenderManager::Get()->sharpenCallback()->strength;
 			scenedesc.pixelateSize      = RenderManager::Get()->pixelateCallback()->pixelSize;
+			scenedesc.usePixelate       = RenderManager::Get()->isPixelateEnabled();
 
 			{
 				auto* cb = RenderManager::Get()->mainShaderCallback();
@@ -952,20 +1020,31 @@ void EditorInterface::draw_window_prop_scene()
 				scenedesc.fogStart    = cb->fogStart;
 				scenedesc.fogColor    = irr::video::SColorf(cb->fogColor[0], cb->fogColor[1], cb->fogColor[2], 1.0f);
 			}
+			scenedesc.useColorGrade = RenderManager::Get()->isColorGradeEnabled();
 			scenedesc.cgSaturation  = RenderManager::Get()->colorGradeCallback()->saturation;
 			scenedesc.cgBrightness  = RenderManager::Get()->colorGradeCallback()->brightness;
 			scenedesc.cgTintR       = RenderManager::Get()->colorGradeCallback()->colorTint[0];
 			scenedesc.cgTintG       = RenderManager::Get()->colorGradeCallback()->colorTint[1];
 			scenedesc.cgTintB       = RenderManager::Get()->colorGradeCallback()->colorTint[2];
+			scenedesc.usePosterize      = RenderManager::Get()->isPosterizeEnabled();
 			scenedesc.posterizeLevels   = RenderManager::Get()->posterizeCallback()->levels;
 			scenedesc.posterizeStrength = RenderManager::Get()->posterizeCallback()->strength;
+			scenedesc.useFilmGrain      = RenderManager::Get()->isFilmGrainEnabled();
 			scenedesc.filmGrainStrength = RenderManager::Get()->filmGrainCallback()->strength;
+			scenedesc.useSSAO           = RenderManager::Get()->isSSAOEnabled();
+			if (auto* ssao = RenderManager::Get()->ssaoGenCallback())
+			{
+				scenedesc.ssaoRadius    = ssao->radius;
+				scenedesc.ssaoIntensity = ssao->intensity;
+			}
 
 			WorldManager::Get()->setCurrentSceneDescriptor(scenedesc);
 			scenedesc = WorldManager::Get()->getCurrentSceneDescriptor();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("Reset"))
+		bool sceneResetClicked = ImGui::Button("Reset");
+		ImGui::SetItemTooltip("Revert to the scene's last saved values\n(bloom/tonemap/sharpen return to engine defaults).");
+		if (sceneResetClicked)
 		{
 			auto desc = WorldManager::Get()->getCurrentSceneDescriptor();
 			WorldManager::Get()->setCurrentSceneDescriptor(desc);
@@ -1001,6 +1080,12 @@ void EditorInterface::draw_window_prop_scene()
 			RenderManager::Get()->posterizeCallback()->strength = desc.posterizeStrength;
 			RenderManager::Get()->setFilmGrainEnabled(desc.useFilmGrain);
 			RenderManager::Get()->filmGrainCallback()->strength = desc.filmGrainStrength;
+			RenderManager::Get()->setSSAOEnabled(desc.useSSAO);
+			if (auto* ssao = RenderManager::Get()->ssaoGenCallback())
+			{
+				ssao->radius    = desc.ssaoRadius;
+				ssao->intensity = desc.ssaoIntensity;
+			}
 
 			scenedesc = WorldManager::Get()->getCurrentSceneDescriptor();
 		}

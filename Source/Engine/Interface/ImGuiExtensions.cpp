@@ -22,6 +22,10 @@ bool ImColorPicker(const char* label, ImColor* color)
 	static const float  GAP           = 6.0f;
 	static const float  CURSOR_RADIUS = 5.0f;
 
+	// Scope the internal ##sv/##hue/##swatch items by label so multiple
+	// pickers can coexist in one window without ID conflicts
+	PushID(label);
+
 	bool value_changed = false;
 
 	ImDrawList* draw_list  = GetWindowDrawList();
@@ -146,6 +150,8 @@ bool ImColorPicker(const char* label, ImColor* color)
 	// -----------------------------------------------------------------------
 	SetCursorScreenPos(ImVec2(picker_pos.x, picker_pos.y + SV_SIZE.y + GAP));
 	bool text_changed = ColorEdit3(label, &color->Value.x);
+
+	PopID();
 
 	return value_changed | text_changed;
 }

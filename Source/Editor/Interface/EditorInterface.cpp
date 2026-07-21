@@ -147,6 +147,7 @@ void EditorInterface::draw()
 
 	// Top-level modals — submitted last so they render above everything.
 	drawScriptEditorPopups();
+	draw_quit_prompt();
 
 	ImGui::PopStyleColor(31); // 30 theme colors + 1 transparent main window bg
 }
@@ -326,36 +327,101 @@ static void syncSceneDescriptorFromCallbacks()
 	desc.posterizeStrength = RenderManager::Get()->posterizeCallback()->strength;
 	desc.useFilmGrain      = RenderManager::Get()->isFilmGrainEnabled();
 	desc.filmGrainStrength = RenderManager::Get()->filmGrainCallback()->strength;
+	desc.useSSAO           = RenderManager::Get()->isSSAOEnabled();
+	if (auto* ssao = RenderManager::Get()->ssaoGenCallback())
+	{
+		desc.ssaoRadius    = ssao->radius;
+		desc.ssaoIntensity = ssao->intensity;
+	}
 	WorldManager::Get()->setCurrentSceneDescriptor(desc);
 }
 
-static void exportSceneToPath(const std::string& path)
+static bool exportSceneToPath(const std::string& path)
 {
-	if (path.empty()) return;
+	if (path.empty()) return false;
 	syncSceneDescriptorFromCallbacks();
 	WorldManager::Get()->exportScene(path);
+	return true;
 }
 
-void EditorInterface::funtion_save_scene()
+bool EditorInterface::funtion_save_scene()
 {
 	if (!g_currentScenePath.empty())
 	{
-		exportSceneToPath(g_currentScenePath);
+		return exportSceneToPath(g_currentScenePath);
 	}
-	else
-	{
-		function_save_scene_as();
-	}
+
+	return function_save_scene_as();
 }
 
-void EditorInterface::function_save_scene_as()
+bool EditorInterface::function_save_scene_as()
 {
 	std::string path = Utility::SaveFileDialog(dialog_filter_scene_zip, "content\\scene");
-	if (!path.empty())
+	if (path.empty()) { return false; }
+
+	g_currentScenePath = path;
+	return exportSceneToPath(path);
+}
+
+// Set by function_request_quit(), consumed by draw_quit_prompt() on the next
+// frame — OpenPopup has to be called from inside the ImGui frame that also
+// submits the matching BeginPopupModal.
+static bool s_quitPromptPending = false;
+
+bool EditorInterface::function_request_quit()
+{
+	// While play-testing the editor UI is not being submitted, so the modal
+	// would never appear. Drop back to the editor state first — the same
+	// transition the play-mode ESC handler uses, which restores the scene.
+	if (Engine::Get()->stateManager()->current() == ESID_EDITORGAME)
+		Engine::Get()->stateManager()->setStatePauseResume(ESID_EDITOR);
+
+	s_quitPromptPending = true;
+	return false; // veto — the prompt calls Engine::exit() if the user confirms
+}
+
+void EditorInterface::draw_quit_prompt()
+{
+	if (s_quitPromptPending)
 	{
-		g_currentScenePath = path;
-		exportSceneToPath(path);
+		ImGui::OpenPopup("Quit Editor##quit");
+		s_quitPromptPending = false;
 	}
+
+	ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	if (!ImGui::BeginPopupModal("Quit Editor##quit", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		return;
+
+	if (g_currentScenePath.empty())
+		ImGui::Text("The current scene has never been saved.");
+	else
+		ImGui::Text("Save '%s' before quitting?", PathFindFileNameA(g_currentScenePath.c_str()));
+
+	ImGui::Spacing();
+
+	if (ImGui::Button("Save", ImVec2(100, 0)))
+	{
+		// A cancelled Save As leaves the modal up rather than losing the scene.
+		if (funtion_save_scene())
+		{
+			ImGui::CloseCurrentPopup();
+			Engine::Get()->exit();
+		}
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Don't Save", ImVec2(100, 0)))
+	{
+		ImGui::CloseCurrentPopup();
+		Engine::Get()->exit();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Cancel", ImVec2(100, 0)))
+	{
+		ImGui::CloseCurrentPopup(); // Escape also dismisses — ImGui does that for modals
+	}
+
+	ImGui::EndPopup();
 }
 
 void EditorInterface::function_play_scene()

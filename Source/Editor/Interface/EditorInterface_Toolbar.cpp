@@ -9,6 +9,7 @@
 #include "Engine/Engine.h"
 #include "Game/Components.h"
 
+#include "Engine/Brush/BrushManager.h"
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
 
@@ -57,8 +58,14 @@ void EditorInterface::draw_toolbar()
 	auto btnW = [&](const char* label) {
 		return ImGui::CalcTextSize(label).x + s.FramePadding.x * 2.0f;
 	};
+	// The snap stepper is context-sensitive: it edits the rotation angle (degrees)
+	// while the Rotate tool is active, and the position grid unit otherwise.
+	const bool rotateSnap = (mode == ImTransformControl::ROTATE);
 	char snap_val_str[16];
-	snprintf(snap_val_str, sizeof(snap_val_str), "%.4g", g_sceneInteractor.getSnapUnit());
+	if (rotateSnap)
+		snprintf(snap_val_str, sizeof(snap_val_str), "%.4g\xC2\xB0", g_sceneInteractor.getSnapAngle()); // \xC2\xB0 = ° (UTF-8)
+	else
+		snprintf(snap_val_str, sizeof(snap_val_str), "%.4g", g_sceneInteractor.getSnapUnit());
 	float snap_text_w = ImGui::CalcTextSize(snap_val_str).x;
 	const float lm_res_w   = 70.0f;
 	const float lm_bias_w  = 55.0f;
@@ -85,18 +92,21 @@ void EditorInterface::draw_toolbar()
 	if (tActive) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button("Translate")) g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::TRANSLATE);
 	if (tActive) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Gizmo moves the selection.");
 
 	ImGui::SameLine();
 	bool rActive = (mode == ImTransformControl::ROTATE);
 	if (rActive) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button("Rotate")) g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::ROTATE);
 	if (rActive) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Gizmo rotates the selection. The snap stepper switches to degrees.");
 
 	ImGui::SameLine();
 	bool scActive = (mode == ImTransformControl::SCALE);
 	if (scActive) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button("Scale")) g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::SCALE);
 	if (scActive) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Gizmo scales the selection.");
 
 	// -- Separator --
 	ImGui::SameLine(0.0f, gap); ImGui::TextDisabled("|");
@@ -107,12 +117,14 @@ void EditorInterface::draw_toolbar()
 	if (lActive) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button("Local")) g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::LOCAL);
 	if (lActive) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Gizmo axes follow the object's own rotation.");
 
 	ImGui::SameLine();
 	bool wActive = (coord == ImTransformControl::WORLD);
 	if (wActive) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button("World")) g_sceneInteractor.setTransformWidgetMode(TRANSFORM_WIDGET_MODE::WORLD);
 	if (wActive) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Gizmo axes stay aligned to the world grid.");
 
 	// -- Separator --
 	ImGui::SameLine(0.0f, gap); ImGui::TextDisabled("|");
@@ -122,24 +134,37 @@ void EditorInterface::draw_toolbar()
 	if (snap) ImGui::PushStyleColor(ImGuiCol_Button, active_btn);
 	if (ImGui::Button(snap ? "Snap  ON" : "Snap OFF")) g_sceneInteractor.useSnap(!snap);
 	if (snap) ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Snap gizmo movement to the grid step shown at right\n(degrees while Rotate is active, world units otherwise).");
 
-	// -- Snap value controls --
+	// -- Snap value controls (context-sensitive: degrees in Rotate mode, units otherwise) --
 	{
-		static constexpr float k_snap_presets[] = { 0.1f, 0.25f, 0.5f, 1.0f, 2.0f, 5.0f, 10.0f };
-		static constexpr int   k_snap_count     = static_cast<int>(sizeof(k_snap_presets) / sizeof(k_snap_presets[0]));
-		float curr_snap = g_sceneInteractor.getSnapUnit();
+		static constexpr float k_pos_presets[]   = { 0.1f, 0.25f, 0.5f, 1.0f, 2.0f, 5.0f, 10.0f };
+		static constexpr float k_angle_presets[] = { 1.0f, 5.0f, 10.0f, 15.0f, 30.0f, 45.0f, 90.0f };
+
+		const float* presets = rotateSnap ? k_angle_presets : k_pos_presets;
+		const int    count   = 7; // both preset arrays have the same length
+		const float  curr    = rotateSnap ? g_sceneInteractor.getSnapAngle() : g_sceneInteractor.getSnapUnit();
+		const float  eps     = rotateSnap ? 0.01f : 0.001f;
+
 		int snap_idx = 0;
-		for (int i = 0; i < k_snap_count; ++i)
-			if (std::abs(k_snap_presets[i] - curr_snap) < 0.001f) { snap_idx = i; break; }
+		for (int i = 0; i < count; ++i)
+			if (std::abs(presets[i] - curr) < eps) { snap_idx = i; break; }
+
+		auto applySnap = [&](int idx) {
+			if (rotateSnap) g_sceneInteractor.setSnapAngle(presets[idx]);
+			else            g_sceneInteractor.setSnap(presets[idx]);
+		};
 
 		ImGui::SameLine();
 		if (ImGui::Button("-"))
-			g_sceneInteractor.setSnap(k_snap_presets[std::max(0, snap_idx - 1)]);
+			applySnap(std::max(0, snap_idx - 1));
+		ImGui::SetItemTooltip("Smaller snap step.");
 		ImGui::SameLine();
 		ImGui::TextUnformatted(snap_val_str);
 		ImGui::SameLine();
 		if (ImGui::Button("+"))
-			g_sceneInteractor.setSnap(k_snap_presets[std::min(k_snap_count - 1, snap_idx + 1)]);
+			applySnap(std::min(count - 1, snap_idx + 1));
+		ImGui::SetItemTooltip("Larger snap step.");
 	}
 
 	// -- Separator --
@@ -154,6 +179,7 @@ void EditorInterface::draw_toolbar()
 		if (ImGui::Button("Brush"))
 			m_windowData.draw_window_brush_editor = !m_windowData.draw_window_brush_editor;
 		if (brushOn) ImGui::PopStyleColor();
+		ImGui::SetItemTooltip("Open the CSG brush editor - block out level geometry\nwith boxes, wedges and cylinders.");
 	}
 
 	// -- Separator --
@@ -174,6 +200,7 @@ void EditorInterface::draw_toolbar()
 		s_bakeResolution = irr::core::clamp(s_bakeResolution, 64, 2048);
 		s_bakeSettings.resolution = static_cast<uint32_t>(s_bakeResolution);
 	}
+	ImGui::SetItemTooltip("Lightmap texture size per mesh (64-2048).\nHigher = sharper baked shadows but longer bakes and more memory.");
 	ImGui::PopID();
 
 	ImGui::SameLine(0.0f, gap);
@@ -182,6 +209,7 @@ void EditorInterface::draw_toolbar()
 	ImGui::SetNextItemWidth(lm_prog_w);
 	ImGui::PushID("BakeShadowBias");
 	ImGui::InputFloat("##bias", &s_bakeSettings.shadowBias, 0.0f, 0.0f, "%.3f");
+	ImGui::SetItemTooltip("Offset applied to bake shadow rays.\nRaise if surfaces show speckled self-shadowing (acne);\nlower if shadows visibly detach from objects.");
 	ImGui::PopID();
 
 	// Flush any completed CPU bakes to the GPU every frame
@@ -209,6 +237,7 @@ void EditorInterface::draw_toolbar()
 			spdlog::info("EditorInterface: starting lightmap bake...");
 			LightmapBaker::bakeSceneAsync(s_bakeSettings);
 		}
+		ImGui::SetItemTooltip("Bake static lighting into lightmap textures.\nUses STATIC entities and STATIC lights only; replaces any previous bake.");
 	}
 
 	// -- Separator --
@@ -224,7 +253,9 @@ void EditorInterface::draw_toolbar()
 		ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Not baked");
 
 	ImGui::SameLine();
-	if (ImGui::Button("Bake NavMesh"))
+	bool bakeNavClicked = ImGui::Button("Bake NavMesh");
+	ImGui::SetItemTooltip("Rebuild the NPC navigation mesh from meshes flagged 'Cook Navigation'\nand from brush geometry (monster clip counts as an obstruction).");
+	if (bakeNavClicked)
 	{
 		if (NavigationManager::Get())
 		{
@@ -248,6 +279,18 @@ void EditorInterface::draw_toolbar()
 				++cookCount;
 			}
 
+			// Brush world geometry — chunk verts are world-space, so no
+			// transform.  Includes monsterclip volumes as obstructions.
+			if (BrushManager::Get())
+			{
+				if (irr::scene::SMesh* brushNav = BrushManager::Get()->buildNavGeometry())
+				{
+					NavigationManager::Get()->addMeshGeometry(brushNav);
+					brushNav->drop();
+					++cookCount;
+				}
+			}
+
 			if (cookCount > 0)
 			{
 				spdlog::info("EditorInterface: baking navmesh from {} mesh(es)...", cookCount);
@@ -255,7 +298,7 @@ void EditorInterface::draw_toolbar()
 			}
 			else
 			{
-				spdlog::warn("EditorInterface: no meshes flagged as navCookable");
+				spdlog::warn("EditorInterface: no navCookable meshes or brushes");
 			}
 		}
 	}
@@ -268,6 +311,7 @@ void EditorInterface::draw_toolbar()
 	ImGui::PushStyleColor(ImGuiCol_Button, play_color);
 	if (ImGui::Button("Play")) function_play_scene();
 	ImGui::PopStyleColor();
+	ImGui::SetItemTooltip("Play the scene in-editor from the player start marker.");
 
 	ImGui::End();
 }

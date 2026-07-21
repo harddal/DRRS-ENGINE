@@ -87,6 +87,7 @@ void EditorInterface::draw_window_editor_settings()
 		}
 
 		ImGui::Checkbox("Draw Light Range Sphere", &config.drawPointLightBounds);
+		ImGui::SetItemTooltip("Show a wireframe sphere around the selected light\nvisualizing its Radius (reach).");
 
 		if (ImGui::Button("Save"))
 		{

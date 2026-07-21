@@ -48,6 +48,24 @@ irr::s64 BrushManager::chunkKeyFor(const vector3df& centroid) const
 
 void BrushManager::assignChunk(Brush& brush)
 {
+    // Mover source brushes are never chunk members — pull them out of any
+    // chunk they were in (conversion path) and leave them unassigned.
+    if (brush.isMoverBrush())
+    {
+        if (brush.chunkKey != -1)
+        {
+            auto old = m_chunks.find(brush.chunkKey);
+            if (old != m_chunks.end())
+            {
+                auto& ids = old->second.brushIds;
+                ids.erase(std::remove(ids.begin(), ids.end(), brush.id), ids.end());
+                old->second.dirty = true;
+            }
+            brush.chunkKey = -1;
+        }
+        return;
+    }
+
     const s64 newKey = chunkKeyFor(brush.bounds.getCenter());
     if (newKey == brush.chunkKey)
     {
@@ -248,10 +266,26 @@ void BrushManager::compileAll()
     }
 
     rebuildDirtyChunks();
+
+    // Mover groups compile outside the chunk system — refresh their cached
+    // entity meshes whenever the world recompiles (scene load, cell resize).
+    registerMoverMeshes();
 }
 
 void BrushManager::clearAll()
 {
+    // Drop cached mover meshes so a new scene can't inherit stale geometry
+    // (entity nodes keep their own reference; cache removal is safe).
+    if (RenderManager::Get())
+    {
+        auto* cache = RenderManager::Get()->sceneManager()->getMeshCache();
+        for (auto& group : getMoverGroups())
+        {
+            if (auto* old = cache->getMeshByName(moverMeshName(group.first).c_str()))
+                cache->removeMesh(old);
+        }
+    }
+
     for (auto& pair : m_chunks)
         destroyChunkResources(pair.second);
     m_chunks.clear();
@@ -371,6 +405,176 @@ void BrushManager::compileHeavy(BrushChunk& chunk)
     }
 }
 
+irr::scene::SMesh* BrushManager::buildNavGeometry()
+{
+    std::vector<const Brush*> all;
+    all.reserve(m_brushes.size());
+    for (const auto& b : m_brushes)
+        if (b.geometryValid && !b.isMoverBrush())
+            all.push_back(&b);
+    if (all.empty())
+        return nullptr;
+
+    // Structural world geometry — same mesh the PhysX collision cook uses,
+    // so the navmesh matches what NPC movement probes actually collide with.
+    irr::scene::SMesh* mesh =
+        BrushCompiler::buildChunkMesh(all, BrushCompiler::MeshFilter::COLLISION);
+
+    // Monsterclip blocks NPC movement, so it must block pathfinding too —
+    // rasterize those volumes as solid obstructions.
+    std::vector<irr::u32> signatures;
+    for (const Brush* b : all)
+    {
+        const irr::u32 sig = b->clipMask();
+        if ((sig & CONTENT_CLIP_MONSTER) &&
+            std::find(signatures.begin(), signatures.end(), sig) == signatures.end())
+            signatures.push_back(sig);
+    }
+
+    for (irr::u32 sig : signatures)
+    {
+        irr::scene::SMesh* clip =
+            BrushCompiler::buildChunkMesh(all, BrushCompiler::MeshFilter::CLIP, sig);
+        if (!clip)
+            continue;
+        if (!mesh)
+        {
+            mesh = clip;
+        }
+        else
+        {
+            for (irr::u32 b = 0; b < clip->getMeshBufferCount(); b++)
+                mesh->addMeshBuffer(clip->getMeshBuffer(b));   // grabs the buffer
+            clip->drop();
+        }
+    }
+
+    if (mesh)
+        mesh->recalculateBoundingBox();
+    return mesh;
+}
+
+// ---------------------------------------------------------------------------
+// Mover brushes — SOLID_ENTITY groups compiled to pivot-local entity meshes,
+// delivered through Irrlicht's mesh cache under moverMeshName(owner)
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    irr::core::vector3df snapToGrid(const vector3df& v)
+    {
+        const float q = BrushGeometry::GRID_QUANTUM;
+        return vector3df(std::floor(v.X / q + 0.5f) * q,
+                         std::floor(v.Y / q + 0.5f) * q,
+                         std::floor(v.Z / q + 0.5f) * q);
+    }
+}
+
+irr::core::vector3df BrushManager::markAsMover(const std::vector<uint32_t>& ids, const std::string& owner)
+{
+    for (uint32_t id : ids)
+    {
+        Brush* b = getBrush(id);
+        if (!b)
+            continue;
+        b->contentFlags = 0;        // tool semantics don't compose with movers
+        b->receiver.clear();
+        b->solidClass = SOLID_ENTITY;
+        b->owner = owner;
+        markBrushDirty(id);         // re-derive + pull out of its chunk
+    }
+
+    vector3df pivot;
+    registerMoverMesh(owner, &pivot);
+    return pivot;
+}
+
+void BrushManager::revertMover(const std::string& owner)
+{
+    if (RenderManager::Get())
+    {
+        auto* cache = RenderManager::Get()->sceneManager()->getMeshCache();
+        if (auto* old = cache->getMeshByName(moverMeshName(owner).c_str()))
+            cache->removeMesh(old);
+    }
+
+    for (auto& b : m_brushes)
+    {
+        if (b.owner != owner || !b.isMoverBrush())
+            continue;
+        b.solidClass = SOLID_WORLD;
+        b.owner.clear();
+        markBrushDirty(b.id);       // rejoin the world chunks
+    }
+}
+
+bool BrushManager::registerMoverMesh(const std::string& owner, irr::core::vector3df* outPivot)
+{
+    std::vector<const Brush*> group;
+    aabbox3df bounds;
+    bool first = true;
+    for (const auto& b : m_brushes)
+    {
+        if (!b.isMoverBrush() || b.owner != owner || !b.geometryValid)
+            continue;
+        group.push_back(&b);
+        if (first) { bounds = b.bounds; first = false; }
+        else       { bounds.addInternalBox(b.bounds); }
+    }
+    if (group.empty())
+        return false;
+
+    const vector3df pivot = snapToGrid(bounds.getCenter());
+    if (outPivot)
+        *outPivot = pivot;
+
+    irr::scene::SMesh* mesh = BrushCompiler::buildMoverMesh(group, pivot);
+    if (!mesh)
+        return false;
+
+    auto* cache = RenderManager::Get()->sceneManager()->getMeshCache();
+    const irr::io::path name(moverMeshName(owner).c_str());
+    if (auto* old = cache->getMeshByName(name))
+        cache->removeMesh(old);
+
+    auto* anim = new irr::scene::SAnimatedMesh(mesh);
+    mesh->drop();
+    anim->setHardwareMappingHint(irr::scene::EHM_STATIC);
+    cache->addMesh(name, anim);
+    anim->drop();
+    return true;
+}
+
+void BrushManager::registerMoverMeshes()
+{
+    std::vector<std::string> owners;
+    for (const auto& b : m_brushes)
+    {
+        if (b.isMoverBrush() && !b.owner.empty() &&
+            std::find(owners.begin(), owners.end(), b.owner) == owners.end())
+            owners.push_back(b.owner);
+    }
+    for (const auto& owner : owners)
+        registerMoverMesh(owner);
+}
+
+std::vector<std::pair<std::string, int>> BrushManager::getMoverGroups() const
+{
+    std::vector<std::pair<std::string, int>> groups;
+    for (const auto& b : m_brushes)
+    {
+        if (!b.isMoverBrush() || b.owner.empty())
+            continue;
+        auto it = std::find_if(groups.begin(), groups.end(),
+            [&](const std::pair<std::string, int>& g) { return g.first == b.owner; });
+        if (it == groups.end())
+            groups.emplace_back(b.owner, 1);
+        else
+            it->second++;
+    }
+    return groups;
+}
+
 void BrushManager::destroyChunkResources(BrushChunk& chunk)
 {
     clearChunkLightmap(chunk);
@@ -476,7 +680,7 @@ bool BrushManager::raycastBrushes(const vector3df& origin, const vector3df& dir,
 
     for (const auto& brush : m_brushes)
     {
-        if (!brush.geometryValid)
+        if (!brush.geometryValid || brush.isMoverBrush())
             continue;
 
         float t = 0.0f;

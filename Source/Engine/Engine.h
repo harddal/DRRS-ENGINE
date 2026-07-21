@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <string>
 #include <random>
 #include <vector>
@@ -132,7 +133,27 @@ public:
 	
     void update();
 
+	// Unconditional shutdown — the run loop ends after the current frame.
 	void exit() { m_exit = true; }
+
+	// ------------------------------------------------------------------
+	// Quit requests
+	//
+	// Everything the *user* can trigger (title-bar X, ALT+F4, File > Quit)
+	// goes through requestQuit() rather than exit(), so a front-end can
+	// interpose. The handler returns true to let the quit proceed, or false to
+	// veto it — in which case the handler owns the follow-up (e.g. the editor
+	// raises a "save changes?" modal and calls exit() once it is answered).
+	//
+	// With no handler installed (the shipping game) a quit request just quits.
+	// ------------------------------------------------------------------
+	void setQuitRequestHandler(std::function<bool()> handler) { m_quitRequestHandler = std::move(handler); }
+
+	void requestQuit()
+	{
+		if (!m_quitRequestHandler || m_quitRequestHandler())
+			m_exit = true;
+	}
 
 	std::string getCmdLineArgs() { return m_cmdLineArgs; }
 	
@@ -206,6 +227,8 @@ private:
     bool
 		m_exit, m_isGameMode, m_isEditorMode, m_drawConsole,
 		m_EnableDefaultStatsDrawing, m_EnableDebugConsole, m_EnableGameDebugFeatures;
+
+	std::function<bool()> m_quitRequestHandler;
 
 	double PCFreq = 0.0;
 	__int64 CounterStart = 0;
