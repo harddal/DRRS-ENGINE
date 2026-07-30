@@ -48,14 +48,47 @@ enum BrushContentFlags : irr::u32
     CONTENT_SKY          = 1 << 4,  // sky marker; no runtime behavior in v1
     CONTENT_TRIGGER_ONCE = 1 << 5,  // modifier on CONTENT_TRIGGER: fire once per session
     CONTENT_LADDER       = 1 << 6,  // player can climb while overlapping the volume
+    CONTENT_FOG          = 1 << 7,  // overrides scene fog while the player is inside the volume
+    CONTENT_HURT         = 1 << 8,  // damages the player continuously while inside the volume
 
     CONTENT_CLIP_MASK = CONTENT_CLIP_PLAYER | CONTENT_CLIP_MONSTER | CONTENT_CLIP_WEAPON,
 };
 
 // brushes.xml schema version, written as a <version> header element by
 // BrushManager::serialize.  Files without the element load as version 0.
-// v1: contentFlags + receiver.  v2: owner (mover brushes).
-constexpr uint32_t BRUSHES_XML_VERSION = 2;
+// v1: contentFlags + receiver.  v2: owner (mover brushes).  v3: fog-zone params.
+// v4: per-face displacement (DispInfo).  v5: hurt-volume damage rate.
+constexpr uint32_t BRUSHES_XML_VERSION = 5;
+
+// ---------------------------------------------------------------------------
+// Per-face displacement surface (Source/Hammer style).  Attached to a QUAD
+// face; subdivides it into a (side x side) grid and stores a per-vertex offset
+// from the flat base position.  The base grid is derived at compile time from
+// the face's four corners via BrushGeometry::dispBasePos (parameterized on the
+// face's uAxis/vAxis), so offsets are relative and survive face push/pull.
+// Only this authoring data is persisted; the tessellated mesh + smooth normals
+// are rebuilt by BrushCompiler.  Offsets are full 3D (not scalar-along-normal)
+// so mild overhangs are possible; a single face still cannot fold fully back.
+// ---------------------------------------------------------------------------
+struct DispInfo
+{
+    irr::u8 power = 0;                   // 0 = none; 2/3/4 -> side 5/9/17
+    std::vector<float> offsets;          // interleaved x,y,z, size 3*side()*side()
+
+    int  side()   const { return (1 << power) + 1; }
+    int  vertCount() const { return side() * side(); }
+    bool active() const { return power >= 2 && offsets.size() == static_cast<size_t>(3 * vertCount()); }
+
+    // Read/write vertex k's offset as a vector3df.
+    irr::core::vector3df get(int k) const
+    {
+        return { offsets[k * 3 + 0], offsets[k * 3 + 1], offsets[k * 3 + 2] };
+    }
+    void set(int k, const irr::core::vector3df& v)
+    {
+        offsets[k * 3 + 0] = v.X; offsets[k * 3 + 1] = v.Y; offsets[k * 3 + 2] = v.Z;
+    }
+};
 
 struct BrushFace
 {
@@ -79,6 +112,8 @@ struct BrushFace
     float rotationDeg = 0.0f;                       // UI echo only; axes are authoritative
 
     irr::u8 flags = 0;                              // BrushFaceFlags
+
+    DispInfo disp;                                  // v4: displacement (power 0 = none)
 
     // ---- derived (rebuilt by BrushGeometry::rebuild, never serialized) ----
     irr::core::plane3df plane;                      // normalized, outward-facing
@@ -133,6 +168,19 @@ struct Brush
     std::string owner;                          // SOLID_ENTITY only: name of the mover entity whose
                                                 // mesh this brush compiles into; empty for world brushes
 
+    // CONTENT_FOG: fog values applied while the player is inside this volume,
+    // cross-fading back to the scene defaults on exit (GameplaySystem resolve).
+    // Pure runtime data — editing these never recompiles the brush geometry.
+    float               fogDensity = 0.0f;
+    float               fogStart   = 5.0f;
+    irr::video::SColorf fogColor   = irr::video::SColorf(0.5f, 0.5f, 0.6f, 1.0f);
+
+    // CONTENT_HURT: damage dealt to the player per second of overlap, applied
+    // as whole points once the fractional accumulator crosses 1 (see
+    // GameplaySystem::updateBrushVolumes).  Like the fog values this is pure
+    // runtime data — editing it never recompiles the brush geometry.
+    float               hurtDamagePerSecond = 10.0f;
+
     // ---- derived (never serialized) ----
     std::vector<irr::core::vector3df> verts;    // welded shared vertex pool
     irr::core::aabbox3df bounds;
@@ -143,6 +191,7 @@ struct Brush
     // scene import, so entering editor-play resets these).
     bool triggerInside = false;                 // player was inside last frame (edge detect)
     bool triggerFired  = false;                 // CONTENT_TRIGGER_ONCE latch
+    float hurtAccum    = 0.0f;                  // CONTENT_HURT: sub-point damage carried between frames
 
     bool isToolBrush() const { return contentFlags != 0; }
     irr::u32 clipMask() const { return contentFlags & CONTENT_CLIP_MASK; }
@@ -161,7 +210,25 @@ struct Brush
            CEREAL_NVP(receivesLightmap),
            CEREAL_NVP(contentFlags),
            CEREAL_NVP(receiver),
-           CEREAL_NVP(owner));
+           CEREAL_NVP(owner),
+           CEREAL_NVP(fogDensity),
+           CEREAL_NVP(fogStart),
+           cereal::make_nvp("fogColorR", fogColor.r),
+           cereal::make_nvp("fogColorG", fogColor.g),
+           cereal::make_nvp("fogColorB", fogColor.b),
+           CEREAL_NVP(hurtDamagePerSecond));
+
+        // v4: displacement is authored per-face but serialized here (Brush has
+        // the version).  Write one block per face: a flag, then power+offsets
+        // only for displaced faces, so undisplaced faces cost a single bool.
+        for (const auto& f : faces)
+        {
+            const bool hasDisp = f.disp.active();
+            ar(cereal::make_nvp("hasDisp", hasDisp));
+            if (hasDisp)
+                ar(cereal::make_nvp("dispPower", f.disp.power),
+                   cereal::make_nvp("dispOffsets", f.disp.offsets));
+        }
     }
 
     // Called manually by BrushManager::deserialize with the file-level schema
@@ -185,5 +252,25 @@ struct Brush
                CEREAL_NVP(receiver));
         if (version >= 2)
             ar(CEREAL_NVP(owner));
+        if (version >= 3)
+            ar(CEREAL_NVP(fogDensity),
+               CEREAL_NVP(fogStart),
+               cereal::make_nvp("fogColorR", fogColor.r),
+               cereal::make_nvp("fogColorG", fogColor.g),
+               cereal::make_nvp("fogColorB", fogColor.b));
+        if (version >= 5)
+            ar(CEREAL_NVP(hurtDamagePerSecond));
+
+        // v4: one displacement block per face, mirroring save().  Pre-v4 files
+        // have none, so every face stays flat (disp.power == 0).
+        if (version >= 4)
+            for (auto& f : faces)
+            {
+                bool hasDisp = false;
+                ar(cereal::make_nvp("hasDisp", hasDisp));
+                if (hasDisp)
+                    ar(cereal::make_nvp("dispPower", f.disp.power),
+                       cereal::make_nvp("dispOffsets", f.disp.offsets));
+            }
     }
 };

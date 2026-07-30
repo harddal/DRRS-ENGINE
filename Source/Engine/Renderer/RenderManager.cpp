@@ -16,6 +16,7 @@
 #include "Engine/Renderer/GLExt.h"
 #include "Engine/Renderer/ClusteredLightManager.h"
 #include "Engine/Renderer/DecalManager.h"
+#include "Engine/Brush/BrushManager.h"
 
 #include <IMGUI/backends/imgui_impl_opengl3.h>
 
@@ -73,11 +74,21 @@ bool RenderManager::consumeWindowCloseRequest()
 	return true;
 }
 
+// Max localized fog volumes uploaded per frame; must match the array size in
+// the fog fragment shaders (phong_perpixel/foliage/terrain_blend).
+static constexpr int MAX_FOG_VOLUMES = 8;
+
+// Spatial feather (world units) applied at fog-volume faces so the boundary
+// ramps in/out instead of popping.  Tunable; wire to a scene param later.
+static constexpr float kFogVolumeFeather = 32.0f;
+
 // Mirrors the std140 "PerFrame" uniform block declared by the lit shaders.
 // std140 rule used here: a vec3 is 16-byte aligned and a float declared right
 // after it packs into the remaining 4 bytes of the same 16-byte row.
 // Any layout change here must be mirrored in every shader that declares the
-// block (phong_perpixel/foliage/terrain_blend/barrel_heat/grass).
+// block (phong_perpixel/foliage/terrain_blend/barrel_heat/grass).  The fog
+// volume arrays at the end are APPEND-ONLY: existing std140 offsets are
+// unchanged, so only the 3 shaders that read them need the trailing members.
 struct PerFrameData
 {
     float ambientColor[3]; float hasShadow;   // hasShadow = active shadow caster count
@@ -90,8 +101,12 @@ struct PerFrameData
     float invView[16];        // main camera view inverse — world-pos reconstruction
     float shadowMat[4][16];   // lightProj*lightView per atlas slot
     float shadowRect[4][4];   // xy = atlas offset, z = scale, w = slot active
+    float fogVolParams[4];                    // x = active count, y = feather distance
+    float fogVolMin  [MAX_FOG_VOLUMES][4];    // xyz = AABB min, w = density
+    float fogVolMax  [MAX_FOG_VOLUMES][4];    // xyz = AABB max, w = start distance
+    float fogVolColor[MAX_FOG_VOLUMES][4];    // rgb = color, w = reserved
 };
-static_assert(sizeof(PerFrameData) == 496, "PerFrameData must match the shaders' std140 PerFrame block");
+static_assert(sizeof(PerFrameData) == 896, "PerFrameData must match the shaders' std140 PerFrame block");
 
 void Set_IMGUI_Default_Theme()
 {
@@ -295,6 +310,16 @@ void ShaderConstantSetCallBack::OnSetConstants(IMaterialRendererServices* servic
         services->setPixelShaderConstant("uHasMetallicMap",  &hasMetallic,   1);
         services->setPixelShaderConstant("tEmissionMap",     &emissionSlot,  1);
         services->setPixelShaderConstant("uHasEmissionMap",  &hasEmission,   1);
+
+        // glTF packs occlusion/roughness/metallic into one texture, and
+        // GltfImport binds it to both the roughness and metallic slots. Identical
+        // pointers in both slots is therefore the signal that the R channel holds
+        // real ambient occlusion. A standalone grayscale roughness map has R == G,
+        // so reading AO from it unconditionally would darken every rough surface.
+        float hasORM = (m_currentMaterial.TextureLayer[SLOT_ROUGHNESS].Texture != nullptr &&
+                        m_currentMaterial.TextureLayer[SLOT_ROUGHNESS].Texture ==
+                        m_currentMaterial.TextureLayer[SLOT_METALLIC].Texture) ? 1.0f : 0.0f;
+        services->setPixelShaderConstant("uHasORM", &hasORM, 1);
     }
 
     // Shadow map sampler — the RTT is bound once per frame to raw unit 11 by
@@ -632,6 +657,50 @@ void RenderManager::updatePerFrameUBO(bool useClusters)
     d.fogDensity  = m_shaderConstantCallBack->fogDensity;
     d.fogStart    = m_shaderConstantCallBack->fogStart;
 
+    // ---- Localized fog volumes ----
+    // Gather CONTENT_FOG brushes as world-space AABBs; the shaders integrate fog
+    // along each view ray through these boxes, using the global fog above as the
+    // scene default outside every volume.  Smallest-first so the innermost win on
+    // overflow (same rule as the old camera-zone selection).
+    d.fogVolParams[0] = 0.0f;                 // count
+    d.fogVolParams[1] = kFogVolumeFeather;    // feather distance (world units)
+    if (BrushManager::Get() && !m_renderingPreview)
+    {
+        struct FogVol { const Brush* b; float vol; };
+        std::vector<FogVol> vols;
+        for (const auto& b : BrushManager::Get()->getAllBrushes())
+        {
+            if (!b.geometryValid || b.isMoverBrush() || !(b.contentFlags & CONTENT_FOG))
+                continue;
+            const irr::core::vector3df ext = b.bounds.getExtent();
+            vols.push_back({ &b, ext.X * ext.Y * ext.Z });
+        }
+        std::sort(vols.begin(), vols.end(),
+                  [](const FogVol& a, const FogVol& c) { return a.vol < c.vol; });
+
+        int n = 0;
+        for (const auto& fv : vols)
+        {
+            if (n >= MAX_FOG_VOLUMES)
+                break;
+            const Brush* b = fv.b;
+            d.fogVolMin[n][0] = b->bounds.MinEdge.X;
+            d.fogVolMin[n][1] = b->bounds.MinEdge.Y;
+            d.fogVolMin[n][2] = b->bounds.MinEdge.Z;
+            d.fogVolMin[n][3] = b->fogDensity;
+            d.fogVolMax[n][0] = b->bounds.MaxEdge.X;
+            d.fogVolMax[n][1] = b->bounds.MaxEdge.Y;
+            d.fogVolMax[n][2] = b->bounds.MaxEdge.Z;
+            d.fogVolMax[n][3] = b->fogStart;
+            d.fogVolColor[n][0] = b->fogColor.r;
+            d.fogVolColor[n][1] = b->fogColor.g;
+            d.fogVolColor[n][2] = b->fogColor.b;
+            d.fogVolColor[n][3] = 0.0f;
+            ++n;
+        }
+        d.fogVolParams[0] = static_cast<float>(n);
+    }
+
     d.hasEnvMap = (m_shaderConstantCallBack->envMap() != nullptr) ? 1.0f : 0.0f;
 
     // Camera world-space basis for view→world reflection conversion.
@@ -691,6 +760,15 @@ void RenderManager::bindPerFrameTextures()
     auto* env = m_shaderConstantCallBack->envMap();
     GLExt::ActiveTexture(GL_TEXTURE0 + 12);
     glBindTexture(GL_TEXTURE_2D, env ? env->getNativeHandle() : 0);
+    if (env)
+    {
+        // phong_perpixel samples this with an explicit LOD to fake a prefiltered
+        // IBL (rougher surface -> blurrier mip). Irrlicht never touches unit 12,
+        // so the mipmap min-filter has to be set here or textureLod() silently
+        // returns mip 0 and every glossy surface gets a sharp mirror reflection.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
 
     // Prepass (normal + depth) for soft particles and decals. The texture ID is
     // stable across frames; contents update in place when drawPrePass renders.
@@ -1992,6 +2070,18 @@ void RenderManager::draw(f32 dt)
         m_overlayLineList.clear();
     }
 
+    // On-top overlay lines: depth test disabled so they draw over geometry.
+    {
+        SMaterial mtl;
+        mtl.Lighting = false;
+        mtl.ZBuffer = 0;                        // depth test off (draw on top)
+        m_driver->setMaterial(mtl);
+        m_driver->setTransform(ETS_WORLD, IdentityMatrix);
+        for (auto& line : m_overlayLineListOnTop)
+            m_driver->draw3DLine(line.line.start, line.line.end, line.color);
+        m_overlayLineListOnTop.clear();
+    }
+
 	m_driver->enableMaterial2D();
 	{
 		for (const auto& image : m_imageRenderableList[readBuffer]) {
@@ -2389,7 +2479,8 @@ void RenderManager::initDefaultSkyDome(std::string texture)
 
     m_driver->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, true);
 
-	setEnvMap(texture);
+    // The env map is NOT derived from the skydome — see SceneDescriptor::
+    // envmap_texture. WorldManager applies it from the scene descriptor.
 }
 
 void RenderManager::removeDefaultSkyDome()
@@ -2398,8 +2489,6 @@ void RenderManager::removeDefaultSkyDome()
         m_defaultSkyDome->remove();
         m_currentSkydomeTexture = std::string();
     }
-
-	clearEnvMap();
 }
 
 void RenderManager::swapSkyDomeTexture(std::string texture)
@@ -2413,17 +2502,77 @@ void RenderManager::swapSkyDomeTexture(std::string texture)
 		m_driver->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, true);
     }
 
-	setEnvMap(texture);
+    // Env map intentionally untouched — it is a separate scene property now.
 }
 
 void RenderManager::setEnvMap(const std::string& texturePath)
 {
-    irr::video::ITexture* tex = texturePath.empty() ? nullptr : m_driver->getTexture(texturePath.c_str());
+    m_currentEnvMapTexture = texturePath;
+
+    irr::video::ITexture* tex = nullptr;
+    if (!texturePath.empty())
+    {
+        // Env maps get downsampled to ENV_MAP_WIDTH before upload. Skydome
+        // panoramas run to 8192x4096, which is 134 MB of VRAM for something the
+        // shader deliberately blurs by roughness — and the fine detail it throws
+        // away is exactly the high-frequency content that makes glossy surfaces
+        // crawl. A box filter down to 512x256 is both cheaper and better looking.
+        const irr::core::stringc scaledName =
+            irr::core::stringc(texturePath.c_str()) + "_envscaled";
+
+        tex = m_driver->findTexture(scaledName);
+        if (!tex)
+        {
+            if (irr::video::IImage* src = m_driver->createImageFromFile(texturePath.c_str()))
+            {
+                const irr::u32 w = ENV_MAP_WIDTH;
+                const irr::u32 h = ENV_MAP_WIDTH / 2;   // equirectangular is always 2:1
+                if (src->getDimension().Width > w)
+                {
+                    // NB: not named 'small' — rpcndr.h (via windows.h) defines
+                    // that as a macro for char.
+                    if (irr::video::IImage* scaled = m_driver->createImage(
+                            irr::video::ECF_A8R8G8B8, irr::core::dimension2d<irr::u32>(w, h)))
+                    {
+                        src->copyToScalingBoxFilter(scaled);
+                        tex = m_driver->addTexture(scaledName, scaled);
+                        scaled->drop();
+                    }
+                }
+                else
+                {
+                    tex = m_driver->addTexture(scaledName, src);
+                }
+                src->drop();
+            }
+        }
+
+        // Fall back to a straight load if anything above failed.
+        if (!tex)
+            tex = m_driver->getTexture(texturePath.c_str());
+    }
     m_shaderConstantCallBack->setEnvMap(tex);
+
+    // phong_perpixel fakes a prefiltered IBL by sampling this with an explicit
+    // LOD, so it needs a mip chain. Guarantee one rather than trusting the
+    // creation flags: the fallback path can hand back a texture that was first
+    // loaded elsewhere with ETCF_CREATE_MIP_MAPS off (the skydome does exactly
+    // that), and without levels textureLod() silently returns mip 0 — every
+    // glossy surface then gets a razor-sharp mirror reflection.
+    if (tex && GLExt::GenerateMipmap && GLExt::ActiveTexture)
+    {
+        GLExt::ActiveTexture(GL_TEXTURE0 + 12);
+        glBindTexture(GL_TEXTURE_2D, tex->getNativeHandle());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1000);
+        GLExt::GenerateMipmap(GL_TEXTURE_2D);
+        GLExt::ActiveTexture(GL_TEXTURE0);
+    }
 }
 
 void RenderManager::clearEnvMap()
 {
+    m_currentEnvMapTexture.clear();
     m_shaderConstantCallBack->setEnvMap(nullptr);
 }
 
@@ -2675,6 +2824,66 @@ void RenderManager::clearPreviewScene()
 }
 
 // Possible memory leak
+IAnimatedMesh* RenderManager::loadMesh(const std::string& path, GltfBackend gltfBackend) const
+{
+    if (path.empty())
+        return nullptr;
+
+    const std::string ext = Utility::FileExtensionFromPath(path);
+
+    // IrrAssimp has NO exception handling of its own, and Assimp throws
+    // (DeadlyImportError, plus std::bad_alloc when the heap has been corrupted
+    // by the unsolved OOB write) — an escaping throw unwinds straight out of
+    // WinMain and kills the process with 0xE06D7363. GltfImport::getMesh
+    // already guards its own backend; this is the matching net for Assimp, put
+    // here because loadMesh is the one place every caller goes through.
+    auto assimpMesh = [&]() -> IAnimatedMesh*
+    {
+        if (!m_assimpLoader)
+            return nullptr;
+        try
+        {
+            return m_assimpLoader->getMesh(path.c_str());
+        }
+        catch (const std::exception& e)
+        {
+            spdlog::error("RenderManager::loadMesh: Assimp threw loading \"{}\": {}", path, e.what());
+            return nullptr;
+        }
+        catch (...)
+        {
+            spdlog::error("RenderManager::loadMesh: Assimp threw a non-std exception loading \"{}\"", path);
+            return nullptr;
+        }
+    };
+
+    if (ext == "fbx")
+        return assimpMesh();
+
+    if (ext == "glb" || ext == "gltf")
+    {
+        // Caller opted out of fastgltf (crash-prone on some assets)
+        if (gltfBackend == GltfBackend::Assimp)
+            return assimpMesh();
+
+        // fastgltf backend; fall back to Assimp if it can't load the file
+        IAnimatedMesh* mesh = m_gltfLoader ? m_gltfLoader->getMesh(path.c_str()) : nullptr;
+        if (!mesh)
+        {
+            // Scale is matched by kGltfFallbackScale in IrrAssimpImport, so the
+            // fallback is visually silent — log it, or a corrupted-parse reject
+            // looks like nothing happened at all.
+            spdlog::warn("RenderManager::loadMesh: fastgltf rejected \"{}\" ({}); "
+                         "falling back to Assimp",
+                         path, m_gltfLoader ? m_gltfLoader->getError() : "no glTF loader");
+            mesh = assimpMesh();
+        }
+        return mesh;
+    }
+
+    return m_sceneManager->getMesh(path.c_str());
+}
+
 void RenderManager::setNodeMesh(IAnimatedMesh* trimesh, IAnimatedMeshSceneNode* node, std::string file)
 {
     auto meshptr = m_sceneManager->getMesh(file.c_str()); // <<< here

@@ -29,10 +29,10 @@ void Weapon_Minigun::init()
 
 	m_mesh.mesh = "content/mesh/player/weapon/minigun/HUD.b3d";
 
-	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
+	m_mesh.trimesh = RenderManager::Get()->loadMesh(m_mesh.mesh);
 	if (!m_mesh.trimesh)
 	{
-		spdlog::warn("In function PlayerWeapon::init() -> RenderManager::Get()->sceneManager()->getMesh() : Mesh does not exist, stand-in mesh loaded");
+		spdlog::warn("PlayerWeapon::init(): failed to load mesh \"{}\", stand-in mesh loaded", m_mesh.mesh);
 
 		m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/primitive/double_tetrahedron.obj");
 		m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);

@@ -16,6 +16,8 @@
 
 #include "Game/DialogManager.h"
 
+#include "Engine/Diagnostics/HeapProbe.h"
+
 #include <windows.h>
 
 Engine* Engine::s_Instance = nullptr;
@@ -73,6 +75,23 @@ void Engine::init()
 #ifndef NDEBUG
 	setGameDebugFeaturesEnabled(true);
 #endif
+
+	// --- heap-corruption bisect (temporary; see Engine/Diagnostics/HeapProbe.h)
+	// Baseline: if THIS probe already fails, the writer runs during engine
+	// startup, not scene load. Two generations so the second lands in memory
+	// freed by startup — where a stale-pointer write would go.
+	HEAP_PROBE_ARM("startup");
+	HEAP_PROBE_CHECK("engine-init");
+
+	// Back-to-back parses with NOTHING in between. If #2 or #3 fails here, the
+	// failure is re-parse state inside fastgltf/GltfImport and has nothing to do
+	// with any other subsystem — which is what the first run's evidence implies
+	// (canaries clean, parse #1 ok, every later parse failing deterministically).
+	HEAP_PROBE_GLTF("engine-init#1", g_heapProbeGltfAsset);
+	HEAP_PROBE_GLTF("engine-init#2", g_heapProbeGltfAsset);
+	HEAP_PROBE_GLTF("engine-init#3", g_heapProbeGltfAsset);
+
+	HEAP_PROBE_ARM("post-startup");
 
 	if (isEditorMode())
 	{

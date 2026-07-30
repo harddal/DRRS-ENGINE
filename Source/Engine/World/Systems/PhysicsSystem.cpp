@@ -46,12 +46,13 @@ void PhysicsSystem::onEntityAdded(Entity& entity)
                             scale.Z * IRR_PHYSX_DIM_SCALAR);
                 }
                 else {
+                    // getExtent() is the FULL box size; PxBoxGeometry wants half-extents.
                     auto extent = entity.getComponent<MeshComponent>().node->getTransformedBoundingBox().getExtent();
                     entity.getComponent<PhysicsComponent>().dimensions = new
                         PxVec3(
-                            extent.X * IRR_PHYSX_DIM_SCALAR,
-                            extent.Y * IRR_PHYSX_DIM_SCALAR,
-                            extent.Z * IRR_PHYSX_DIM_SCALAR);
+                            extent.X * 0.5f * IRR_PHYSX_DIM_SCALAR,
+                            extent.Y * 0.5f * IRR_PHYSX_DIM_SCALAR,
+                            extent.Z * 0.5f * IRR_PHYSX_DIM_SCALAR);
                 }
             }
             else {
@@ -106,12 +107,13 @@ void PhysicsSystem::onEntityAdded(Entity& entity)
                             scale.Z * IRR_PHYSX_DIM_SCALAR);
                 }
                 else {
+                    // getExtent() is the FULL box size; sphere radius wants a half-extent.
                     auto extent = entity.getComponent<MeshComponent>().node->getTransformedBoundingBox().getExtent();
                     entity.getComponent<PhysicsComponent>().dimensions = new
                         PxVec3(
-                            extent.X * IRR_PHYSX_DIM_SCALAR,
-                            extent.Y * IRR_PHYSX_DIM_SCALAR,
-                            extent.Z * IRR_PHYSX_DIM_SCALAR);
+                            extent.X * 0.5f * IRR_PHYSX_DIM_SCALAR,
+                            extent.Y * 0.5f * IRR_PHYSX_DIM_SCALAR,
+                            extent.Z * 0.5f * IRR_PHYSX_DIM_SCALAR);
                 }
             }
             else {

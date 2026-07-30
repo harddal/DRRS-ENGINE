@@ -75,6 +75,14 @@ struct SceneDescriptor
 {
     std::string name, creator, notes, skydome_texture;
 
+    // Reflection probe for phong_perpixel's ambient specular. Deliberately NOT
+    // the skydome: a skydome is authored to be looked at, an env map is a light
+    // probe, and the two want opposite things. A starfield sky, for instance,
+    // is 99.5% black with pinprick highlights at full white — as an env map it
+    // contributes no light at all while making glossy surfaces crawl with
+    // sparkles. Prefer a low-frequency image with a visible horizon and ground.
+    std::string envmap_texture;
+
     irr::video::SColorf ambient_light;
 
 	bool useFXAA, useBloom, useTonemapping, useSharpen, useAutoExposure;
@@ -141,6 +149,9 @@ struct SceneDescriptor
 		try { archive(CEREAL_NVP(useSSAO)); } catch (...) {}
 		try { archive(CEREAL_NVP(ssaoRadius)); } catch (...) {}
 		try { archive(CEREAL_NVP(ssaoIntensity)); } catch (...) {}
+		// Scenes saved before the env map was split off the skydome omit this and
+		// pick up the constructor default.
+		try { archive(CEREAL_NVP(envmap_texture)); } catch (...) {}
 	}
 	
     SceneDescriptor& operator=(SceneDescriptor desc)
@@ -149,6 +160,7 @@ struct SceneDescriptor
 		std::swap(creator, desc.creator);
 		std::swap(notes, desc.notes);
         std::swap(skydome_texture, desc.skydome_texture);
+        std::swap(envmap_texture, desc.envmap_texture);
         std::swap(ambient_light, desc.ambient_light);
 
 		std::swap(useFXAA, desc.useFXAA);
@@ -194,6 +206,7 @@ struct SceneDescriptor
     SceneDescriptor()
     {
         skydome_texture = "content/texture/color/black.png";
+        envmap_texture  = "content/texture/skydome/rogland_clear_night.jpg";
         ambient_light = irr::video::SColorf(0.5f, 0.5f, 0.5f);
 
 		useFXAA         = true;

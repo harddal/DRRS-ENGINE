@@ -60,12 +60,13 @@ std::string Utility::FilenameFromPath(std::string path)
 	_splitpath(path.c_str(), nullptr, nullptr, fname, nullptr);
 	return std::string(fname);
 }
-// example: image.png -> png
+// example: image.png -> png; extensionless paths (e.g. the "brushmover:<name>"
+// mesh-cache keys) yield "" instead of throwing on the empty substr
 std::string Utility::FileExtensionFromPath(std::string path)
 {
 	char ext[_MAX_EXT];
 	_splitpath(path.c_str(), nullptr, nullptr, nullptr, ext);
-	return std::string(ext).substr(1);
+	return (ext[0] == '.') ? std::string(ext + 1) : std::string(ext);
 }
 
 std::string Utility::OpenFileDialog(const char* filter, const char* initialDir)

@@ -753,6 +753,23 @@ void EditorInterface::draw_window_prop_scene()
 			g_textureBrowserRequestID.clear();
 		}
 
+		if (ImGui::Button("Set Env Map Texture"))
+			show_window_texture_browser("scene_envmap");
+		ImGui::SetItemTooltip("Reflection probe for ambient specular on PBR surfaces.\n"
+		                      "This is NOT the skydome — pick a low-frequency image with a\n"
+		                      "visible horizon and ground. High-contrast skies (starfields)\n"
+		                      "make glossy surfaces sparkle and light nothing.\n"
+		                      "Applied when you press Save below.");
+		if (g_textureBrowserRequestID == "scene_envmap" && g_currentSelectedTexture != "null")
+		{
+			scenedesc.envmap_texture = g_currentSelectedTexture;
+			g_currentSelectedTexture = "null";
+			g_textureBrowserRequestID.clear();
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", scenedesc.envmap_texture.empty()
+		                          ? "(none)" : scenedesc.envmap_texture.c_str());
+
 		ImGui::Spacing();
 		ImGui::Separator();
 		ImGui::Spacing();
@@ -1005,6 +1022,7 @@ void EditorInterface::draw_window_prop_scene()
 		if (sceneSaveClicked)
 		{
 			RenderManager::Get()->swapSkyDomeTexture(scenedesc.skydome_texture);
+			RenderManager::Get()->setEnvMap(scenedesc.envmap_texture);
 
 			scenedesc.bloomThreshold    = RenderManager::Get()->bloomBrightCallback()->threshold;
 			scenedesc.bloomStrength     = RenderManager::Get()->bloomCompositeCallback()->strength;

@@ -9,6 +9,35 @@
 using namespace SPK;
 using namespace SPK::IRR;
 
+namespace
+{
+	// One row per attack, so the clip name, its contact frame and its damage stay
+	// together instead of the frame being repeated as a literal at the call site
+	// (that duplication is why the contact frames silently kept the old .b3d
+	// numbers — 270/279/303 — after the mesh moved to knife_animated.glb, which
+	// left performStrike() unreachable because getFrameNr() never got that high).
+	//
+	// contactFrame is an ABSOLUTE frame in the shared 0-122 timeline, matching
+	// m_mesh.animationList. Measured from the blade's world-space motion in the
+	// .glb: each swing drives the knife out, HOLDS it at full extension for a few
+	// frames, then recovers — contact is the frame it arrives at that extension.
+	struct MeleeAttack
+	{
+		const char*  anim;
+		int          contactFrame;
+		unsigned int damage;
+	};
+
+	// clip 34-52, extension plateaus 37-42
+	constexpr MeleeAttack kLightA { "fire1", 37, 10 };
+	// clip 53-69, sharp extension peak at 54
+	constexpr MeleeAttack kLightB { "fire2", 55, 10 };
+	// clip 71-89, extension plateaus 75-80
+	constexpr MeleeAttack kHeavy  { "fire3", 75, 25 };
+	// clip 90-110, sharp extension peak at 93 — authored but not yet bound to input
+	constexpr MeleeAttack kStab   { "stab",  93, 20 };
+}
+
 void Weapon_Melee::precache()
 {
 	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
@@ -19,40 +48,73 @@ void Weapon_Melee::init()
 	m_descriptor.name = "Player_Weapon_Melee";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
-	m_viewScaleOffset    = irr::core::vector3df(1.0f, 1.0f, 1.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.1200f, -0.0650f, 0.3100f);
+	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
+	m_viewScaleOffset    = irr::core::vector3df(0.01f, 0.01f, 0.01f);
 
-	m_mesh.mesh = _asset_b3d("player/weapon/sword/HUD");
+	m_mesh.mesh = _asset_glb("player/weapon/knife_animated");
 
-	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
-	if (!m_mesh.trimesh)
+	m_mesh.trimesh = RenderManager::Get()->loadMesh(m_mesh.mesh);
+
+	// Swap in the stand-in mesh BEFORE the node is created — creating a node
+	// inside the failure branch and then again below orphaned the first one.
+	const bool usingStandIn = (m_mesh.trimesh == nullptr);
+	if (usingStandIn)
 	{
-		spdlog::warn("In function PlayerWeapon::init() -> RenderManager::Get()->sceneManager()->getMesh() : Mesh does not exist, stand-in mesh loaded");
-
+		spdlog::warn("PlayerWeapon::init(): failed to load mesh \"{}\", stand-in mesh loaded", m_mesh.mesh);
 		m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/primitive/double_tetrahedron.obj");
-		m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);
-
-		auto* t = RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png");
-		m_mesh.node->setMaterialTexture(0, t);
 	}
 
 	m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);
 
-//	RenderManager::Get()->renderer()->getMaterialSwapper()->swapMaterials(m_mesh.node);
+	if (usingStandIn)
+		m_mesh.node->setMaterialTexture(0, RenderManager::Get()->driver()->getTexture("content/texture/color/magenta.png"));
 
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   205, 211, false));
-	m_mesh.animationList.emplace_back(sAnimationData("idle",    211, 229, false));
-	m_mesh.animationList.emplace_back(sAnimationData("move",    232, 256, false));
-	m_mesh.animationList.emplace_back(sAnimationData("fire1",   266, 273, false));
-	m_mesh.animationList.emplace_back(sAnimationData("fire2",   276, 282, false));
-	m_mesh.animationList.emplace_back(sAnimationData("fire3",   296, 308, false));
-	m_mesh.animationList.emplace_back(sAnimationData("unequip", 393, 399, false));
+	// Looping clips MUST be flagged loop=true. A non-looping clip re-armed from
+	// the end callback (the old "idle" setup) clamps on its last frame until the
+	// next update() tick notices and calls setFrameLoop, which resets the
+	// playhead — that one-frame hold every cycle is the visible hitch.
+	//
+	// Irrlicht does NOT interpolate across the loop seam (CAnimatedMeshSceneNode
+	// ::buildFrameNr wraps with fmod over EndFrame-StartFrame), so the pose at
+	// the END frame must be identical to the pose at the START frame — the
+	// duplicated boundary frame Blender cyclic actions normally carry.
+	// knife_animated.glb bakes every clip into one 0-153 timeline separated by
+	// 2-frame rest holds. The idle runs 0-41: rest at 0, peak at 20, back to
+	// rest at 41 (pose(41) == pose(0) to 0.03 deg), with 42 a static duplicate.
+	// Ending it at 33 cut the clip mid-descent, ~11.5 deg off the rest pose —
+	// that snap back to the start was the hitch. Do NOT extend it to 42; the
+	// duplicate frame would hold the pose for one frame every cycle.
+	// NOTE: the timeline's last frame is 122, and Irrlicht clamps EndFrame to
+	// getFrameCount()-1 = 121 (CSkinnedMesh::getFrameCount returns the last frame
+	// INDEX, and setFrameLoop then subtracts one), so frame 122 is unreachable.
+	// That costs a little: pose(122) is 3.8 deg from the idle's frame 0, pose(121)
+	// is 13.4 deg — so the equip->idle handoff pops slightly more than it should.
+	// Asset fix if it reads badly: add one trailing frame in Blender so the
+	// timeline ends at 123, which makes 122 reachable. 123 here was out of range
+	// and clamped to the same 121 anyway.
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   116, 122, false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    0,   0,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("fire1",   34, 52, false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire2",   53, 69, false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire3",   71, 89, false));
+	m_mesh.animationList.emplace_back(sAnimationData("stab", 90, 110, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 111, 115, false));
 
-	m_mesh.fps = 20;
+	// BOTH glTF backends normalise keyframe times to 30 fps Irrlicht frames —
+	// GltfImport uses seconds * 30, IrrAssimpImport uses mTime * (30/ticksPerSec)
+	// — so the viewmodel must play at 30 to run at its authored speed, and the
+	// clip ranges above are backend-independent. The old 20 here was tuned for
+	// the previous .b3d knife and made the glTF clips run at 2/3 speed.
+	m_mesh.fps = 30;
 	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps));
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(0, 0);
+
+	// The idle clip is pinned to a single frame, so the hold-steady motion comes
+	// from updateWeaponSway() instead. Below default: a knife is held close in,
+	// so there is less lever arm for a breath to move it.
+	enableIdleBreathing(0.8f);
 
 	m_mesh.animation_call_back = std::make_shared<AnimationCallback>();
 	m_mesh.node->setAnimationEndCallback(m_mesh.animation_call_back.get());
@@ -111,6 +173,29 @@ void Weapon_Melee::update()
 
 	bool animEnded = m_mesh.animation_call_back->hasAnimationEnded();
 
+	// Holstering: hold the node visible until the clip finishes, then hide it.
+	// isUnequipping() going false is what releases WeaponController's pending
+	// switch, so the next weapon is only drawn after this one is put away.
+	if (m_isUnequipping)
+	{
+		if (animEnded)
+			unequip();
+
+		return; // no attacks or idle re-loop while holstering
+	}
+
+	// Drawing: hand off to the looping idle once the equip clip finishes
+	if (m_isEquipping)
+	{
+		if (animEnded)
+		{
+			m_isEquipping = false;
+			idle();
+		}
+
+		return; // no attacks until the knife is up
+	}
+
 	if (m_isSwinging)
 	{
 		// The strike lands when the blade visually reaches the target
@@ -139,15 +224,13 @@ void Weapon_Melee::update()
 	if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_LEFT, &ml))
 	{
 		// Light attack — two swing variants
-		if (Engine::Get()->rng()->getInt(0, 1) == 0)
-			startSwing(266, 273, 270, 10);
-		else
-			startSwing(276, 282, 279, 10);
+		const MeleeAttack& atk = (Engine::Get()->rng()->getInt(0, 1) == 0) ? kLightA : kLightB;
+		startSwing(atk.anim, atk.contactFrame, atk.damage);
 	}
 	else if (InputManager::Get()->getMousePressOnce(MOUSE_BUTTON::MB_RIGHT, &mr))
 	{
 		// Heavy attack — longer wind-up, heavier hit
-		startSwing(296, 308, 303, 25);
+		startSwing(kHeavy.anim, kHeavy.contactFrame, kHeavy.damage);
 	}
 }
 
@@ -156,20 +239,56 @@ void Weapon_Melee::equip()
 	m_mesh.node->setVisible(true);
 
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
-	m_isSwinging = false;
-	m_damageDone = false;
-	idle();
+	m_isSwinging     = false;
+	m_damageDone     = false;
+	m_isUnequipping  = false;
+	m_isEquipping    = true;
+
+	playEquipSound();
+
+	// Draw animation; update() drops into idle when it finishes. If the clip is
+	// missing, playAnimation leaves the current loop alone and returns false —
+	// fall straight through to idle rather than freezing on the wrong pose.
+	if (!playAnimation("equip"))
+	{
+		m_isEquipping = false;
+		idle();
+	}
+}
+
+void Weapon_Melee::startUnequip()
+{
+	// Already hidden (or mid-holster): nothing to play, don't restart the clip
+	if (!m_mesh.node || !m_mesh.node->isVisible() || m_isUnequipping)
+		return;
+
+	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+	m_isSwinging  = false;
+	m_isEquipping = false;
+
+	playUnequipSound();
+
+	if (playAnimation("unequip"))
+	{
+		// Node stays visible until the clip ends — update() calls unequip() then.
+		m_isUnequipping = true;
+	}
+	else
+	{
+		unequip(); // no clip: instant hide, same as the base class
+	}
 }
 
 void Weapon_Melee::unequip()
 {
+	m_isUnequipping = false;
+	m_isEquipping   = false;
 	m_mesh.node->setVisible(false);
 }
 
 void Weapon_Melee::idle()
 {
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(211, 229);
+	playAnimation("idle");
 }
 
 void Weapon_Melee::move()
@@ -182,12 +301,22 @@ void Weapon_Melee::fire()
 
 }
 
-void Weapon_Melee::startSwing(int startFrame, int endFrame, int contactFrame, unsigned int damage)
+void Weapon_Melee::startSwing(const std::string& animation, int contactFrame, unsigned int damage)
 {
+	// contactFrame is absolute, so it must fall inside the clip's own range. Out
+	// of range fails SILENTLY — below the range the strike lands on frame one,
+	// above it performStrike() is never reached at all. Both look like "melee
+	// does no damage" with nothing in the log, so complain here instead.
+	if (const sAnimationData* clip = m_mesh.findAnimation(animation))
+	{
+		if (contactFrame < clip->frames.X || contactFrame > clip->frames.Y)
+			spdlog::error("Weapon_Melee::startSwing(): contact frame {} is outside clip '{}' ({}-{}) — strike will not land correctly",
+				contactFrame, animation, clip->frames.X, clip->frames.Y);
+	}
+
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
 
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(startFrame, endFrame);
+	playAnimation(animation);
 
 	m_isSwinging   = true;
 	m_damageDone   = false;

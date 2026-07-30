@@ -18,7 +18,7 @@ public:
     }
 
 private:
-    int   m_weaponType = static_cast<int>(WEAP_PISTOL);
+    int   m_weaponType = static_cast<int>(WEAP_NONE);
     int   m_ammoAmount = 30;
     float m_bobSpeed   = 1.5f;
     float m_bobTimer   = 0.0f;

@@ -20,14 +20,13 @@ using namespace irr::core;
 void MeleeZombieBehavior::playAnim(const std::string& name, MeshComponent& mc)
 {
     if (!mc.node) return;
-    for (const auto& a : mc.animationList)
+
+    if (const sAnimationData* a = mc.findAnimation(name))
     {
-        if (a.name != name) continue;
-        mc.node->setLoopMode(a.loop);
-        mc.node->setFrameLoop(a.frames.X, a.frames.Y);
+        mc.node->setLoopMode(a->loop);
+        mc.node->setFrameLoop(a->frames.X, a->frames.Y);
         mc.node->setAnimationSpeed(static_cast<irr::f32>(mc.fps));
-        mc.lastPlayedAnimation = a;
-        return;
+        mc.lastPlayedAnimation = *a;
     }
 }
 

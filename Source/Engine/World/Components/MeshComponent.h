@@ -62,6 +62,21 @@ struct MeshComponent : anax::Component
 	std::vector<sAnimationData> animationList;
     sAnimationData lastPlayedAnimation;
 
+    // Look up a clip by name; null if the mesh has no such animation.
+    // Linear scan is the right call here: animationList holds a handful of
+    // entries in one contiguous block, so a hash map's hashing + indirection
+    // would cost more than the string compares it saves.
+    // NOTE: the result points into animationList — don't hold it across an
+    // edit to the list.
+    const sAnimationData* findAnimation(const std::string& name) const
+    {
+        for (const auto& a : animationList)
+            if (a.name == name)
+                return &a;
+
+        return nullptr;
+    }
+
 	std::shared_ptr<AnimationCallback> animation_call_back;
 
 	std::vector<std::string> textures;

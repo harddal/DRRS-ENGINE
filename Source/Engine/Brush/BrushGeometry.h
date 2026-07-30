@@ -47,6 +47,20 @@ namespace BrushGeometry
     // Requires face.plane to be valid.
     void initFaceUV(BrushFace& face);
 
+    // ---- displacement helpers (Source-style, see DispInfo) ----
+    // Extract the four corners of a QUAD face into out[0..3] ordered
+    // [uv00, uv10, uv01, uv11] by projecting loop verts onto the face's
+    // uAxis/vAxis.  Collinear loop verts (kept to avoid T-junctions) are
+    // dropped first; returns false unless exactly four corners remain.
+    // Requires face.loop / brush.verts to be up to date (post-rebuild).
+    bool extractQuadCorners(const Brush& b, const BrushFace& face,
+                            irr::core::vector3df out[4]);
+
+    // Bilinear base position of grid vertex (i,j) across a quad's four corners
+    // (as returned by extractQuadCorners), with `side` verts per edge.
+    irr::core::vector3df dispBasePos(const irr::core::vector3df corners[4],
+                                     int i, int j, int side);
+
     // Build a face from three points wound so the plane normal faces outward.
     BrushFace makeFace(const irr::core::vector3df& a,
                        const irr::core::vector3df& b,
@@ -59,6 +73,13 @@ namespace BrushGeometry
     Brush makeWedge(const irr::core::aabbox3df& box, const std::string& material = std::string());
     // N side planes + top/bottom caps, axis = +Y, inscribed in the box footprint.
     Brush makeCylinder(const irr::core::aabbox3df& box, int sides, const std::string& material = std::string());
+    // Convex prism from points lying (approximately) on a common plane with the
+    // given outward normal, extruded `depth` units along -normal.  The points
+    // are convex-hulled in the plane, so sloppy/interior clicks are fine.
+    // Returns an invalid brush (geometryValid == false) for degenerate input.
+    Brush makeExtrudedPolygon(const std::vector<irr::core::vector3df>& points,
+                              const irr::core::vector3df& normal, float depth,
+                              const std::string& material = std::string());
 
     // ---- plane-first operations ----
     // Split by a plane: the piece in FRONT of the plane (distance > 0) and the

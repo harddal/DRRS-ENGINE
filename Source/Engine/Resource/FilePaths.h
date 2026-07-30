@@ -24,6 +24,7 @@ const std::string g_particle_path = "content/particle/";
 #define _asset_tex(x) (g_texture_path + std::string(x) + std::string(".png"))
 #define _asset_snd(x) (g_sound_path   + std::string(x) + std::string(".wav"))
 #define _asset_b3d(x) (g_mesh_path    + std::string(x) + std::string(".b3d"))
+#define _asset_glb(x) (g_mesh_path    + std::string(x) + std::string(".glb"))
 #define _asset_dlg(x)  (g_dialog_path  + std::string(x) + std::string(".dlg"))
 #define _asset_itm(x)  (g_item_path    + std::string(x) + std::string(".item"))
 #define _asset_psys(x) (g_particle_path + std::string(x) + std::string(".psys"))

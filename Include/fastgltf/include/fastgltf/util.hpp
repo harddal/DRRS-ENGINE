@@ -38,6 +38,11 @@
 #include <string_view>
 #include <type_traits>
 #include <variant>
+
+// PATCHED (Engine): bsr intrinsics for the clz() replacement below.
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
 #endif
 
 #ifndef FASTGLTF_EXPORT
@@ -417,6 +422,14 @@ namespace fastgltf {
 	}
 #endif
 
+	// PATCHED (Engine): the MSVC path below uses bsr intrinsics, which are not
+	// constexpr. clz() is never used in a constant expression in fastgltf.
+#if !FASTGLTF_HAS_BIT && defined(_MSC_VER) && !defined(__clang__)
+#define FASTGLTF_CLZ_CONSTEXPR
+#else
+#define FASTGLTF_CLZ_CONSTEXPR constexpr
+#endif
+
 	/**
 	 * Counts the leading zeros from starting the most significant bit. Returns a std::uint8_t as there
 	 * can only ever be 2^6 zeros with 64-bit types.
@@ -425,12 +438,36 @@ namespace fastgltf {
 #if FASTGLTF_HAS_CONCEPTS
 	requires std::integral<T>
 #endif
-	[[nodiscard, gnu::const]] constexpr auto clz(T value) {
+	[[nodiscard, gnu::const]] FASTGLTF_CLZ_CONSTEXPR auto clz(T value) {
 #if !FASTGLTF_HAS_CONCEPTS
 		static_assert(std::is_integral_v<T>);
 #endif
 #if FASTGLTF_HAS_BIT
 		return static_cast<std::uint_fast8_t>(std::countl_zero(value));
+#elif defined(_MSC_VER) && !defined(__clang__)
+		// PATCHED (Engine, 2026-07-28): the portable loop in the #else branch is
+		// MISCOMPILED by MSVC v141 (VS2017) at /O2. Measured in-engine, it
+		// returned clz(8) = 221 and 29, and clz(5) = 10 (correct: 60 and 61) —
+		// differing between calls with identical input, i.e. an uninitialised
+		// read. SmallVector::reserve feeds that into
+		//     1 << (numeric_limits<size_t>::digits - clz(n))
+		// so a bogus clz produced capacities of 2^32..2^54; the resulting
+		// allocation threw std::bad_alloc deep inside parseAttributes and looked
+		// for two weeks like heap corruption from an unrelated library.
+		// (clz=221 gives shift -157, which x86 masks to -157 & 63 = 35.)
+		// /sdl had flagged this exact loop with C4700 "uninitialized local
+		// variable used"; that warning was suppressed rather than fixed.
+		// bsr is what the loop was approximating anyway. clz() is not used in
+		// any constant expression in fastgltf, so dropping constexpr is safe.
+		unsigned long index = 0;
+		if constexpr (sizeof(T) == 8) {
+			if (_BitScanReverse64(&index, static_cast<unsigned __int64>(value)))
+				return static_cast<std::uint_fast8_t>(63u - index);
+		} else {
+			if (_BitScanReverse(&index, static_cast<unsigned long>(value)))
+				return static_cast<std::uint_fast8_t>((sizeof(T) * 8u - 1u) - index);
+		}
+		return static_cast<std::uint_fast8_t>(sizeof(T) * 8); // value == 0
 #else
 		// Very naive but working implementation of counting zero bits. Any sane compiler will
 		// optimise this away, like instead use the bsr x86 instruction.

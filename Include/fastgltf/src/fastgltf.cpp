@@ -799,7 +799,19 @@ template <typename T> fg::Error fg::Parser::parseAttributes(simdjson::dom::objec
 		return Error::InvalidGltf;
 	}
 	attributes.reserve(attributeCount);
+	// The size() check above is necessary but NOT sufficient: on a clobbered tape
+	// size() can report a sane count while iteration runs far past it, and the
+	// emplace_back below then grows the vector until operator new throws
+	// std::bad_alloc (crashing mid-parse instead of failing this mesh). Bound the
+	// loop by the count we already validated and reject if it overruns.
+	std::size_t seen = 0;
 	for (const auto field : object) {
+		if (++seen > attributeCount) FASTGLTF_UNLIKELY {
+			std::fprintf(stderr,
+				"fastgltf (patched): attribute iteration overran reported count %zu - corrupted parse, rejecting glTF\n",
+				attributeCount);
+			return Error::InvalidGltf;
+		}
 		const auto key = field.key;
 
 		std::uint64_t accessorIndex;

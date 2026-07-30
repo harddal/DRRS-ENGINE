@@ -22,6 +22,10 @@ layout(std140) uniform PerFrame
     mat4  uInvView;       // main camera view inverse — world-pos reconstruction
     mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
     vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active
+    vec4  uFogVolParams;  // x = active fog-volume count, y = feather distance
+    vec4  uFogVolMin[8];  // xyz = AABB min, w = density
+    vec4  uFogVolMax[8];  // xyz = AABB max, w = start distance
+    vec4  uFogVolColor[8];// rgb = color, w = reserved
 };
 
 uniform sampler2D tDiffuse;   // unit 0: particle texture

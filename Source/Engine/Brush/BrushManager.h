@@ -80,6 +80,19 @@ public:
     // Re-derive geometry + chunk assignment after any plane edit.
     void markBrushDirty(uint32_t id);
 
+    // -----------------------------------------------------------------------
+    // Live single-brush edit preview (sculpt/displacement drags)
+    // While a brush is being edited every frame, rebuilding its whole chunk
+    // per frame is wasteful.  beginBrushEdit pulls the brush OUT of its chunk
+    // (one chunk rebuild) and stands up a tiny preview node holding just that
+    // brush; updateBrushEditPreview refreshes only that node each frame;
+    // endBrushEdit drops the preview and folds the brush back into its chunk
+    // (one chunk rebuild + heavy cook).  Heavy rebuilds are deferred for the
+    // duration.  Only one brush may be in edit at a time.
+    void beginBrushEdit(uint32_t id);
+    void updateBrushEditPreview(uint32_t id);
+    void endBrushEdit();
+
     // Per-frame (EditorState::update): recompile dirty chunks, drop empty
     // ones.  Collision + selector rebuilds are skipped while deferHeavy is on
     // (drag in progress) and caught up on the first call after it turns off.
@@ -212,6 +225,12 @@ private:
     float    m_cellSize = 16.0f;        // serialized world-cell edge length
     bool     m_deferHeavy = false;
     bool     m_toolOverlayVisible = true;   // editor UI toggle, not serialized
+
+    // Live single-brush edit preview (see beginBrushEdit).  While active the
+    // edited brush is skipped by gatherChunkMembers and drawn by m_editChunk's
+    // standalone node instead.
+    uint32_t   m_editBrushId = 0;
+    BrushChunk m_editChunk;
 
     irr::s64 chunkKeyFor(const irr::core::vector3df& centroid) const;
 

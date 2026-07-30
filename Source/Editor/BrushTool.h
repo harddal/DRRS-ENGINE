@@ -18,7 +18,9 @@ enum class BrushToolMode
     FACE,       // select faces; gizmo push/pull along the face normal
     VERTEX,     // drag vertex handles through the provisional-commit pipeline
     CLIP,       // place up to 3 points, preview halves, Enter commits
-    PAINT       // click/drag faces to apply defaultMaterial; Ctrl+click samples
+    PAINT,      // click/drag faces to apply defaultMaterial; Ctrl+click samples
+    STAMP,      // outline a shape on a brush face, Enter carves it through
+    SCULPT      // subdivide a quad face into a displacement and sculpt it
 };
 
 enum class BrushPrimitive
@@ -26,6 +28,16 @@ enum class BrushPrimitive
     BOX,
     WEDGE,
     CYLINDER
+};
+
+// Displacement sculpt sub-tools (SCULPT mode).
+enum class SculptTool
+{
+    RAISE,      // push grid verts out along the face normal
+    LOWER,      // pull grid verts in along the face normal
+    SMOOTH,     // relax each vert toward its neighbours' average offset
+    NOISE,      // random jitter along the normal (roughening)
+    FLATTEN     // ease offsets back toward the flat base plane
 };
 
 // ---------------------------------------------------------------------------
@@ -73,10 +85,31 @@ public:
     // Apply material/shader to all selected faces (undo-recorded).
     void applyMaterialToSelectedFaces(const std::string& material);
 
+    // ---- displacement / sculpt (SCULPT mode) ----
+    // Sculpt tuning, driven by the brush-editor panel.
+    SculptTool sculptTool     = SculptTool::RAISE;
+    int        dispPower      = 3;        // 2/3/4 -> 5x5 / 9x9 / 17x17 grid
+    float      sculptRadius   = 2.0f;     // world units
+    float      sculptStrength = 2.0f;     // world units/sec at full weight
+    float      sculptFalloff  = 0.5f;     // 0 = soft (linear-ish), 1 = tight
+    float      sculptNoise    = 1.0f;     // NOISE amplitude scale
+
+    // Turn a selected quad face into a (flat) displacement / clear it back to a
+    // plain face.  Both are undo-recorded; return false if the face is not a
+    // usable quad (make) or not displaced (remove).
+    bool makeDisplacement(const FaceRef& ref, int power);
+    bool removeDisplacement(const FaceRef& ref);
+    // Convenience: does the face have an active displacement?
+    bool faceIsDisplaced(const FaceRef& ref) const;
+
     // ---- clip (CLIP mode) ----
     int  clipPointCount() const { return static_cast<int>(m_clipPoints.size()); }
     int  clipKeepMode() const { return m_clipKeep; }   // 0 front, 1 back, 2 both
     void commitClip();
+
+    // ---- stamp/cutout (STAMP mode) ----
+    int  stampPointCount() const { return static_cast<int>(m_stampPoints.size()); }
+    void commitStamp();
 
     // Subtract the primary selected brush from every brush it overlaps
     // (carver itself is kept; delete it separately if unwanted).
@@ -144,6 +177,21 @@ private:
     bool clipPlaneFromPoints(irr::core::plane3df& outPlane,
                              irr::core::vector3df outPts[3]) const;
 
+    // ---- stamp/cutout mode state ----
+    // Outline points live exactly on the locked target face's plane; commit
+    // convex-hulls them, extrudes through the brush and carves.
+    std::vector<irr::core::vector3df> m_stampPoints;
+    uint32_t m_stampBrushId   = 0;    // target brush, locked by the first click
+    int      m_stampFaceIndex = -1;   // face whose plane hosts the outline
+    bool     m_stampMouseDown = false;
+    bool     m_stampEnterDown = false;
+
+    void updateStampMode();
+    void drawStampMode();
+    // Build the extruded carver prism from the current outline (through the
+    // whole target with margin).  False when the outline/target is unusable.
+    bool buildStampCarver(Brush& out);
+
     // ---- paint mode state ----
     bool    m_paintMouseDown = false;         // getMousePressOnce edge state (eyedropper)
     FaceRef m_paintLast;                      // last face painted this stroke
@@ -152,6 +200,20 @@ private:
     void updatePaintMode();
     void drawPaintMode();
     void commitPaintStroke();                 // one undo entry for the whole stroke
+
+    // ---- sculpt mode state ----
+    // A press selects the face under the cursor (m_selectedFaces, single); if
+    // that face is displaced and a sub-tool is set, holding+moving sculpts it.
+    // A whole held stroke coalesces into one undo entry (like PAINT).
+    bool m_sculptMouseDown = false;           // getMousePressOnce edge state
+    std::vector<Brush> m_sculptStroke;        // pre-stroke copies, one per touched brush
+
+    void updateSculptMode(float dt);
+    void drawSculptMode();
+    void commitSculptStroke();
+    // Apply the current sub-tool to `face` around world point `center`.
+    void applySculptToFace(Brush& brush, BrushFace& face,
+                           const irr::core::vector3df& center, float dt);
 
     void updateCreateMode();
     void commitCreateDrag();

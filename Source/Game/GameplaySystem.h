@@ -2,6 +2,8 @@
 
 #include <unordered_set>
 
+#include <SColor.h>
+
 #include "anax/anax.hpp"
 
 #include "Game/Components/DamageReceiverComponent.h"
@@ -52,7 +54,10 @@ private:
 
 	// Per-frame player-vs-brush volume tests: CONTENT_TRIGGER brushes fire
 	// their receiver list on enter (edge-triggered, re-arms on exit);
-	// CONTENT_LADDER overlap feeds PlayerController::setOnLadder.
+	// CONTENT_LADDER overlap feeds PlayerController::setOnLadder;
+	// CONTENT_HURT overlap drains health at the brush's authored rate.
+	// (CONTENT_FOG is rendered per-view-ray from a volume array gathered in
+	// RenderManager::updatePerFrameUBO, not resolved here.)
 	void updateBrushVolumes();
 
 };

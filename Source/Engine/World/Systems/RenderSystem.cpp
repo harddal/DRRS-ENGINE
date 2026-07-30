@@ -51,23 +51,8 @@ void RenderSystem::setMeshComponentData(Entity& entity)
     // TODO: Check if a valid file path was specified 
     else if (!meshComponent.mesh.empty()) {
 
-		auto str = Utility::FileExtensionFromPath(meshComponent.mesh);
-
-		if (str == "fbx")
-		{
-			meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
-		}
-		else if (str == "glb" || str == "gltf")
-		{
-			// fastgltf backend; fall back to Assimp if it can't load the file
-			meshComponent.trimesh = RenderManager::Get()->gltf()->getMesh(meshComponent.mesh.c_str());
-			if (!meshComponent.trimesh)
-				meshComponent.trimesh = RenderManager::Get()->assimp()->getMesh(meshComponent.mesh.c_str());
-		}
-		else
-		{
-			meshComponent.trimesh = RenderManager::Get()->sceneManager()->getMesh(meshComponent.mesh.c_str());
-		}
+		// Extension-routed load (fbx -> Assimp, glb/gltf -> fastgltf, else Irrlicht)
+		meshComponent.trimesh = RenderManager::Get()->loadMesh(meshComponent.mesh);
 
 		if (!meshComponent.trimesh)
 			goto error_no_mesh;
@@ -1155,13 +1140,11 @@ void RenderSystem::playAnimation(entityid id, std::string animation)
 				auto start = 0U, end = 0U;
 				auto& render = entity.getComponent<MeshComponent>();
 
-				for (sAnimationData s : render.animationList) {
-					if (s.name == animation) {
-						start = s.frames.X;
-						end = s.frames.Y;
+				if (const sAnimationData* s = render.findAnimation(animation)) {
+					start = s->frames.X;
+					end = s->frames.Y;
 
-                        render.lastPlayedAnimation = sAnimationData(s.name, s.frames.X, s.frames.Y, s.loop);
-					}
+                    render.lastPlayedAnimation = *s;
 				}
 
                 render.node->setLoopMode(false);
@@ -1184,11 +1167,9 @@ void RenderSystem::loopAnimation(entityid id, std::string animation)
                 auto start = 0U, end = 0U;
                 auto& render = entity.getComponent<MeshComponent>();
 
-                for (sAnimationData s : render.animationList) {
-                    if (s.name == animation) {
-                        start = s.frames.X;
-                        end = s.frames.Y;
-                    }
+                if (const sAnimationData* s = render.findAnimation(animation)) {
+                    start = s->frames.X;
+                    end = s->frames.Y;
                 }
 
                 render.node->setLoopMode(true);
@@ -1206,11 +1187,9 @@ void RenderSystem::playAnimation(const anax::Entity& entity, std::string animati
 		auto start = 0U, end = 0U;
 		auto& render = entity.getComponent<MeshComponent>();
 
-		for (sAnimationData s : render.animationList) {
-			if (s.name == animation) {
-				start = s.frames.X;
-				end = s.frames.Y;
-			}
+		if (const sAnimationData* s = render.findAnimation(animation)) {
+			start = s->frames.X;
+			end = s->frames.Y;
 		}
 
 		render.node->setFrameLoop(start, end);

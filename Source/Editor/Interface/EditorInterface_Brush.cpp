@@ -8,11 +8,15 @@
 #include "Engine/Engine.h"
 #include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Brush/BrushManager.h"
+#include "Engine/Renderer/RenderManager.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Editor/BrushTool.h"
 #include "Utility/Utility.h"
 #include "Game/Components.h"
 
+#include <irrlicht/source/Irrlicht/COpenGLTexture.h>
+
+#include <algorithm>
 #include <string>
 
 namespace
@@ -58,6 +62,8 @@ namespace
         { "Trigger",      CONTENT_TRIGGER,      "content/texture/tool/trigger.png"     },
         { "Sky",          CONTENT_SKY,          "content/texture/tool/sky.png"         },
         { "Ladder",       CONTENT_LADDER,       "content/texture/tool/ladder.png"      },
+        { "Fog",          CONTENT_FOG,          "content/texture/tool/fog.png"         },
+        { "Hurt",         CONTENT_HURT,         "content/texture/tool/damage.png"      },
     };
 
     // One undo entry snapshotting every selected brush (whole-brush snapshots,
@@ -113,6 +119,61 @@ namespace
                 BrushManager::Get()->markBrushDirty(id);
         }
     }
+
+    // Resolve a brush material name to an ImGui-drawable texture id, using
+    // the same convention as BrushCompiler (full path first, then the bare
+    // extensionless texture-browser fallback).  0 when unresolved.
+    ImTextureID materialPreviewTexId(const std::string& materialName)
+    {
+        if (materialName.empty())
+            return 0;
+
+        auto* driver = RenderManager::Get()->driver();
+        irr::video::ITexture* tex = driver->getTexture(materialName.c_str());
+        if (!tex && materialName.find('/') == std::string::npos &&
+                    materialName.find('\\') == std::string::npos)
+        {
+            const std::string resolved = "content/texture/" + materialName + ".png";
+            tex = driver->getTexture(resolved.c_str());
+        }
+        if (!tex)
+            return 0;
+
+        const GLuint glTex =
+            static_cast<irr::video::COpenGLTexture*>(tex)->getOpenGLTextureName();
+        return (ImTextureID)(uintptr_t)glTex;
+    }
+
+    // Undo for face-level edits: dedupe the owning brushes of the selected
+    // faces and snapshot them through the brush-undo path.
+    void pushSelectedFaceUndo(const std::vector<BrushTool::FaceRef>& faces)
+    {
+        std::vector<uint32_t> ids;
+        for (const auto& ref : faces)
+            if (std::find(ids.begin(), ids.end(), ref.brushId) == ids.end())
+                ids.push_back(ref.brushId);
+        pushSelectedBrushUndo(ids);
+    }
+
+    // Apply fn to every valid selected face, then recompile each owning brush
+    // once (a face selection can span multiple brushes).
+    template <typename F>
+    void forEachSelectedFace(const std::vector<BrushTool::FaceRef>& faces, F&& fn)
+    {
+        std::vector<uint32_t> dirty;
+        for (const auto& ref : faces)
+        {
+            Brush* b = BrushManager::Get()->getBrush(ref.brushId);
+            if (!b || ref.faceIndex < 0 ||
+                ref.faceIndex >= static_cast<int>(b->faces.size()))
+                continue;
+            fn(b->faces[ref.faceIndex]);
+            if (std::find(dirty.begin(), dirty.end(), ref.brushId) == dirty.end())
+                dirty.push_back(ref.brushId);
+        }
+        for (uint32_t id : dirty)
+            BrushManager::Get()->markBrushDirty(id);
+    }
 }
 
 void EditorInterface::draw_window_brush_editor()
@@ -142,7 +203,11 @@ void EditorInterface::draw_window_brush_editor()
     modeButton("Clip",   BrushToolMode::CLIP,   tool,
         "Slice brushes along a plane defined by 2-3 clicked points.\nTab flips which side is kept, Enter commits."); ImGui::SameLine();
     modeButton("Texture", BrushToolMode::PAINT, tool,
-        "Paint the Material below onto faces by clicking/dragging.\nCtrl+click samples a face's existing material.");
+        "Paint the Material below onto faces by clicking/dragging.\nCtrl+click samples a face's existing material."); ImGui::SameLine();
+    modeButton("Cutout", BrushToolMode::STAMP, tool,
+        "Outline a shape on a brush face by clicking points\n(auto convex hull), then Enter carves it through the brush."); ImGui::SameLine();
+    modeButton("Sculpt", BrushToolMode::SCULPT, tool,
+        "Turn a quad face into a displacement grid and sculpt it\ninto organic, low-poly cave/cliff/terrain surfaces.");
 
     switch (tool.mode())
     {
@@ -163,6 +228,12 @@ void EditorInterface::draw_window_brush_editor()
         break;
     case BrushToolMode::PAINT:
         ImGui::TextDisabled("Click/drag faces to apply the Material below; Ctrl+click samples");
+        break;
+    case BrushToolMode::STAMP:
+        ImGui::TextDisabled("Click points on a brush face; Enter cuts the shape out");
+        break;
+    case BrushToolMode::SCULPT:
+        ImGui::TextDisabled("Click a quad face to select; Make Displacement, then drag to sculpt");
         break;
     }
 
@@ -198,7 +269,14 @@ void EditorInterface::draw_window_brush_editor()
     if (tool.defaultMaterial.empty())
         ImGui::TextDisabled("(none)");
     else
+    {
+        if (const ImTextureID texId = materialPreviewTexId(tool.defaultMaterial))
+        {
+            ImGui::Image(ImTextureRef(texId), DPI_SCALED_IMVEC2(96, 96));
+            ImGui::SameLine();
+        }
         ImGui::TextWrapped("%s", tool.defaultMaterial.c_str());
+    }
 
     if (ImGui::Button("Browse...##brush_mat"))
         show_window_texture_browser("brush_default_material");
@@ -243,6 +321,16 @@ void EditorInterface::draw_window_brush_editor()
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Semi-transparent overlay for clip/trigger/sky brushes (editor only)");
 
+    // ---- Cutout controls ----
+    if (tool.mode() == BrushToolMode::STAMP)
+    {
+        ImGui::Separator();
+        ImGui::Text("Cutout points: %d", tool.stampPointCount());
+        if (ImGui::Button("Commit Cutout (Enter)"))
+            tool.commitStamp();
+        ImGui::SetItemTooltip("Carve the outlined shape through the brush.\nThe red wireframe shows the removed volume; Esc clears the points.");
+    }
+
     // ---- Clip controls ----
     if (tool.mode() == BrushToolMode::CLIP)
     {
@@ -251,6 +339,75 @@ void EditorInterface::draw_window_brush_editor()
         ImGui::Text("Points: %d/3 | %s (Tab)", tool.clipPointCount(), keepNames[tool.clipKeepMode()]);
         if (ImGui::Button("Commit Clip (Enter)"))
             tool.commitClip();
+    }
+
+    // ---- Sculpt / displacement controls ----
+    if (tool.mode() == BrushToolMode::SCULPT)
+    {
+        ImGui::Separator();
+
+        const bool haveFace = !tool.selectedFaces().empty();
+        const BrushTool::FaceRef selFace = haveFace ? tool.selectedFaces().front()
+                                                     : BrushTool::FaceRef();
+        const bool displaced = haveFace && tool.faceIsDisplaced(selFace);
+
+        if (!haveFace)
+        {
+            ImGui::TextDisabled("Click a quad face in the viewport to select it.");
+        }
+        else if (!displaced)
+        {
+            // Grid resolution for the new displacement.
+            static const char* powerNames[] = { "5 x 5", "9 x 9", "17 x 17" };
+            int powIdx = std::max(0, std::min(2, tool.dispPower - 2));
+            ImGui::Text("Grid");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(100);
+            if (ImGui::Combo("##disp_power", &powIdx, powerNames, 3))
+                tool.dispPower = powIdx + 2;
+            if (ImGui::Button("Make Displacement"))
+                tool.makeDisplacement(selFace, tool.dispPower);
+            ImGui::SetItemTooltip("Subdivide the selected quad face into a sculptable grid.\nOnly 4-sided faces can become displacements.");
+        }
+        else
+        {
+            // Sub-tool picker.
+            ImGui::Text("Brush");
+            struct SculptToolButton { const char* label; SculptTool value; };
+            const SculptToolButton kTools[] = {
+                { "Raise",   SculptTool::RAISE   },
+                { "Lower",   SculptTool::LOWER   },
+                { "Smooth",  SculptTool::SMOOTH  },
+                { "Noise",   SculptTool::NOISE   },
+                { "Flatten", SculptTool::FLATTEN },
+            };
+            for (int i = 0; i < 5; i++)
+            {
+                const bool on = (tool.sculptTool == kTools[i].value);
+                if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.2f, 1.0f));
+                if (ImGui::Button(kTools[i].label))
+                    tool.sculptTool = kTools[i].value;
+                if (on) ImGui::PopStyleColor();
+                if (i < 4) ImGui::SameLine();
+            }
+
+            ImGui::SetNextItemWidth(160);
+            ImGui::SliderFloat("Radius",   &tool.sculptRadius,   0.25f, 20.0f, "%.2f");
+            ImGui::SetNextItemWidth(160);
+            ImGui::SliderFloat("Strength", &tool.sculptStrength, 0.1f,  20.0f, "%.2f");
+            ImGui::SetNextItemWidth(160);
+            ImGui::SliderFloat("Falloff",  &tool.sculptFalloff,  0.0f,  1.0f,  "%.2f");
+            if (tool.sculptTool == SculptTool::NOISE)
+            {
+                ImGui::SetNextItemWidth(160);
+                ImGui::SliderFloat("Amount", &tool.sculptNoise, 0.1f, 10.0f, "%.2f");
+            }
+            ImGui::TextDisabled("Hold and drag on the face to sculpt.");
+
+            if (ImGui::Button("Remove Displacement"))
+                tool.removeDisplacement(selFace);
+            ImGui::SetItemTooltip("Flatten the face back to a plain, undisplaced quad.");
+        }
     }
 
     // ---- Carve ----
@@ -372,6 +529,10 @@ void EditorInterface::draw_window_brush_editor()
             "Marks sky: stripped from the game's render mesh so the skybox shows through.");
         presetButton(kToolPresets[5].label, kToolPresets[5].flags, kToolPresets[5].texture,
             "Invisible climbable volume: W climbs up, S climbs down, jump detaches.\nPlace it flush against the wall/ladder mesh the player climbs.");
+        ImGui::SameLine(); presetButton(kToolPresets[6].label, kToolPresets[6].flags, kToolPresets[6].texture,
+            "Invisible volume that overrides the scene fog while the player is inside,\ncross-fading back to the scene defaults on exit.\nSet the fog values in the Fog Zone section below.");
+        presetButton(kToolPresets[7].label, kToolPresets[7].flags, kToolPresets[7].texture,
+            "Invisible volume that damages the player while they stand in it.\nSet the rate in the Hurt Volume section below.");
 
         if (primary->isToolBrush())
             ImGui::TextDisabled("Tool brush: stripped from the game's render mesh");
@@ -393,6 +554,8 @@ void EditorInterface::draw_window_brush_editor()
             flagCheckbox("Trigger",      CONTENT_TRIGGER);
             flagCheckbox("Sky",          CONTENT_SKY);
             flagCheckbox("Ladder",       CONTENT_LADDER);
+            flagCheckbox("Fog",          CONTENT_FOG);
+            flagCheckbox("Hurt",         CONTENT_HURT);
             ImGui::TreePop();
         }
 
@@ -448,6 +611,68 @@ void EditorInterface::draw_window_brush_editor()
                 entry.brushes.push_back(std::move(snap));
                 g_sceneInteractor.pushUndoEntry(std::move(entry));
             }
+        }
+
+        // ---- Fog zone settings ----
+        // Fog values are pure runtime data (GameplaySystem reads them each
+        // frame), so unlike face/geometry edits they never markBrushDirty.
+        if (primary->contentFlags & CONTENT_FOG)
+        {
+            ImGui::Separator();
+            ImGui::Text("Fog Zone");
+            if (sel.size() > 1)
+                ImGui::TextDisabled("Values edit the primary brush only");
+
+            ImGui::SetNextItemWidth(150);
+            ImGui::DragFloat("Density##fog", &primary->fogDensity, 0.001f, 0.0f, 1.0f, "%.3f");
+            if (ImGui::IsItemActivated())
+                pushSelectedBrushUndo({ primary->id });
+            ImGui::SetItemTooltip("Fog thickness while inside the volume (0 = clear).\nSame scale as the scene's fog density.");
+
+            ImGui::SetNextItemWidth(150);
+            ImGui::DragFloat("Start##fog", &primary->fogStart, 0.5f, 0.0f, 10000.0f, "%.1f");
+            if (ImGui::IsItemActivated())
+                pushSelectedBrushUndo({ primary->id });
+            ImGui::SetItemTooltip("View distance before fog begins, in world units.");
+
+            ImGui::SetNextItemWidth(200);
+            ImGui::ColorEdit3("Color##fog", &primary->fogColor.r);
+            if (ImGui::IsItemActivated())
+                pushSelectedBrushUndo({ primary->id });
+
+            if (ImGui::SmallButton("Seed from scene##fog"))
+            {
+                pushSelectedBrushUndo({ primary->id });
+                const SceneDescriptor sd = WorldManager::Get()->getCurrentSceneDescriptor();
+                primary->fogDensity = sd.fogDensity;
+                primary->fogStart   = sd.fogStart;
+                primary->fogColor   = sd.fogColor;
+            }
+            ImGui::SetItemTooltip("Copy the scene's current fog values into this volume as a starting point.");
+        }
+
+        // ---- Hurt volume settings ----
+        // Like the fog values this is runtime-only data, so no markBrushDirty.
+        if (primary->contentFlags & CONTENT_HURT)
+        {
+            ImGui::Separator();
+            ImGui::Text("Hurt Volume");
+            if (sel.size() > 1)
+                ImGui::TextDisabled("Values edit the primary brush only");
+
+            ImGui::SetNextItemWidth(150);
+            ImGui::DragFloat("Damage/sec##hurt", &primary->hurtDamagePerSecond, 0.5f, 0.0f, 10000.0f, "%.1f");
+            if (ImGui::IsItemActivated())
+                pushSelectedBrushUndo({ primary->id });
+            ImGui::SetItemTooltip(
+                "Health drained per second while the player overlaps this volume.\n"
+                "Applied in whole points, so fractional rates tick irregularly.\n"
+                "0 disables the volume; overlapping hurt volumes stack.");
+
+            // Default player health is 100 (DamageReceiverComponent::threshold)
+            if (primary->hurtDamagePerSecond > 0.0f)
+                ImGui::TextDisabled("~%.1fs to drain 100 health",
+                    100.0f / primary->hurtDamagePerSecond);
         }
     }
 
@@ -506,28 +731,59 @@ void EditorInterface::draw_window_brush_editor()
                 g_textureBrowserRequestID.clear();
             }
 
-            // UV fields edit the primary face; recompile on change.
-            // Offset is in world units; tile size = world units per repeat.
+            // ---- Face UVs ----
+            // The primary face's values are the live edit buffer; any change
+            // is copied to every selected face (absolute values, matching
+            // "Apply Texture..." semantics).  Undo snapshots on drag-grab.
+            ImGui::Text("Face UVs");
+
             bool changed = false;
             ImGui::SetNextItemWidth(150);
             changed |= ImGui::DragFloat2("Offset##face_shift", &face.shiftU, 0.05f);
-            ImGui::SetItemTooltip("Slide the texture across the face (U/V, world units).");
+            if (ImGui::IsItemActivated())
+                pushSelectedFaceUndo(faces);
+            ImGui::SetItemTooltip("Slide the texture across the face (U/V, world units).\nApplies to every selected face.");
+
             ImGui::SetNextItemWidth(150);
             changed |= ImGui::DragFloat2("Tile size##face_scale", &face.scaleU, 0.05f, 0.05f, 64.0f);
-            ImGui::SetItemTooltip("World units per texture repeat - larger values stretch the texture.");
+            if (ImGui::IsItemActivated())
+                pushSelectedFaceUndo(faces);
+            ImGui::SetItemTooltip("World units per texture repeat - larger values stretch the texture.\nApplies to every selected face.");
+
             if (face.scaleU < 0.05f) face.scaleU = 0.05f;
             if (face.scaleV < 0.05f) face.scaleV = 0.05f;
+
+            if (ImGui::SmallButton("Reset UVs##face"))
+            {
+                pushSelectedFaceUndo(faces);
+                face.shiftU = 0.0f; face.shiftV = 0.0f;
+                face.scaleU = 2.0f; face.scaleV = 2.0f;
+                changed = true;
+            }
+            ImGui::SetItemTooltip("Back to the defaults (offset 0/0, tile size 2/2) on all selected faces.");
+
+            if (changed)
+            {
+                const float shiftU = face.shiftU, shiftV = face.shiftV;
+                const float scaleU = face.scaleU, scaleV = face.scaleV;
+                forEachSelectedFace(faces, [&](BrushFace& f)
+                {
+                    f.shiftU = shiftU; f.shiftV = shiftV;
+                    f.scaleU = scaleU; f.scaleV = scaleV;
+                });
+            }
 
             bool nodraw = (face.flags & FACE_NODRAW) != 0;
             if (ImGui::Checkbox("No draw (collision only)", &nodraw))
             {
-                face.flags = static_cast<irr::u8>(nodraw ? (face.flags | FACE_NODRAW)
-                                                         : (face.flags & ~FACE_NODRAW));
-                changed = true;
+                pushSelectedFaceUndo(faces);
+                forEachSelectedFace(faces, [&](BrushFace& f)
+                {
+                    f.flags = static_cast<irr::u8>(nodraw ? (f.flags | FACE_NODRAW)
+                                                          : (f.flags & ~FACE_NODRAW));
+                });
             }
-
-            if (changed)
-                BrushManager::Get()->markBrushDirty(faces[0].brushId);
+            ImGui::SetItemTooltip("Skip these faces in the render mesh; they still block movement.\nApplies to every selected face.");
         }
     }
 

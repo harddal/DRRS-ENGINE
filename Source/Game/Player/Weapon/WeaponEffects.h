@@ -16,8 +16,17 @@
 struct WeaponEffectsDesc
 {
 	// --- Muzzle flash (muzzleJointName = nullptr disables) ------------------
-	const char* muzzleJointName = "FIRESPOT";        // "MUZZLE" on minigun
-	irr::core::vector3df muzzleFallbackOffset;       // parented to weapon node if joint missing
+	// muzzleJointName does NOT have to be a dedicated marker. A model with no
+	// FIRESPOT empty can name any joint that moves with the barrel — "base" on
+	// the revolver — and put the barrel tip in muzzleJointOffset. That keeps the
+	// flash riding the animation (recoil, reload, holster) instead of being
+	// pinned to the viewmodel root, which is the gun's pivot, i.e. the grip.
+	const char* muzzleJointName = "FIRESPOT";        // "MUZZLE" on minigun, "base" on revolver
+
+	// Exactly one of these applies, depending on whether muzzleJointName
+	// resolved. Both are local to the node the flash ends up parented to.
+	irr::core::vector3df muzzleJointOffset;          // joint found: offset within the joint, in MODEL units
+	irr::core::vector3df muzzleFallbackOffset;       // joint missing: offset from the weapon node
 	irr::video::SColor flashColor = irr::video::SColor(255, 255, 204, 76);
 	float flashSize         = 0.8f;
 	float flashSizeVariance = 0.3f;                  // ± fraction per shot
@@ -63,12 +72,42 @@ public:
 	// Show the flash with per-shot randomized size + texture roll.
 	void muzzleFlash();
 
+	// World position of the muzzle attachment — the exact point the flash is
+	// drawn at. Weapons should use this as the ray/tracer origin so the shot and
+	// the flash agree by construction rather than by two hand-tuned guesses.
+	// Forces the joint transform up to date, so call it after animateJoints().
+	irr::core::vector3df muzzleWorldPosition();
+
+	// Live tuning hooks for the viewmodel debug window (F2). Mutate the offset
+	// through the reference, then call applyMuzzleOffset() to push it to the
+	// flash billboard and light. Resolves to whichever of the two desc offsets
+	// is actually in play, so the slider always edits the live one.
+	irr::core::vector3df& debugMuzzleOffset() { return activeMuzzleOffset(); }
+	void applyMuzzleOffset();
+
 	// Register a shot for tracer emission; only every desc.tracerFrequency-th
 	// call actually launches a segment (counter lives here).
 	void spawnTracer(const irr::core::vector3df& start, const irr::core::vector3df& end);
 
 	// Pooled fake-physics shell casing from the eject joint (or offset port).
 	void ejectShell();
+
+	// Pooled casing placed at an explicit world transform with an explicit
+	// velocity, instead of at a port derived from the weapon node and camera
+	// basis. This is what makes a casing hand-off seamless: a weapon that hides
+	// an animated round mid-flight can spawn a real one on the same frame, at the
+	// same place, carrying the same velocity, so the swap is invisible.
+	// Returns false when the pool is exhausted.
+	bool spawnShellAt(const irr::core::vector3df& position,
+	                  const irr::core::vector3df& rotation,
+	                  const irr::core::vector3df& velocity,
+	                  const irr::core::vector3df& scale);
+
+	// Unscaled per-axis size of the pooled casing mesh, so a caller can scale it
+	// to match geometry it is standing in for. Per-axis rather than a single
+	// figure because the casing and whatever it replaces rarely share an aspect
+	// ratio. Zero vector if there is no pool.
+	const irr::core::vector3df& shellMeshExtent() const;
 
 	// Impact particles fanned along the surface normal + optional decal.
 	void impact(const irr::core::vector3df& point, const irr::core::vector3df& normal);
@@ -144,4 +183,13 @@ private:
 	};
 	std::vector<Shell> m_shells;
 	float m_lastShellBounceSound = 0.0f;
+	irr::core::vector3df m_shellMeshExtent; // unscaled per-axis size of the casing mesh
+
+	Shell* acquireShell(); // free pool slot, or nullptr when exhausted
+
+	// Whichever muzzle offset is live: the fallback one when muzzleJointName did
+	// not resolve and the flash hangs off the weapon node, the joint one
+	// otherwise. Single source of truth for the flash, the light, the debug
+	// slider and muzzleWorldPosition().
+	irr::core::vector3df& activeMuzzleOffset();
 };

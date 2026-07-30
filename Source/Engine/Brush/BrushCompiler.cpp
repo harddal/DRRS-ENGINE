@@ -1,11 +1,14 @@
 #include "Engine/Brush/BrushCompiler.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 
+#include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Engine.h"
 #include "Engine/Renderer/RenderManager.h"
@@ -64,6 +67,94 @@ namespace
         mat.NormalizeNormals = true;
         return buf;
     }
+
+    // Tessellate a displaced quad face into `buf`: a (side x side) grid with
+    // smooth per-vertex normals and Valve-220 UVs on the displaced positions.
+    // Returns false when the face is not a valid displacement quad (the caller
+    // then falls back to the flat fan and treats the face as undisplaced).
+    bool emitDisplacement(CMeshBuffer<S3DVertex2TCoords>* buf,
+                          const Brush& brush, const BrushFace& face,
+                          float su, float sv, const SColor& color)
+    {
+        if (!face.disp.active())
+            return false;
+
+        vector3df corners[4];
+        if (!BrushGeometry::extractQuadCorners(brush, face, corners))
+            return false;
+
+        const int side = face.disp.side();
+        const int vc   = side * side;
+
+        // Displaced positions first, so normals can use finite differences.
+        std::vector<vector3df> pos(vc);
+        for (int j = 0; j < side; j++)
+            for (int i = 0; i < side; i++)
+            {
+                const int k = j * side + i;
+                pos[k] = BrushGeometry::dispBasePos(corners, i, j, side) + face.disp.get(k);
+            }
+
+        const u16 base = static_cast<u16>(buf->Vertices.size());
+        for (int j = 0; j < side; j++)
+            for (int i = 0; i < side; i++)
+            {
+                const int k = j * side + i;
+                const vector3df& p = pos[k];
+
+                // Smooth normal from central differences of neighbor grid
+                // positions (clamped at edges), oriented to the outward normal.
+                const vector3df dU = pos[j * side + std::min(i + 1, side - 1)]
+                                   - pos[j * side + std::max(i - 1, 0)];
+                const vector3df dV = pos[std::min(j + 1, side - 1) * side + i]
+                                   - pos[std::max(j - 1, 0) * side + i];
+                vector3df nrm = dU.crossProduct(dV);
+                if (nrm.getLengthSQ() < 1e-12f)
+                    nrm = face.plane.Normal;
+                else
+                {
+                    nrm.normalize();
+                    if (nrm.dotProduct(face.plane.Normal) < 0.0f)
+                        nrm = -nrm;
+                }
+
+                S3DVertex2TCoords v;
+                v.Pos       = p;
+                v.Normal    = nrm;
+                v.Color     = color;
+                v.TCoords.X = (p.dotProduct(face.uAxis) + face.shiftU) / su;
+                v.TCoords.Y = (p.dotProduct(face.vAxis) + face.shiftV) / sv;
+                v.TCoords2  = v.TCoords;     // placeholder until a lightmap bake
+                buf->Vertices.push_back(v);
+            }
+
+        // Winding: match the outward plane normal.  eU x eV points along the
+        // param-space normal; flip the triangle order when it opposes N so the
+        // grid keeps the engine's front-face convention under backface culling.
+        const vector3df eU = corners[1] - corners[0];
+        const vector3df eV = corners[2] - corners[0];
+        const bool flip = eU.crossProduct(eV).dotProduct(face.plane.Normal) < 0.0f;
+
+        for (int j = 0; j + 1 < side; j++)
+            for (int i = 0; i + 1 < side; i++)
+            {
+                const u16 v00 = base + static_cast<u16>(j * side + i);
+                const u16 v10 = base + static_cast<u16>(j * side + i + 1);
+                const u16 v01 = base + static_cast<u16>((j + 1) * side + i);
+                const u16 v11 = base + static_cast<u16>((j + 1) * side + i + 1);
+                if (!flip)
+                {
+                    buf->Indices.push_back(v00); buf->Indices.push_back(v10); buf->Indices.push_back(v11);
+                    buf->Indices.push_back(v00); buf->Indices.push_back(v11); buf->Indices.push_back(v01);
+                }
+                else
+                {
+                    buf->Indices.push_back(v00); buf->Indices.push_back(v11); buf->Indices.push_back(v10);
+                    buf->Indices.push_back(v00); buf->Indices.push_back(v01); buf->Indices.push_back(v11);
+                }
+            }
+        return true;
+    }
 }
 
 namespace BrushCompiler
@@ -112,8 +203,14 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
             const std::string key = face.materialName + "\n" + face.shaderName;
             Bucket& bucket = buckets[key];
 
+            // A displaced face emits side*side grid verts instead of the loop.
+            const bool dispActive = face.disp.active();
+            const size_t needed = dispActive
+                ? static_cast<size_t>(face.disp.vertCount())
+                : face.loop.size();
+
             if (bucket.buffers.empty() ||
-                bucket.buffers.back()->Vertices.size() + face.loop.size() > kMaxBufferVerts)
+                bucket.buffers.back()->Vertices.size() + needed > kMaxBufferVerts)
             {
                 bucket.buffers.push_back(newBucketBuffer(face.materialName, face.shaderName));
             }
@@ -123,7 +220,6 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
             const float su = (std::fabs(face.scaleU) > 1e-6f) ? face.scaleU : 1.0f;
             const float sv = (std::fabs(face.scaleV) > 1e-6f) ? face.scaleV : 1.0f;
 
-            const u16 base = static_cast<u16>(buf->Vertices.size());
             // Overlay meshes carry their transparency in the vertex alpha —
             // EMT_TRANSPARENT_VERTEX_ALPHA reads it, so opaque tool textures
             // still render see-through.
@@ -131,6 +227,12 @@ SMesh* buildChunkMesh(const std::vector<const Brush*>& brushes, MeshFilter filte
                 ? SColor(160, 255, 255, 255)
                 : SColor(255, 255, 255, 255);
 
+            // Displacement grid (falls back to the flat fan if the face is no
+            // longer a quad, e.g. it was re-cut after being displaced).
+            if (dispActive && emitDisplacement(buf, *brush, face, su, sv, white))
+                continue;
+
+            const u16 base = static_cast<u16>(buf->Vertices.size());
             for (u16 idx : face.loop)
             {
                 const vector3df& p = brush->verts[idx];

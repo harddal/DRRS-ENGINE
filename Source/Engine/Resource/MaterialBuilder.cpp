@@ -59,7 +59,7 @@ void MaterialBuilder::buildMaterialTable()
 			if (regex_search(filename, result, compiled.first))
 			{
 				m_materialMap.emplace(filename, compiled.second);
-				spdlog::debug("Material Builder Loaded: '{}' as material '{}'", filename, static_cast<int>(compiled.second));
+				//spdlog::debug("Material Builder Loaded: '{}' as material '{}'", filename, static_cast<int>(compiled.second));
 				break;
 			}
 		}

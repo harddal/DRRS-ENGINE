@@ -303,6 +303,7 @@ static void syncSceneDescriptorFromCallbacks()
 	auto desc = WorldManager::Get()->getCurrentSceneDescriptor();
 	desc.ambient_light     = RenderManager::Get()->sceneManager()->getAmbientLight();
 	desc.skydome_texture   = RenderManager::Get()->getCurrentSkydomeTexture();
+	desc.envmap_texture    = RenderManager::Get()->getCurrentEnvMapTexture();
 	desc.bloomThreshold    = RenderManager::Get()->bloomBrightCallback()->threshold;
 	desc.bloomStrength     = RenderManager::Get()->bloomCompositeCallback()->strength;
 	desc.tonemapExposure   = RenderManager::Get()->tonemapCallback()->exposure;

@@ -25,10 +25,13 @@ PhysicsManager::PhysicsManager() :
     m_foundation(nullptr),
     m_physics(nullptr),
     m_dispatcher(nullptr),
+    m_cuda(nullptr),
     m_scene(nullptr),
     m_cctManager(nullptr),
     m_cooking(nullptr),
     m_material(nullptr),
+    m_pvd(nullptr),
+    m_transport(nullptr),
     m_gravity(PxVec3(0, -9.81f, 0))
 {
     if (s_Instance)
@@ -172,11 +175,22 @@ PhysicsManager::~PhysicsManager()
     destroyScene();
 
 	//m_cuda->release();
-    m_dispatcher->release();
-    m_physics->release();
-	m_pvd->release();
-	m_transport->release();
-    m_foundation->release();
+
+	// Release order matters: every module created from the foundation must be
+	// released BEFORE the foundation itself, or PxFoundation::release() reports
+	// "pending module references" (error code 8). Cooking is a separate module
+	// (PxCreateCooking) and was previously leaked, which triggered that error.
+	if (m_cooking)    { m_cooking->release();    m_cooking    = nullptr; }
+	if (m_dispatcher) { m_dispatcher->release(); m_dispatcher = nullptr; }
+
+	// Releasing physics also releases everything it created (materials, meshes,
+	// shapes, etc.), so m_material must not be released separately.
+	if (m_physics)    { m_physics->release();    m_physics    = nullptr; }
+
+	// PVD must be released after physics but before the foundation/transport.
+	if (m_pvd)        { m_pvd->release();        m_pvd        = nullptr; }
+	if (m_transport)  { m_transport->release();  m_transport  = nullptr; }
+	if (m_foundation) { m_foundation->release(); m_foundation = nullptr; }
 
     s_Instance = nullptr;
 }
@@ -216,8 +230,20 @@ void PhysicsManager::createScene()
         }
 
         m_scene = m_physics->createScene(*m_sceneDesc);
+
+#if defined(_DEBUG)
+        // Stream richer data to the PhysX Visual Debugger. Only useful in Debug:
+        // Release links the release PhysX libs (PX_SUPPORT_PVD == 0), where
+        // getScenePvdClient() returns null and this whole block is a no-op.
+        if (PxPvdSceneClient* pvdClient = m_scene->getScenePvdClient())
+        {
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS, true);
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_CONTACTS, true);
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
+        }
+#endif
     }
-    if (!m_cctManager) 
+    if (!m_cctManager)
     {
        m_cctManager = PxCreateControllerManager(*m_scene);
     }

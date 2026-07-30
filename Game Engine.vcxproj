@@ -114,6 +114,7 @@
     <ClCompile Include="Source\Editor\VegetationPainter.cpp" />
     <ClCompile Include="Source\Engine\Debug\DebugState.cpp" />
     <ClCompile Include="Source\Engine\Debug\Interface\DebugInterface.cpp" />
+    <ClCompile Include="Source\Engine\Diagnostics\HeapProbe.cpp" />
     <ClCompile Include="Source\Engine\Engine.cpp" />
     <ClCompile Include="Source\Engine\Input\InputManager.cpp" />
     <ClCompile Include="Source\Engine\Interface\DebugConsole.cpp" />
@@ -279,10 +280,12 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_BioRifle.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_HeavyRifle.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Melee.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Minigun.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_None.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pistol.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Revolver.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_MiningLaser.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_BoltDriver.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.cpp" />
@@ -441,6 +444,7 @@
     <ClInclude Include="Source\Engine\Sound\GeigerEffect.h" />
     <ClInclude Include="Source\Engine\Sound\SoundEngine.h" />
     <ClInclude Include="Source\Engine\World\Components\NavAgentComponent.h" />
+    <ClInclude Include="Source\Engine\World\Components\SkyboxComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\TweenComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\ParticleComponent.h" />
     <ClInclude Include="Source\Engine\World\Systems\NavigationSystem.h" />
@@ -466,10 +470,12 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_BioRifle.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_HeavyRifle.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Melee.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Minigun.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_None.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pistol.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Revolver.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_MiningLaser.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_BoltDriver.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.h" />

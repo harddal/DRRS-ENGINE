@@ -31,10 +31,10 @@ void Weapon_Pistol::init()
 
 	m_mesh.mesh = "content/mesh/player/weapon/pistol/hud.b3d";
 
-	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
+	m_mesh.trimesh = RenderManager::Get()->loadMesh(m_mesh.mesh);
 	if (!m_mesh.trimesh)
 	{
-		spdlog::warn("In function PlayerWeapon::init() -> RenderManager::Get()->sceneManager()->getMesh() : Mesh does not exist, stand-in mesh loaded");
+		spdlog::warn("PlayerWeapon::init(): failed to load mesh \"{}\", stand-in mesh loaded", m_mesh.mesh);
 
 		m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/primitive/double_tetrahedron.obj");
 		m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);
@@ -55,8 +55,6 @@ void Weapon_Pistol::init()
 
 	m_mesh.fps = 30;
 	m_mesh.node->setAnimationSpeed(30.0f);
-	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(20, 50); // idle loop as safe default
 
 	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,   false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
@@ -64,6 +62,8 @@ void Weapon_Pistol::init()
 	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  89,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
+	playAnimation("idle"); // safe default until equip() runs
 
 	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
@@ -164,8 +164,7 @@ void Weapon_Pistol::update()
 		if (animEnded)
 		{
 			m_isEquipping = false;
-			m_mesh.node->setLoopMode(true);
-			m_mesh.node->setFrameLoop(20, 50);
+			playAnimation("idle");
 		}
 	}
 	// State: reload animation → idle
@@ -174,8 +173,7 @@ void Weapon_Pistol::update()
 		if (animEnded)
 		{
 			m_isReloading = false;
-			m_mesh.node->setLoopMode(true);
-			m_mesh.node->setFrameLoop(20, 50);
+			playAnimation("idle");
 		}
 	}
 	// State: fire animation → idle. Firing is NOT blocked while this plays —
@@ -185,8 +183,7 @@ void Weapon_Pistol::update()
 		if (animEnded)
 		{
 			m_isFireAnim = false;
-			m_mesh.node->setLoopMode(true);
-			m_mesh.node->setFrameLoop(20, 50);
+			playAnimation("idle");
 		}
 	}
 
@@ -214,8 +211,7 @@ void Weapon_Pistol::update()
 	{
 		if (!m_isReloading && !m_isEquipping)
 		{
-			m_mesh.node->setLoopMode(false);
-			m_mesh.node->setFrameLoop(96, 179);
+			playAnimation("reload");
 			m_isReloading = true;
 			m_isFireAnim = false;
 		}
@@ -236,8 +232,9 @@ void Weapon_Pistol::equip()
 	// Consume any stale animation-end flag from before the weapon was hidden
 	m_mesh.animation_call_back->hasAnimationEnded();
 
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(1, 20);
+	playEquipSound();
+
+	playAnimation("equip");
 	m_isEquipping = true;
 	m_isFireAnim = false;
 	m_isReloading = false;
@@ -262,9 +259,10 @@ void Weapon_Pistol::startUnequip()
 	m_isEquipping = false;
 	m_firedThisPress = true; // block fire input during unequip
 
+	playUnequipSound();
+
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(179, 190);
+	playAnimation("unequip");
 }
 
 void Weapon_Pistol::idle()
@@ -287,8 +285,7 @@ void Weapon_Pistol::fire()
 	}
 
 	// Trigger skeletal fire animation (restarts if already playing — keeps taps snappy)
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(81, 89);
+	playAnimation("fire");
 	m_isFireAnim = true;
 
 	// Programmatic kick layered on top — instant snap, spring recovers in updateWeaponSway()

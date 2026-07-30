@@ -17,7 +17,87 @@ layout(std140) uniform PerFrame
     mat4  uInvView;       // main camera view inverse — world-pos reconstruction
     mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
     vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active
+    vec4  uFogVolParams;  // x = active fog-volume count, y = feather distance
+    vec4  uFogVolMin[8];  // xyz = AABB min, w = density
+    vec4  uFogVolMax[8];  // xyz = AABB max, w = start distance
+    vec4  uFogVolColor[8];// rgb = color, w = reserved
 };
+
+// ---------------------------------------------------------------------------
+// Localized fog: integrate fog along the camera->fragment ray.  The scene
+// default fog (uFogColor/uFogDensity/uFogStart) applies over the ray portion
+// outside every fog volume; each CONTENT_FOG AABB overrides density+color for
+// the segment inside it, softened by a feather at the faces.  Colour is an
+// optical-depth-weighted average (ordering-free) — an approximation of true
+// front-to-back compositing that reads correctly for the target cases.
+// ---------------------------------------------------------------------------
+vec3 applyLocalFog(vec3 color, vec3 viewPos)
+{
+    vec3  camWS    = uInvView[3].xyz;
+    vec3  fragWS   = (uInvView * vec4(viewPos, 1.0)).xyz;
+    vec3  ray      = fragWS - camWS;
+    float fragDist = length(ray);
+    if (fragDist < 1e-4)
+        return color;
+    vec3 dir = ray / fragDist;
+
+    float feather = max(uFogVolParams.y, 1e-3);
+    int   count   = int(uFogVolParams.x + 0.5);
+
+    float tau      = 0.0;        // total optical depth along the ray
+    vec3  colNum   = vec3(0.0);  // sum of (segment colour * segment optical depth)
+    float inLenSum = 0.0;        // total path length inside any volume
+
+    for (int i = 0; i < 8; ++i)
+    {
+        if (i >= count)
+            break;
+
+        vec3 bmin = uFogVolMin[i].xyz;
+        vec3 bmax = uFogVolMax[i].xyz;
+
+        // Ray-AABB slab test in world space, clamped to [0, fragDist].
+        // Nudge exact-zero ray axes off zero first: 1.0/0.0 = inf, and inf on a
+        // face-aligned axis gives 0*inf = NaN, which whites out the fragment.
+        vec3 dsafe  = dir + vec3(equal(dir, vec3(0.0))) * 1e-6;
+        vec3 invD   = 1.0 / dsafe;
+        vec3 t0     = (bmin - camWS) * invD;
+        vec3 t1     = (bmax - camWS) * invD;
+        vec3 tsmall = min(t0, t1);
+        vec3 tbig   = max(t0, t1);
+        float tNear = max(max(tsmall.x, tsmall.y), tsmall.z);
+        float tFar  = min(min(tbig.x, tbig.y), tbig.z);
+        tNear = max(tNear, 0.0);
+        tNear = max(tNear, uFogVolMax[i].w);   // per-volume start distance from camera
+        tFar  = min(tFar, fragDist);
+
+        float inLen = max(tFar - tNear, 0.0);
+        if (inLen <= 0.0)
+            continue;
+
+        // Feather: ramp the segment's contribution up over the first `feather`
+        // world units so grazing/edge rays fade in instead of popping.
+        float r    = clamp(inLen / feather, 0.0, 1.0);
+        float soft = r * r * (3.0 - 2.0 * r);          // smoothstep
+        float tauI = uFogVolMin[i].w * inLen * soft;
+
+        tau      += tauI;
+        colNum   += tauI * uFogVolColor[i].rgb;
+        inLenSum += inLen;
+    }
+
+    // Scene-default fog over the ray portion not covered by any volume.
+    float outDist = max((fragDist - inLenSum) - uFogStart, 0.0);
+    float tauDef  = uFogDensity * outDist;
+    tau    += tauDef;
+    colNum += tauDef * uFogColor;
+
+    if (!(tau > 1e-5))   // also catches NaN (any comparison with NaN is false)
+        return color;
+
+    float fogFactor = clamp(1.0 - exp(-tau), 0.0, 1.0);
+    return mix(color, colNum / tau, fogFactor);
+}
 
 // Hybrid PBR Fragment Shader
 // Diffuse: Lambert accumulation (identical brightness to old Blinn-Phong)
@@ -96,6 +176,7 @@ uniform sampler2D tRoughnessMap;
 uniform float     uHasRoughnessMap;
 uniform sampler2D tMetallicMap;
 uniform float     uHasMetallicMap;
+uniform float     uHasORM;       // 1.0 when slots 5/6 share one packed ORM texture (R=AO, G=rough, B=metal)
 uniform sampler2D tEmissionMap;
 uniform float     uHasEmissionMap;
 
@@ -121,6 +202,16 @@ float G_SmithSchlick(float NdotV, float NdotL, float roughness)
 vec3 F_Schlick(float VdotH, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - VdotH, 0.0, 1.0), 5.0);
+}
+
+// Fresnel for ambient/IBL, damped by roughness. Plain F_Schlick drives every
+// surface to fully reflective at grazing angles, so a rough dielectric (skin,
+// cloth) picks up the same bright env rim as polished metal — the "everything
+// is coated in oil" look. Rough surfaces scatter that grazing energy instead.
+vec3 F_SchlickRoughness(float NdotV, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0)
+                * pow(clamp(1.0 - NdotV, 0.0, 1.0), 5.0);
 }
 
 // 3x3 PCF against one shadow atlas quadrant. clip = light clip-space coords
@@ -203,8 +294,18 @@ void main()
     float NdotV = max(dot(N, V), 0.0001);
 
     // Per-pixel roughness/metallic — fall back to material uniforms when no map is bound.
-    float roughness = (uHasRoughnessMap > 0.5) ? texture2D(tRoughnessMap, animUV).r : uRoughness;
-    float metallic  = (uHasMetallicMap  > 0.5) ? texture2D(tMetallicMap,  animUV).r : uMetallic;
+    // Channels follow the glTF ORM convention: R = occlusion, G = roughness,
+    // B = metallic. GltfImport bakes one such texture per material (scalar
+    // factors already multiplied in) and binds it to BOTH slots. Hand-authored
+    // grayscale maps are unaffected since r == g == b for those.
+    float roughness = (uHasRoughnessMap > 0.5) ? texture2D(tRoughnessMap, animUV).g : uRoughness;
+    float metallic  = (uHasMetallicMap  > 0.5) ? texture2D(tMetallicMap,  animUV).b : uMetallic;
+
+    // Ambient occlusion rides the R channel of that same packed ORM texture.
+    // uHasORM is set only when slots 5 and 6 hold the SAME texture (glTF ORM);
+    // for a hand-authored standalone grayscale roughness map R == G, and using
+    // it as occlusion would wrongly darken every rough surface.
+    float occlusion = (uHasORM > 0.5) ? texture2D(tRoughnessMap, animUV).r : 1.0;
 
     // F0: base reflectance — dielectrics use 0.04, metals tint with albedo
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
@@ -323,9 +424,11 @@ void main()
     // Baked lightmap replaces the ambient floor when present.
     // Dynamic lights still add on top, so explosions / flashlights remain visible
     // on lightmapped surfaces.
-    vec3 bakedLight = (uHasLightmap > 0.5)
+    // Occlusion attenuates ambient/baked light only — direct lighting already
+    // has shadows, and multiplying it again double-darkens creases.
+    vec3 bakedLight = ((uHasLightmap > 0.5)
         ? pow(texture2D(tLightmap, vLightmapUV).rgb, vec3(2.2)) + uAmbientColor
-        : uAmbientColor;
+        : uAmbientColor) * occlusion;
 
     // --- Environment map reflection (ambient specular) ---
     // Samples the equirectangular env map using the world-space reflection vector.
@@ -349,16 +452,25 @@ void main()
             atan(R_world.x, R_world.z) / (2.0 * PI),
             asin(clamp(-R_world.y, -1.0, 1.0)) / PI + 0.5
         );
-        vec3 envSample = texture2D(tEnvMap, envUV).rgb;
+        // Poor man's prefiltered IBL: rougher surfaces read a blurrier mip.
+        // Sampling mip 0 regardless of roughness put a sharp mirror image on
+        // every glossy surface, which is most of what read as "oily".
+        float envLod = roughness * 7.0;
+        // The env map is an ordinary sRGB image; albedo and the lightmap are
+        // both linearised before use, so this has to be too or it lands in the
+        // accumulator ~2x too bright.
+        vec3 envSample = pow(textureLod(tEnvMap, envUV, envLod).rgb, vec3(2.2));
 
-        // Fresnel at current view angle — naturally handles metallic tinting via F0
-        // (metals have F0=albedo, dielectrics have F0=0.04)
-        vec3  envF        = F_Schlick(NdotV, F0);
+        // Roughness-damped Fresnel — handles metallic tinting via F0 (metals
+        // have F0=albedo, dielectrics 0.04) without blowing out rough surfaces
+        // at grazing angles.
+        vec3  envF        = F_SchlickRoughness(NdotV, F0, roughness);
         float roughFade   = (1.0 - roughness) * (1.0 - roughness);
         // Gate env map by scene ambient — fully off at true black, fully on above ~#0D0D0D.
         // Linear scale was too aggressive (12% at #1E1E1E); smoothstep gives a clean on/off.
         float ambientLum = dot(uAmbientColor, vec3(0.2126, 0.7152, 0.0722));
-        specularAccum += envSample * envF * roughFade * smoothstep(0.0, 0.05, ambientLum);
+        specularAccum += envSample * envF * roughFade * occlusion
+                       * smoothstep(0.0, 0.05, ambientLum);
     }
 
     vec3 color = albedo * max(bakedLight, diffuseAccum) * diffuseFactor
@@ -373,8 +485,5 @@ void main()
     if (uHasEmissionMap > 0.5)
         color += pow(texture2D(tEmissionMap, animUV).rgb, vec3(2.2));
 
-    float fogDist   = length(vViewPos) - uFogStart;
-    float fogFactor = 1.0 - exp(-uFogDensity * max(fogDist, 0.0));
-    fogFactor       = clamp(fogFactor, 0.0, 1.0);
-    gl_FragColor    = vec4(mix(color, uFogColor, fogFactor), texColor.a * uAlpha);
+    gl_FragColor = vec4(applyLocalFog(color, vViewPos), texColor.a * uAlpha);
 }

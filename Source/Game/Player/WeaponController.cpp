@@ -32,22 +32,21 @@ void WeaponController::init()
 
 	m_player_weapon.emplace_back(std::make_unique<Weapon_None>(m_weapon_none));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Melee>(m_weapon_melee));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_Pistol>(m_weapon_pistol));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Revolver>(m_weapon_revolver));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Shotgun>(m_weapon_shotgun));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_MiningLaser>(m_weapon_mininglaser));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_BoltDriver>(m_weapon_boltdriver));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_Minigun>(m_weapon_minigun));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_RocketLauncher>(m_weapon_rocketlauncher));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_GrenadeLauncher>(m_weapon_grenadelauncher));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_BioRifle>(m_weapon_biorifle));
-	m_player_weapon.emplace_back(std::make_unique<Weapon_FuelRodCannon>(m_weapon_fuelrodcannon));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_HeavyRifle>(m_weapon_heavyrifle));
 }
 
 void WeaponController::update()
 {
 	if (!m_firstUpdate)
 	{
-		for (auto i = 0U; i < WEAP_COUNT; i++)
+		PlayerWeapon::precacheSharedSounds();
+
+		// Bound by what was actually registered, NOT WEAP_COUNT — the enum lists
+		// every weapon that exists but init() only pushes the uncommented ones,
+		// so .at(WEAP_COUNT-1) throws std::out_of_range. Mirrors the destroy loop.
+		for (auto i = 0U; i < m_player_weapon.size(); i++)
 		{
 			m_player_weapon.at(i)->precache();
 			m_player_weapon.at(i)->init();
@@ -109,7 +108,10 @@ void WeaponController::update()
 	// Hitmarker overlay — driven by registerHitFeedback() from any weapon's damage
 	PlayerWeapon::drawHitFeedback();
 
-	for (auto i = 0U; i < WEAP_COUNT; i++)
+	// Bound by registered weapons, NOT WEAP_COUNT: the enum lists every weapon
+	// that exists but init() only pushes the uncommented ones, so .at() past
+	// the end throws std::out_of_range (and this runs every frame).
+	for (auto i = 0U; i < m_player_weapon.size(); i++)
 	{
 		m_player_weapon.at(i)->persist();
 	}
@@ -129,7 +131,7 @@ void WeaponController::update()
 
 void WeaponController::destroy()
 {
-	for (auto i = 0U; i < WEAP_COUNT; i++)
+	for (auto i = 0U; i < m_player_weapon.size(); i++)
 	{
 		m_player_weapon.at(i)->destroy();
 	}
@@ -147,9 +149,16 @@ void WeaponController::setAmmo(AMMO_TYPE type, unsigned int amount)
 	m_player_ammo.at(type) = amount;
 }
 
+// Highest valid index into m_player_weapon. Cycling must wrap on this, not on
+// WEAP_COUNT — the enum covers weapons that were never registered.
+unsigned int WeaponController::lastWeaponSlot() const
+{
+	return m_player_weapon.empty() ? 0u : static_cast<unsigned int>(m_player_weapon.size()) - 1u;
+}
+
 void WeaponController::switchNextWeapon()
 {
-	unsigned int target = (m_current_weapon == WEAP_COUNT - 1) ? WEAP_NONE : m_current_weapon + 1;
+	unsigned int target = (m_current_weapon >= lastWeaponSlot()) ? WEAP_NONE : m_current_weapon + 1;
 	if (target == m_current_weapon) return;
 
 	m_pendingWeapon = static_cast<int>(target);
@@ -159,7 +168,7 @@ void WeaponController::switchNextWeapon()
 
 void WeaponController::switchPreviousWeapon()
 {
-	unsigned int target = (m_current_weapon == WEAP_NONE) ? WEAP_COUNT - 1 : m_current_weapon - 1;
+	unsigned int target = (m_current_weapon == WEAP_NONE) ? lastWeaponSlot() : m_current_weapon - 1;
 	if (target == m_current_weapon) return;
 
 	m_pendingWeapon = static_cast<int>(target);
@@ -169,7 +178,9 @@ void WeaponController::switchPreviousWeapon()
 
 void WeaponController::switchWeapon(PLAYER_WEAPON weapon)
 {
-	if (weapon == WEAP_COUNT || static_cast<unsigned int>(weapon) == m_current_weapon) return;
+	// Reject unregistered slots as well as WEAP_COUNT itself
+	if (static_cast<unsigned int>(weapon) >= m_player_weapon.size()
+		|| static_cast<unsigned int>(weapon) == m_current_weapon) return;
 
 	m_pendingWeapon = static_cast<int>(weapon);
 	if (!current_weapon->isUnequipping())
@@ -246,6 +257,30 @@ void WeaponController::drawViewmodelDebugUI()
 	snprintf(rotBuf, sizeof(rotBuf), "irr::core::vector3df(%.2ff, %.2ff, %.2ff)", rot.X, rot.Y, rot.Z);
 	ImGui::InputText("##pos", posBuf, sizeof(posBuf), ImGuiInputTextFlags_ReadOnly);
 	ImGui::InputText("##rot", rotBuf, sizeof(rotBuf), ImGuiInputTextFlags_ReadOnly);
+
+	// Muzzle attachment. The offset is in the muzzle JOINT's local space, i.e.
+	// model units, so the useful drag range is the size of the gun mesh (tens of
+	// units on the glTF weapons) rather than the sub-1.0 range the viewmodel
+	// position above uses. Fire while dragging to see where the flash lands.
+	if (WeaponEffects* fx = weap->debugEffects())
+	{
+		ImGui::Separator();
+		ImGui::TextDisabled("Muzzle offset (joint-local, model units)");
+
+		auto& muzzle = fx->debugMuzzleOffset();
+		float m[3] = { muzzle.X, muzzle.Y, muzzle.Z };
+
+		if (ImGui::DragFloat3("Muzzle", m, 0.25f, -200.0f, 200.0f, "%.2f"))
+		{
+			muzzle = irr::core::vector3df(m[0], m[1], m[2]);
+			fx->applyMuzzleOffset();
+		}
+
+		char muzBuf[128];
+		snprintf(muzBuf, sizeof(muzBuf), "irr::core::vector3df(%.2ff, %.2ff, %.2ff)",
+			muzzle.X, muzzle.Y, muzzle.Z);
+		ImGui::InputText("##muzzle", muzBuf, sizeof(muzBuf), ImGuiInputTextFlags_ReadOnly);
+	}
 
 	ImGui::End();
 }

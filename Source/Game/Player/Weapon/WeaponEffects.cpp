@@ -87,6 +87,10 @@ void WeaponEffects::init(irr::scene::IAnimatedMeshSceneNode* weaponNode, const W
 		auto* shellTex  = RenderManager::Get()->driver()->getTexture(m_desc.shellTexture);
 		auto perpixelMat = ShaderMaterialManager::get("phong_perpixel");
 
+		// Cached so callers can scale a casing to match geometry it stands in for
+		if (shellMesh)
+			m_shellMeshExtent = shellMesh->getBoundingBox().getExtent();
+
 		m_shells.resize(m_desc.shellPoolSize);
 		for (auto& shell : m_shells)
 		{
@@ -110,10 +114,11 @@ void WeaponEffects::createFlashNodes()
 	if (m_flashNode || !m_muzzleNode)
 		return;
 
-	// Offset only applies in fallback mode (muzzle = weapon node)
-	irr::core::vector3df offset = (m_muzzleNode == m_weaponNode)
-		? m_desc.muzzleFallbackOffset
-		: irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	// Local to whichever node the flash is parented to. Note the billboard's SIZE
+	// is world space regardless — CBillboardSceneNode builds its quad from
+	// getAbsolutePosition() and Size against the camera basis, never the parent
+	// scale — so only the position here inherits the viewmodel's scale.
+	const irr::core::vector3df offset = activeMuzzleOffset();
 
 	m_flashNode = RenderManager::Get()->sceneManager()->addBillboardSceneNode(
 		m_muzzleNode,
@@ -148,6 +153,8 @@ void WeaponEffects::createFlashNodes()
 
 void WeaponEffects::destroy()
 {
+	m_shellMeshExtent = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+
 	if (m_flashNode)
 	{
 		RenderManager::Get()->unregisterLDREffectNode(m_flashNode);
@@ -311,15 +318,84 @@ void WeaponEffects::updateTracers(float dt)
 
 // --- Shell casings ------------------------------------------------------------
 
+irr::core::vector3df& WeaponEffects::activeMuzzleOffset()
+{
+	return (m_muzzleNode && m_muzzleNode == m_weaponNode)
+		? m_desc.muzzleFallbackOffset
+		: m_desc.muzzleJointOffset;
+}
+
+irr::core::vector3df WeaponEffects::muzzleWorldPosition()
+{
+	if (!m_muzzleNode)
+		return irr::core::vector3df(0.0f, 0.0f, 0.0f);
+
+	m_muzzleNode->updateAbsolutePosition();
+
+	irr::core::vector3df world = activeMuzzleOffset();
+	m_muzzleNode->getAbsoluteTransformation().transformVect(world);
+
+	return world;
+}
+
+void WeaponEffects::applyMuzzleOffset()
+{
+	const irr::core::vector3df& offset = activeMuzzleOffset();
+
+	if (m_flashNode)
+		m_flashNode->setPosition(offset);
+	if (m_flashLight)
+		m_flashLight->setPosition(offset);
+}
+
+const irr::core::vector3df& WeaponEffects::shellMeshExtent() const
+{
+	return m_shellMeshExtent;
+}
+
+WeaponEffects::Shell* WeaponEffects::acquireShell()
+{
+	for (auto& s : m_shells)
+		if (!s.active && s.node)
+			return &s;
+
+	return nullptr; // pool exhausted
+}
+
+bool WeaponEffects::spawnShellAt(const irr::core::vector3df& position,
+                                 const irr::core::vector3df& rotation,
+                                 const irr::core::vector3df& velocity,
+                                 const irr::core::vector3df& scale)
+{
+	Shell* shell = acquireShell();
+	if (!shell)
+		return false;
+
+	shell->node->setScale(scale);
+	shell->node->setPosition(position);
+	shell->rotation = rotation;
+	shell->node->setRotation(rotation);
+	shell->velocity = velocity;
+	shell->angularVelocity = irr::core::vector3df(
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f),
+		Engine::Get()->rng()->getFloat(-300.0f, 300.0f));
+	shell->spawnTime     = static_cast<float>(Engine::Get()->getCurrentTime());
+	shell->active        = true;
+	shell->physicsActive = true;
+	shell->bounceCount   = 0;
+	shell->node->setVisible(true);
+
+	return true;
+}
+
 void WeaponEffects::ejectShell()
 {
 	if (m_shells.empty() || !m_weaponNode)
 		return;
 
 	// Find a free pool slot
-	Shell* shell = nullptr;
-	for (auto& s : m_shells)
-		if (!s.active && s.node) { shell = &s; break; }
+	Shell* shell = acquireShell();
 	if (!shell)
 		return; // pool exhausted, skip
 

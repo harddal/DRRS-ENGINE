@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 #include <spdlog/spdlog.h>
 
@@ -52,6 +53,7 @@ void BrushTool::init(SceneInteractionManager* owner)
     m_clipPoints.clear();
     m_paintStroke.clear();
     m_paintLast = FaceRef();
+    m_sculptStroke.clear();
 }
 
 void BrushTool::setMode(BrushToolMode mode)
@@ -59,6 +61,7 @@ void BrushTool::setMode(BrushToolMode mode)
     if (m_mode == mode)
         return;
     commitPaintStroke();    // a mode change must not lose the stroke's undo entry
+    commitSculptStroke();
     m_mode = mode;
     // Never leave heavy rebuilds deferred across a mode change
     if (BrushManager::Get())
@@ -69,6 +72,9 @@ void BrushTool::setMode(BrushToolMode mode)
     m_vertDragActive = false;
     m_selectedFaces.clear();
     m_clipPoints.clear();
+    m_stampPoints.clear();
+    m_stampBrushId = 0;
+    m_stampFaceIndex = -1;
 }
 
 bool BrushTool::handleEscape()
@@ -76,6 +82,13 @@ bool BrushTool::handleEscape()
     if (m_mode == BrushToolMode::CLIP && !m_clipPoints.empty())
     {
         m_clipPoints.clear();
+        return true;
+    }
+    if (m_mode == BrushToolMode::STAMP && !m_stampPoints.empty())
+    {
+        m_stampPoints.clear();
+        m_stampBrushId = 0;
+        m_stampFaceIndex = -1;
         return true;
     }
     if (m_mode != BrushToolMode::OFF)
@@ -88,8 +101,6 @@ bool BrushTool::handleEscape()
 
 void BrushTool::update(float dt)
 {
-    (void)dt;
-
     if (m_mode == BrushToolMode::OFF || !BrushManager::Get())
         return;
     if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
@@ -102,6 +113,8 @@ void BrushTool::update(float dt)
     case BrushToolMode::VERTEX: updateVertexMode(); break;
     case BrushToolMode::CLIP:   updateClipMode();   break;
     case BrushToolMode::PAINT:  updatePaintMode();  break;
+    case BrushToolMode::STAMP:  updateStampMode();  break;
+    case BrushToolMode::SCULPT: updateSculptMode(dt); break;
     default: break;
     }
 }
@@ -136,6 +149,8 @@ void BrushTool::draw()
     case BrushToolMode::VERTEX: drawVertexMode(); break;
     case BrushToolMode::CLIP:   drawClipMode();   break;
     case BrushToolMode::PAINT:  drawPaintMode();  break;
+    case BrushToolMode::STAMP:  drawStampMode();  break;
+    case BrushToolMode::SCULPT: drawSculptMode(); break;
     default: break;
     }
 }
@@ -322,10 +337,14 @@ void BrushTool::beginGizmoDrag(const std::vector<uint32_t>& selection,
 void BrushTool::applyGizmoDrag(const std::vector<uint32_t>& selection)
 {
     // Affine map from drag-start space: pivot to origin, then the accumulated
-    // gizmo matrix (row-vector convention: left operand applies first).
+    // gizmo matrix.  Irrlicht's operator* computes other*this — the RIGHT
+    // operand applies first under transformVect — so toPivot must sit on the
+    // right.  Reversed, the gizmo's own translation cancels the pivot and
+    // rotations/scales happen about the WORLD origin (brushes orbit in a
+    // giant arc instead of turning in place).
     matrix4 toPivot;
     toPivot.setTranslation(-m_dragCenter);
-    const matrix4 A = toPivot * m_dragGizmoMatrix;
+    const matrix4 A = m_dragGizmoMatrix * toPivot;
 
     for (size_t i = 0; i < selection.size() && i < m_dragStart.size(); i++)
     {
@@ -1279,4 +1298,492 @@ void BrushTool::carveWithSelected()
         entry.brushes.push_back(std::move(snap));
     }
     m_owner->pushUndoEntry(std::move(entry));
+}
+
+// ---------------------------------------------------------------------------
+// STAMP (cutout) mode — outline a shape on a brush face, Enter carves it
+// through the brush.  Points are convex-hulled, so clicking order and
+// interior clicks don't matter.
+// ---------------------------------------------------------------------------
+
+void BrushTool::updateStampMode()
+{
+    auto* input = InputManager::Get();
+
+    if (input->getMousePressOnce(0, &m_stampMouseDown))
+    {
+        uint32_t brushId;
+        int faceIndex;
+        vector3df point;
+        if (cursorBrushHit(brushId, faceIndex, point))
+        {
+            if (m_stampPoints.empty())
+            {
+                // First click locks the target brush + face; its plane hosts
+                // the whole outline
+                m_stampBrushId = brushId;
+                m_stampFaceIndex = faceIndex;
+            }
+
+            const Brush* target = BrushManager::Get()->getBrush(m_stampBrushId);
+            if (target && target->geometryValid &&
+                m_stampFaceIndex >= 0 &&
+                m_stampFaceIndex < static_cast<int>(target->faces.size()))
+            {
+                // Any surface hit is accepted; snap, then re-project so the
+                // point sits exactly on the locked face plane (world-axis
+                // snapping would drift off slanted planes otherwise)
+                const plane3df& plane = target->faces[m_stampFaceIndex].plane;
+                vector3df p = snapPoint(point);
+                p -= plane.Normal * plane.getDistanceTo(p);
+                m_stampPoints.push_back(p);
+            }
+        }
+    }
+
+    if (input->getKeyPressOnce(KEYBOARD_KEY::KEY_RETURN, &m_stampEnterDown))
+        commitStamp();
+}
+
+bool BrushTool::buildStampCarver(Brush& out)
+{
+    if (m_stampPoints.size() < 3)
+        return false;
+
+    const Brush* target = BrushManager::Get()->getBrush(m_stampBrushId);
+    if (!target || !target->geometryValid ||
+        m_stampFaceIndex < 0 ||
+        m_stampFaceIndex >= static_cast<int>(target->faces.size()))
+        return false;
+
+    const vector3df n = target->faces[m_stampFaceIndex].plane.Normal;
+
+    // Depth spans the whole brush along the face normal, with margin on both
+    // sides so the prism strictly pokes through (no coplanar-face slivers)
+    float minD =  1e30f;
+    float maxD = -1e30f;
+    for (const auto& v : target->verts)
+    {
+        const float d = v.dotProduct(n);
+        if (d < minD) minD = d;
+        if (d > maxD) maxD = d;
+    }
+    const float margin = 0.1f;
+    const float depth = (maxD - minD) + margin * 2.0f;
+
+    std::vector<vector3df> lifted = m_stampPoints;
+    for (auto& p : lifted)
+        p += n * margin;
+
+    // Cut walls inherit the stamped face's material
+    out = BrushGeometry::makeExtrudedPolygon(
+        lifted, n, depth, target->faces[m_stampFaceIndex].materialName);
+    return out.geometryValid;
+}
+
+void BrushTool::commitStamp()
+{
+    Brush carver;
+    if (!buildStampCarver(carver))
+    {
+        if (m_stampPoints.size() >= 3)
+            spdlog::warn("BrushTool: cutout outline is degenerate — not committed");
+        return;   // keep the points so the user can adjust
+    }
+
+    const uint32_t targetId = m_stampBrushId;
+    Brush* target = BrushManager::Get()->getBrush(targetId);
+    if (!target)
+        return;
+
+    std::vector<Brush> fragments = BrushGeometry::carve(*target, carver);
+
+    // Deleting the target is only legitimate when the carver really contains
+    // it — an empty result for any other reason is a carve failure and must
+    // not eat the brush.
+    if (fragments.empty())
+    {
+        bool contained = true;
+        for (const auto& v : target->verts)
+            if (!BrushGeometry::containsPoint(carver, v)) { contained = false; break; }
+        if (!contained)
+        {
+            spdlog::warn("BrushTool: cutout produced no fragments unexpectedly — brush left unchanged");
+            return;   // keep the outline so the user can adjust
+        }
+    }
+
+    // Single-target carve — same commit shape as carveWithSelected
+    UndoEntry entry;
+    {
+        BrushSnapshot snap;
+        snap.id = targetId;
+        snap.existed = true;
+        snap.data = *target;
+        entry.brushes.push_back(std::move(snap));
+    }
+
+    std::vector<uint32_t> createdIds;
+    if (fragments.empty())
+    {
+        // Outline genuinely swallowed the whole brush
+        BrushManager::Get()->removeBrush(targetId);
+    }
+    else
+    {
+        BrushManager::Get()->replaceBrush(targetId, fragments[0]);
+        for (size_t f = 1; f < fragments.size(); f++)
+        {
+            fragments[f].id = 0;
+            fragments[f].name.clear();
+            const uint32_t newId = BrushManager::Get()->addBrush(fragments[f]);
+            if (newId != 0)
+                createdIds.push_back(newId);
+        }
+    }
+
+    for (uint32_t newId : createdIds)
+    {
+        BrushSnapshot snap;
+        snap.id = newId;
+        snap.existed = false;
+        entry.brushes.push_back(std::move(snap));
+    }
+    m_owner->pushUndoEntry(std::move(entry));
+
+    m_stampPoints.clear();
+    m_stampBrushId = 0;
+    m_stampFaceIndex = -1;
+}
+
+void BrushTool::drawStampMode()
+{
+    for (const auto& p : m_stampPoints)
+        drawCross(p, 0.12f, kColClipPoint);
+
+    if (m_stampPoints.size() >= 2)
+    {
+        auto* rm = RenderManager::Get();
+        for (size_t i = 0; i < m_stampPoints.size(); i++)
+        {
+            const vector3df& a = m_stampPoints[i];
+            const vector3df& b = m_stampPoints[(i + 1) % m_stampPoints.size()];
+            rm->renderLine3DOverlay(Line3D(line3df(a, b), kColClipPoint));
+        }
+    }
+
+    // Red wireframe = the volume the commit removes
+    Brush carver;
+    if (buildStampCarver(carver))
+        drawBrushWireframe(carver, kColClipBack);
+}
+
+// ---------------------------------------------------------------------------
+// SCULPT mode — turn a quad face into a Source-style displacement and sculpt
+// it.  A press selects the face under the cursor; if that face is displaced
+// and a sub-tool is set, holding + moving pushes the grid verts around.  Heavy
+// rebuilds (PhysX cook) are deferred for the duration of a stroke; the whole
+// stroke coalesces into a single undo entry, committed on release.
+// ---------------------------------------------------------------------------
+
+bool BrushTool::faceIsDisplaced(const FaceRef& ref) const
+{
+    if (!BrushManager::Get())
+        return false;
+    const Brush* b = BrushManager::Get()->getBrush(ref.brushId);
+    if (!b || ref.faceIndex < 0 || ref.faceIndex >= static_cast<int>(b->faces.size()))
+        return false;
+    return b->faces[ref.faceIndex].disp.active();
+}
+
+bool BrushTool::makeDisplacement(const FaceRef& ref, int power)
+{
+    Brush* brush = BrushManager::Get()->getBrush(ref.brushId);
+    if (!brush || ref.faceIndex < 0 || ref.faceIndex >= static_cast<int>(brush->faces.size()))
+        return false;
+
+    // Only 4-corner faces can host a displacement grid.
+    vector3df corners[4];
+    if (!BrushGeometry::extractQuadCorners(*brush, brush->faces[ref.faceIndex], corners))
+    {
+        spdlog::warn("[brush] Make displacement needs a 4-sided face");
+        return false;
+    }
+
+    power = std::max(2, std::min(4, power));
+
+    UndoEntry entry;
+    BrushSnapshot snap;
+    snap.id = ref.brushId;
+    snap.existed = true;
+    snap.data = *brush;
+    entry.brushes.push_back(std::move(snap));
+    m_owner->pushUndoEntry(std::move(entry));
+
+    DispInfo& d = brush->faces[ref.faceIndex].disp;
+    d.power = static_cast<irr::u8>(power);
+    d.offsets.assign(static_cast<size_t>(3 * d.vertCount()), 0.0f);   // flat to start
+
+    BrushManager::Get()->markBrushDirty(ref.brushId);
+    return true;
+}
+
+bool BrushTool::removeDisplacement(const FaceRef& ref)
+{
+    Brush* brush = BrushManager::Get()->getBrush(ref.brushId);
+    if (!brush || ref.faceIndex < 0 || ref.faceIndex >= static_cast<int>(brush->faces.size()))
+        return false;
+    if (!brush->faces[ref.faceIndex].disp.active())
+        return false;
+
+    UndoEntry entry;
+    BrushSnapshot snap;
+    snap.id = ref.brushId;
+    snap.existed = true;
+    snap.data = *brush;
+    entry.brushes.push_back(std::move(snap));
+    m_owner->pushUndoEntry(std::move(entry));
+
+    brush->faces[ref.faceIndex].disp = DispInfo();     // power 0 = plain face
+    BrushManager::Get()->markBrushDirty(ref.brushId);
+    return true;
+}
+
+void BrushTool::applySculptToFace(Brush& brush, BrushFace& face,
+                                  const vector3df& center, float dt)
+{
+    if (!face.disp.active())
+        return;
+    vector3df corners[4];
+    if (!BrushGeometry::extractQuadCorners(brush, face, corners))
+        return;
+
+    const int side = face.disp.side();
+    const vector3df N = face.plane.Normal;
+    const float radius = std::max(sculptRadius, 1e-3f);
+    // strength/sec, but clamp dt so a stutter frame (e.g. the PhysX re-cook that
+    // fires when the previous stroke commits, or a per-frame chunk rebuild)
+    // can't dump one huge step — that read as "multiplying the strength" when a
+    // new stroke overlapped an already-sculpted area.
+    const float amt = sculptStrength * std::min(dt, 1.0f / 30.0f);
+
+    // SMOOTH must read neighbour offsets from a pre-modification snapshot.
+    std::vector<float> src;
+    if (sculptTool == SculptTool::SMOOTH)
+        src = face.disp.offsets;
+    auto srcOff = [&](int i, int j) -> vector3df
+    {
+        const int k = j * side + i;
+        return { src[k * 3 + 0], src[k * 3 + 1], src[k * 3 + 2] };
+    };
+
+    for (int j = 0; j < side; j++)
+        for (int i = 0; i < side; i++)
+        {
+            const int k = j * side + i;
+            const vector3df base = BrushGeometry::dispBasePos(corners, i, j, side);
+            const vector3df world = base + face.disp.get(k);
+
+            const float dist = world.getDistanceFrom(center);
+            if (dist > radius)
+                continue;
+
+            // Smoothstep falloff, tightened by sculptFalloff.
+            float t = 1.0f - dist / radius;
+            float w = t * t * (3.0f - 2.0f * t);
+            w = std::pow(w, 1.0f + sculptFalloff * 3.0f);
+
+            vector3df off = face.disp.get(k);
+            switch (sculptTool)
+            {
+            case SculptTool::RAISE:
+                off += N * (amt * w);
+                break;
+            case SculptTool::LOWER:
+                off -= N * (amt * w);
+                break;
+            case SculptTool::NOISE:
+            {
+                const float rnd = (static_cast<float>(std::rand()) / RAND_MAX) * 2.0f - 1.0f;
+                off += N * (rnd * sculptNoise * amt * w);
+                break;
+            }
+            case SculptTool::FLATTEN:
+                off -= off * std::min(1.0f, amt * w);   // ease toward the base plane
+                break;
+            case SculptTool::SMOOTH:
+            {
+                vector3df acc(0, 0, 0);
+                int cnt = 0;
+                if (i > 0)        { acc += srcOff(i - 1, j); cnt++; }
+                if (i + 1 < side) { acc += srcOff(i + 1, j); cnt++; }
+                if (j > 0)        { acc += srcOff(i, j - 1); cnt++; }
+                if (j + 1 < side) { acc += srcOff(i, j + 1); cnt++; }
+                if (cnt > 0)
+                {
+                    const vector3df avg = acc / static_cast<float>(cnt);
+                    const vector3df cur = srcOff(i, j);
+                    off = cur + (avg - cur) * std::min(1.0f, amt * w);
+                }
+                break;
+            }
+            }
+            face.disp.set(k, off);
+        }
+}
+
+void BrushTool::updateSculptMode(float dt)
+{
+    auto* input = InputManager::Get();
+
+    // A fresh press (re)selects the face under the cursor.
+    if (input->getMousePressOnce(0, &m_sculptMouseDown))
+    {
+        uint32_t brushId;
+        int faceIndex;
+        vector3df point;
+        if (cursorBrushHit(brushId, faceIndex, point))
+            m_selectedFaces = { FaceRef{ brushId, faceIndex } };
+    }
+
+    // Button up (level check, matching PAINT — a release edge can be missed
+    // when the cursor comes up over an ImGui window).
+    if (!input->isMouseButtonPressed(0, true))
+    {
+        commitSculptStroke();
+        return;
+    }
+    if (m_selectedFaces.empty())
+        return;
+
+    const FaceRef target = m_selectedFaces.front();
+    if (!faceIsDisplaced(target))
+        return;     // nothing to sculpt yet — use "Make Displacement" first
+
+    // Map the cursor onto the target face's (flat base) plane.  v1 uses the
+    // base-plane hit, not the bulged surface — adequate for sculpting.
+    uint32_t hitId;
+    int hitFace;
+    vector3df point;
+    if (!cursorBrushHit(hitId, hitFace, point))
+        return;
+    if (hitId != target.brushId || hitFace != target.faceIndex)
+        return;     // cursor left the target face
+
+    Brush* brush = BrushManager::Get()->getBrush(target.brushId);
+    if (!brush || target.faceIndex >= static_cast<int>(brush->faces.size()))
+        return;
+
+    // Start the stroke: snapshot once and enter live-edit — the brush moves to
+    // a standalone preview node so only it (not the whole chunk) rebuilds each
+    // frame while dragging.
+    if (m_sculptStroke.empty())
+    {
+        m_sculptStroke.push_back(*brush);
+        BrushManager::Get()->beginBrushEdit(target.brushId);
+    }
+
+    applySculptToFace(*brush, brush->faces[target.faceIndex], point, dt);
+    BrushManager::Get()->updateBrushEditPreview(target.brushId);
+}
+
+void BrushTool::commitSculptStroke()
+{
+    if (m_sculptStroke.empty())
+    {
+        if (BrushManager::Get())
+            BrushManager::Get()->endBrushEdit();   // no-op when not editing
+        return;
+    }
+
+    UndoEntry entry;
+    for (auto& pre : m_sculptStroke)
+    {
+        BrushSnapshot snap;
+        snap.id = pre.id;
+        snap.existed = true;
+        snap.data = std::move(pre);
+        entry.brushes.push_back(std::move(snap));
+    }
+    m_sculptStroke.clear();
+    m_owner->pushUndoEntry(std::move(entry));
+
+    // End live-edit: drops the preview node, folds the brush back into its
+    // chunk, and runs the deferred cook/selector once.
+    BrushManager::Get()->endBrushEdit();
+}
+
+void BrushTool::drawSculptMode()
+{
+    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+        return;
+
+    auto* rm = RenderManager::Get();
+
+    // Highlight the selected face + draw its displacement grid.
+    if (!m_selectedFaces.empty())
+    {
+        const FaceRef ref = m_selectedFaces.front();
+        const Brush* brush = BrushManager::Get()->getBrush(ref.brushId);
+        if (brush && ref.faceIndex >= 0 && ref.faceIndex < static_cast<int>(brush->faces.size()))
+        {
+            const BrushFace& face = brush->faces[ref.faceIndex];
+
+            // Face outline.
+            for (size_t v = 0; v < face.loop.size(); v++)
+            {
+                const vector3df& a = brush->verts[face.loop[v]];
+                const vector3df& b = brush->verts[face.loop[(v + 1) % face.loop.size()]];
+                rm->renderLine3DOverlay(Line3D(line3df(a, b), kColFace));
+            }
+
+            // Displacement grid (row + column lines through the displaced verts).
+            vector3df corners[4];
+            if (face.disp.active() && BrushGeometry::extractQuadCorners(*brush, face, corners))
+            {
+                const int side = face.disp.side();
+                auto gp = [&](int i, int j)
+                {
+                    return BrushGeometry::dispBasePos(corners, i, j, side)
+                         + face.disp.get(j * side + i);
+                };
+                for (int j = 0; j < side; j++)
+                    for (int i = 0; i < side; i++)
+                    {
+                        if (i + 1 < side)
+                            rm->renderLine3DOverlay(Line3D(line3df(gp(i, j), gp(i + 1, j)), kColHandle));
+                        if (j + 1 < side)
+                            rm->renderLine3DOverlay(Line3D(line3df(gp(i, j), gp(i, j + 1)), kColHandle));
+                    }
+            }
+        }
+    }
+
+    // Brush cursor: a ring of `sculptRadius` on the face under the cursor.
+    uint32_t brushId;
+    int faceIndex;
+    vector3df point;
+    if (cursorBrushHit(brushId, faceIndex, point))
+    {
+        const Brush* brush = BrushManager::Get()->getBrush(brushId);
+        if (brush && faceIndex >= 0 && faceIndex < static_cast<int>(brush->faces.size()))
+        {
+            const vector3df N = brush->faces[faceIndex].plane.Normal;
+            vector3df t, b;
+            vector3df up = (std::fabs(N.Y) < 0.9f) ? vector3df(0, 1, 0) : vector3df(1, 0, 0);
+            t = N.crossProduct(up); t.normalize();
+            b = N.crossProduct(t);
+
+            const int segs = 32;
+            vector3df prev;
+            for (int s = 0; s <= segs; s++)
+            {
+                const float ang = (static_cast<float>(s) / segs) * 2.0f * 3.14159265f;
+                const vector3df p = point + (t * std::cos(ang) + b * std::sin(ang)) * sculptRadius;
+                if (s > 0)
+                    rm->renderLine3DOverlayOnTop(Line3D(line3df(prev, p), kColPrimary));
+                prev = p;
+            }
+        }
+    }
 }

@@ -29,12 +29,14 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 
 #include <IFileSystem.h>
+#include <IImage.h>
 #include <IMeshCache.h>
 #include <IReadFile.h>
 #include <ISceneManager.h>
@@ -150,6 +152,7 @@ public:
     scene::ISkinnedMesh* build(std::string& outError)
     {
         const std::string pathStr(m_filePath.c_str());
+        spdlog::info("[gltfstage] begin '{}'", pathStr);
 
         auto data = fastgltf::GltfDataBuffer::FromPath(std::filesystem::path(pathStr));
         if (data.error() != fastgltf::Error::None)
@@ -181,6 +184,10 @@ public:
             return nullptr;
         }
 
+        spdlog::info("[gltfstage] fastgltf parse OK (nodes={} meshes={} accessors={} animations={})",
+            asset.get().nodes.size(), asset.get().meshes.size(),
+            asset.get().accessors.size(), asset.get().animations.size());
+
         m_asset = std::move(asset.get());
 
         if (m_asset.nodes.empty())
@@ -192,6 +199,8 @@ public:
         m_irrMesh = m_sceneManager->createSkinnedMesh();
 
         createMaterials();
+        spdlog::info("[gltfstage] materials done ({} materials, {} images)",
+            m_asset.materials.size(), m_asset.images.size());
 
         // Joints for every node of the displayed scene (parents first)
         m_nodeJoints.assign(m_asset.nodes.size(), nullptr);
@@ -215,11 +224,16 @@ public:
                     createNodeJoint(i, nullptr);
         }
 
+        spdlog::info("[gltfstage] joints done ({} nodes)", m_asset.nodes.size());
+        markAnimatedNodes();
         createMeshBuffers();
+        spdlog::info("[gltfstage] meshBuffers done");
         createAnimations();
+        spdlog::info("[gltfstage] animations done");
 
         m_irrMesh->setDirty();
         m_irrMesh->finalize();
+        spdlog::info("[gltfstage] finalize done");
 
         // After finalize(), like the Assimp path's applyBoneOffsets():
         // finalize() computes GlobalInversedMatrix from the node hierarchy;
@@ -261,6 +275,63 @@ private:
 
         for (size_t childIndex : node.children)
             createNodeJoint(childIndex, joint);
+    }
+
+    // Flag every node an animation can move, so createMeshBuffers() knows
+    // which node transforms are safe to bake into vertices. A node also moves
+    // when an ancestor is a channel target, so the flag propagates downward.
+    void markAnimatedNodes()
+    {
+        m_nodeAnimated.assign(m_asset.nodes.size(), false);
+        for (const fastgltf::Animation& anim : m_asset.animations)
+            for (const fastgltf::AnimationChannel& channel : anim.channels)
+                if (channel.nodeIndex.has_value() &&
+                    channel.nodeIndex.value() < m_nodeAnimated.size())
+                    m_nodeAnimated[channel.nodeIndex.value()] = true;
+
+        // Descend from the parentless nodes so a parent is always resolved
+        // before its children (node order in the file is not guaranteed).
+        std::vector<bool> isChild(m_asset.nodes.size(), false);
+        for (const fastgltf::Node& node : m_asset.nodes)
+            for (size_t c : node.children)
+                if (c < isChild.size())
+                    isChild[c] = true;
+
+        std::vector<bool> visited(m_asset.nodes.size(), false);
+        for (size_t i = 0; i < m_asset.nodes.size(); ++i)
+            if (!isChild[i])
+                propagateAnimated(i, false, visited);
+    }
+
+    void propagateAnimated(size_t nodeIndex, bool parentAnimated, std::vector<bool>& visited)
+    {
+        if (nodeIndex >= m_asset.nodes.size() || visited[nodeIndex])
+            return;
+        visited[nodeIndex] = true;
+
+        const bool animated = parentAnimated || m_nodeAnimated[nodeIndex];
+        m_nodeAnimated[nodeIndex] = animated;
+
+        for (size_t childIndex : m_asset.nodes[nodeIndex].children)
+            propagateAnimated(childIndex, animated, visited);
+    }
+
+    // Whether a node's world transform belongs in its vertices rather than on
+    // SSkinMeshBuffer::Transformation. See bakeNodeTransform() for the why.
+    bool shouldBakeNodeTransform(size_t nodeIndex) const
+    {
+        const fastgltf::Node& node = m_asset.nodes[nodeIndex];
+
+        // Skinned primitives ignore the node transform by spec — the weights
+        // and inverse bind matrices place those vertices.
+        if (node.skinIndex.has_value() && node.skinIndex.value() < m_asset.skins.size())
+            return false;
+
+        // Rigid animation needs a live Transformation to write into.
+        if (nodeIndex < m_nodeAnimated.size() && m_nodeAnimated[nodeIndex])
+            return false;
+
+        return true;
     }
 
     StaticTRS computeStaticTRS(const fastgltf::Node& node, const core::matrix4& localIrr)
@@ -325,13 +396,18 @@ private:
         return nullptr;
     }
 
-    video::ITexture* createEmbeddedTexture(const void* bytes, size_t size, size_t imageIndex)
+    video::ITexture* createEmbeddedTexture(const void* bytes, size_t size, size_t imageIndex,
+                                           bool noMip)
     {
         video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
 
         core::stringc texName(m_filePath);
         texName += "_embedded_";
         texName += (int)imageIndex;
+        // Same image can legitimately be referenced as both a colour map and a
+        // normal map; the mip setting differs, so they need separate cache keys.
+        if (noMip)
+            texName += "_nomip";
 
         video::ITexture* texture = driver->findTexture(texName.c_str());
         if (texture)
@@ -347,7 +423,21 @@ private:
         return texture;
     }
 
-    video::ITexture* resolveTexture(size_t textureIndex)
+    // noMip: normal maps are uploaded without mipmaps, matching RenderSystem's
+    // loadPBR(). phong_perpixel reconstructs the tangent frame from dFdx/dFdy,
+    // and at low mip levels those gradients go ill-conditioned -> wrong normals.
+    video::ITexture* resolveTexture(size_t textureIndex, bool noMip = false)
+    {
+        video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
+        if (noMip)
+            driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, false);
+        video::ITexture* texture = resolveTextureImpl(textureIndex, noMip);
+        if (noMip)
+            driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, true);
+        return texture;
+    }
+
+    video::ITexture* resolveTextureImpl(size_t textureIndex, bool noMip)
     {
         if (textureIndex >= m_asset.textures.size())
             return nullptr;
@@ -379,11 +469,11 @@ private:
         }
         if (const auto* arr = std::get_if<fastgltf::sources::Array>(&image.data))
         {
-            return createEmbeddedTexture(arr->bytes.data(), arr->bytes.size(), imageIndex);
+            return createEmbeddedTexture(arr->bytes.data(), arr->bytes.size(), imageIndex, noMip);
         }
         if (const auto* vec = std::get_if<fastgltf::sources::Vector>(&image.data))
         {
-            return createEmbeddedTexture(vec->bytes.data(), vec->bytes.size(), imageIndex);
+            return createEmbeddedTexture(vec->bytes.data(), vec->bytes.size(), imageIndex, noMip);
         }
         if (const auto* bufView = std::get_if<fastgltf::sources::BufferView>(&image.data))
         {
@@ -395,9 +485,192 @@ private:
             const std::byte* bytes = getBufferBytes(view.bufferIndex, bufSize);
             if (!bytes || view.byteOffset + view.byteLength > bufSize)
                 return nullptr;
-            return createEmbeddedTexture(bytes + view.byteOffset, view.byteLength, imageIndex);
+            return createEmbeddedTexture(bytes + view.byteOffset, view.byteLength, imageIndex, noMip);
         }
         return nullptr;
+    }
+
+    // glTF texture index -> image index, or SIZE_MAX when unresolvable.
+    size_t imageIndexOf(size_t textureIndex) const
+    {
+        if (textureIndex >= m_asset.textures.size())
+            return (size_t)-1;
+        const fastgltf::Texture& tex = m_asset.textures[textureIndex];
+        return tex.imageIndex.has_value() ? tex.imageIndex.value() : (size_t)-1;
+    }
+
+    // Decoded pixels for a glTF texture. Caller drops the image. Mirrors the
+    // source dispatch in resolveTextureImpl(), but yields an IImage we can edit
+    // rather than a finished GPU texture.
+    video::IImage* loadTextureImage(size_t textureIndex)
+    {
+        const size_t imageIndex = imageIndexOf(textureIndex);
+        if (imageIndex == (size_t)-1 || imageIndex >= m_asset.images.size())
+            return nullptr;
+        const fastgltf::Image& image = m_asset.images[imageIndex];
+
+        video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
+        const core::stringc fileDir = m_fileSystem->getFileDir(m_filePath);
+
+        const auto fromMemory = [&](const void* bytes, size_t size) -> video::IImage*
+        {
+            io::IReadFile* memFile = m_fileSystem->createMemoryReadFile(
+                const_cast<void*>(bytes), (s32)size, "gltf_orm_src", false);
+            if (!memFile)
+                return nullptr;
+            video::IImage* img = driver->createImageFromFile(memFile);
+            memFile->drop();
+            return img;
+        };
+
+        if (const auto* uri = std::get_if<fastgltf::sources::URI>(&image.data))
+        {
+            const core::stringc path(std::string(uri->uri.path()).c_str());
+            if (m_fileSystem->existFile(path))
+                return driver->createImageFromFile(path);
+            if (m_fileSystem->existFile(fileDir + "/" + path))
+                return driver->createImageFromFile(fileDir + "/" + path);
+            const core::stringc basename = m_fileSystem->getFileBasename(path);
+            if (m_fileSystem->existFile(fileDir + "/" + basename))
+                return driver->createImageFromFile(fileDir + "/" + basename);
+            return nullptr;
+        }
+        if (const auto* arr = std::get_if<fastgltf::sources::Array>(&image.data))
+            return fromMemory(arr->bytes.data(), arr->bytes.size());
+        if (const auto* vec = std::get_if<fastgltf::sources::Vector>(&image.data))
+            return fromMemory(vec->bytes.data(), vec->bytes.size());
+        if (const auto* bufView = std::get_if<fastgltf::sources::BufferView>(&image.data))
+        {
+            if (bufView->bufferViewIndex >= m_asset.bufferViews.size())
+                return nullptr;
+            const fastgltf::BufferView& view = m_asset.bufferViews[bufView->bufferViewIndex];
+            size_t bufSize = 0;
+            const std::byte* bytes = getBufferBytes(view.bufferIndex, bufSize);
+            if (!bytes || view.byteOffset + view.byteLength > bufSize)
+                return nullptr;
+            return fromMemory(bytes + view.byteOffset, view.byteLength);
+        }
+        return nullptr;
+    }
+
+    // Builds the packed ORM texture the shader expects: R = occlusion,
+    // G = roughness, B = metallic, with the glTF scalar factors already
+    // multiplied in.
+    //
+    // glTF defines the final values as factor * texel, but the engine's
+    // uRoughness/uMetallic uniforms are FALLBACKS (used only when no map is
+    // bound), not multipliers — and RenderSystem force-resets the SMaterial
+    // fields they derive from. Folding the factors into the texels sidesteps
+    // both problems and keeps the material self-contained.
+    //
+    // Materials with no metallicRoughness texture collapse to a 1x1 constant,
+    // so every glTF material takes the same path and none of them depend on
+    // uniforms RenderSystem is going to overwrite.
+    video::ITexture* buildOrmTexture(const fastgltf::Material& mat)
+    {
+        video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
+
+        const float rf = core::clamp((float)mat.pbrData.roughnessFactor, 0.f, 1.f);
+        float       mf = core::clamp((float)mat.pbrData.metallicFactor,  0.f, 1.f);
+
+        const bool hasMR = mat.pbrData.metallicRoughnessTexture.has_value();
+
+        // glTF's default metallicFactor is 1.0, so a material that never mentions
+        // metalness at all parses as fully metallic. Exporters lean on this
+        // constantly — across this project's assets it hits 26 materials, all of
+        // them trees, rocks, crates and characters. Rendered faithfully they turn
+        // solid black: metallic 1.0 zeroes the diffuse term, and roughness 1.0
+        // falls outside the specular/env gate, so nothing at all is left.
+        //
+        // fastgltf resolves defaults during parsing, so "absent" and "explicitly
+        // 1.0" are indistinguishable here. With no metallicRoughness texture to
+        // modulate it, a bare 1.0 is treated as unspecified. Any other value
+        // (including a deliberate 0.0) passes through untouched — authoring real
+        // untextured metal means giving it an MR texture or nudging the factor
+        // just off 1.0.
+        if (!hasMR && mf >= 1.0f)
+        {
+            spdlog::info("GltfImport: material '{}' in '{}' has no metallicRoughness "
+                         "texture and metallicFactor=1.0 (the glTF default) — treating "
+                         "as non-metallic",
+                         std::string(mat.name.c_str()), m_filePath.c_str());
+            mf = 0.f;
+        }
+        const size_t mrTexIndex = hasMR ? mat.pbrData.metallicRoughnessTexture.value().textureIndex : 0;
+
+        // Occlusion is only usable when it is literally the same image as the
+        // metallicRoughness map (the standard ORM packing). A separate AO image
+        // would leave R holding unrelated data, so it gets forced to white.
+        const bool aoPacked = hasMR && mat.occlusionTexture.has_value() &&
+            imageIndexOf(mat.occlusionTexture.value().textureIndex) == imageIndexOf(mrTexIndex);
+
+        core::stringc name(m_filePath);
+        name += "_orm_";
+        name += hasMR ? (int)mrTexIndex : -1;
+        name += "_";
+        name += (int)(rf * 1000.f);   // factors are part of the identity: one image
+        name += "_";                  // can be shared by materials with different ones
+        name += (int)(mf * 1000.f);
+        name += aoPacked ? "_ao" : "_noao";
+
+        if (video::ITexture* cached = driver->findTexture(name.c_str()))
+            return cached;
+
+        video::IImage* src = hasMR ? loadTextureImage(mrTexIndex) : nullptr;
+
+        video::IImage* img = nullptr;
+        if (src)
+        {
+            // Normalise to A8R8G8B8 so the channel maths below is one format.
+            if (src->getColorFormat() == video::ECF_A8R8G8B8)
+            {
+                img = src;
+                src = nullptr;
+            }
+            else
+            {
+                img = driver->createImage(video::ECF_A8R8G8B8, src->getDimension());
+                if (img)
+                    src->copyTo(img);
+                src->drop();
+                src = nullptr;
+            }
+        }
+
+        if (!img)
+        {
+            // Constant material — a 1x1 texel carries the factors.
+            img = driver->createImage(video::ECF_A8R8G8B8, core::dimension2d<u32>(1, 1));
+            if (!img)
+                return nullptr;
+            img->setPixel(0, 0, video::SColor(255, 255,
+                                              (u32)(rf * 255.f),
+                                              (u32)(mf * 255.f)));
+        }
+        else
+        {
+            u32* pixels = static_cast<u32*>(img->lock());
+            if (pixels)
+            {
+                const u32 count = img->getDimension().Width * img->getDimension().Height;
+                for (u32 i = 0; i < count; ++i)
+                {
+                    const u32 p = pixels[i];
+                    u32 r = (p >> 16) & 0xFF;
+                    u32 g = (p >>  8) & 0xFF;
+                    u32 b =  p        & 0xFF;
+                    if (!aoPacked) r = 255;
+                    g = (u32)(g * rf);
+                    b = (u32)(b * mf);
+                    pixels[i] = (p & 0xFF000000u) | (r << 16) | (g << 8) | b;
+                }
+            }
+            img->unlock();
+        }
+
+        video::ITexture* texture = driver->addTexture(name.c_str(), img);
+        img->drop();
+        return texture;
     }
 
     // -----------------------------------------------------------------------
@@ -411,6 +684,20 @@ private:
         };
         return video::SColor(clamp255(a), clamp255(r), clamp255(g), clamp255(b));
     }
+
+    // Mirrors PBR_TEXTURE_SLOTS in RenderManager.h. Duplicated rather than
+    // included because this translation unit is the C++17 fastgltf island and
+    // must not pull the (C++14, ImGui-laden) renderer headers in with it.
+    // KEEP IN SYNC with RenderManager.h.
+    enum : u32
+    {
+        SLOT_DIFFUSE_   = 0,
+        SLOT_LIGHT_     = 1, // reserved for baked lightmaps — never write it here
+        SLOT_NORMAL_    = 4,
+        SLOT_ROUGHNESS_ = 5,
+        SLOT_METALLIC_  = 6,
+        SLOT_EMISSION_  = 7,
+    };
 
     void createMaterials()
     {
@@ -427,11 +714,31 @@ private:
             irrMaterial.EmissiveColor = toIrrColor(emissive.x(), emissive.y(), emissive.z(), 1.f);
 
             if (mat.pbrData.baseColorTexture.has_value())
-                irrMaterial.TextureLayer[0].Texture =
+                irrMaterial.TextureLayer[SLOT_DIFFUSE_].Texture =
                     resolveTexture(mat.pbrData.baseColorTexture.value().textureIndex);
 
             // Slot 1 stays free — it is reserved for baked lightmaps
             // (phong_perpixel treats any non-null slot 1 as a lightmap).
+
+            if (mat.normalTexture.has_value())
+                irrMaterial.TextureLayer[SLOT_NORMAL_].Texture =
+                    resolveTexture(mat.normalTexture.value().textureIndex, /*noMip*/ true);
+
+            // One packed ORM texture (R=occlusion, G=roughness, B=metallic) with
+            // the scalar factors folded in, bound to both slots. The shader
+            // swizzles its own channel out of each, and identical pointers in
+            // slots 5/6 is what tells RenderManager to raise uHasORM.
+            // Every material gets one, including constant-factor materials —
+            // see buildOrmTexture().
+            if (video::ITexture* orm = buildOrmTexture(mat))
+            {
+                irrMaterial.TextureLayer[SLOT_ROUGHNESS_].Texture = orm;
+                irrMaterial.TextureLayer[SLOT_METALLIC_].Texture  = orm;
+            }
+
+            if (mat.emissiveTexture.has_value())
+                irrMaterial.TextureLayer[SLOT_EMISSION_].Texture =
+                    resolveTexture(mat.emissiveTexture.value().textureIndex);
 
             m_materials.push_back(irrMaterial);
         }
@@ -469,9 +776,14 @@ private:
 
                 if (skinned)
                     addPrimitiveWeights(prim, node.skinIndex.value(), bufferIds, localToGlobal);
-                else
+                else if (!shouldBakeNodeTransform(nodeIndex))
+                {
+                    // Rigid animation: the joint drives Transformation instead.
                     for (u32 bufferId : bufferIds)
                         joint->AttachedMeshes.push_back(bufferId);
+                }
+                // Baked buffers stay unattached — attaching them would apply
+                // the node transform a second time on top of the vertices.
             }
         }
     }
@@ -676,6 +988,62 @@ private:
         return true;
     }
 
+    // Fold a static node's world transform into its vertices.
+    //
+    // Irrlicht carries the transform of a non-skinned glTF node on
+    // SSkinMeshBuffer::Transformation, which CAnimatedMeshSceneNode::render()
+    // multiplies onto the world matrix. Only the renderer does that: PhysX
+    // cooking, the SSAO geometry pre-pass, navmesh generation and lightmap
+    // unwrap all read the vertex buffers straight, so an authored node offset
+    // put collision and AO somewhere the mesh visibly is not. Baking makes the
+    // stored positions the one source of truth and leaves Transformation
+    // identity, so both paths agree.
+    //
+    // Called before buildChunkBuffer so buffer bounding boxes come out baked
+    // too. Only for nodes that shouldBakeNodeTransform() cleared.
+    void bakeNodeTransform(size_t nodeIndex, PrimitiveData& data)
+    {
+        const scene::ISkinnedMesh::SJoint* joint = m_nodeJoints[nodeIndex];
+        if (!joint)
+            return;
+
+        // Same composition finalize()'s calculateGlobalMatrices() will redo, so
+        // this is exactly the matrix the renderer would have applied.
+        const core::matrix4& world = joint->GlobalMatrix;
+        if (world.isIdentity())
+            return;
+
+        for (core::vector3df& p : data.positions)
+            world.transformVect(p);
+
+        // Directions take the inverse transpose: under non-uniform scale the
+        // rotation part alone would tilt normals off the surface.
+        core::matrix4 normalMatrix;
+        if (world.getInverse(normalMatrix))
+        {
+            normalMatrix = normalMatrix.getTransposed();
+            for (std::vector<core::vector3df>* set : { &data.normals, &data.tangents, &data.binormals })
+                for (core::vector3df& n : *set)
+                {
+                    normalMatrix.rotateVect(n);
+                    n.normalize();
+                }
+        }
+
+        // A mirrored transform (negative 3x3 determinant) reverses triangle
+        // winding, which would invert backface culling and PhysX face normals.
+        const f32* m = world.pointer();
+        const core::vector3df ax(m[0], m[1], m[2]);
+        const core::vector3df ay(m[4], m[5], m[6]);
+        const core::vector3df az(m[8], m[9], m[10]);
+        if (ax.crossProduct(ay).dotProduct(az) < 0.f)
+            for (size_t t = 0; t + 2 < data.indices.size(); t += 3)
+                std::swap(data.indices[t + 1], data.indices[t + 2]);
+
+        spdlog::debug("GltfImport: '{}' baked node {} transform into {} vertices",
+            m_filePath.c_str(), nodeIndex, data.positions.size());
+    }
+
     // Build one SSkinMeshBuffer from primitive data. localToGlobal maps
     // buffer-local vertex indices to primitive vertex indices; empty means
     // identity (the buffer holds every primitive vertex in order).
@@ -754,6 +1122,9 @@ private:
             return;
         if (data.indices.empty())
             return;
+
+        if (shouldBakeNodeTransform(nodeIndex))
+            bakeNodeTransform(nodeIndex, data);
 
         const size_t kMaxVertices = 65535;
         const size_t vertexCount = data.positions.size();
@@ -1104,6 +1475,7 @@ private:
 
     std::vector<scene::ISkinnedMesh::SJoint*> m_nodeJoints; // node index -> joint
     std::vector<StaticTRS> m_nodeStaticTRS;                 // node index -> static pose
+    std::vector<bool> m_nodeAnimated;                       // node index -> moves at runtime
     core::array<video::SMaterial> m_materials;
     std::vector<AnimRange> m_animRanges;
 };

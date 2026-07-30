@@ -621,12 +621,34 @@ public:
 	IrrAssimp*                           assimp()       const { return m_assimpLoader; }
 	GltfImport*                          gltf()         const { return m_gltfLoader; }
 
+	// Which backend handles glTF (.glb/.gltf).  Ignored for other formats.
+	enum class GltfBackend
+	{
+		Fast,   // fastgltf, falling back to Assimp if it rejects the file
+		Assimp  // skip fastgltf entirely — diagnostic escape hatch only.  The
+		        // bad_alloc that once forced this on the weapons was a v141
+		        // miscompile of fastgltf's clz(), fixed 2026-07-28; nothing
+		        // needs it now.  Both backends emit 30 fps frames, so clip
+		        // ranges are identical either way.
+	};
+
+	// Load a mesh by path, routing on file extension to the right backend:
+	// fbx -> Assimp, glb/gltf -> per gltfBackend, everything else -> Irrlicht's
+	// own loaders.  ALWAYS use this instead of calling sceneManager()->getMesh()
+	// directly — the scene manager has no glTF or FBX loader registered, so a
+	// direct call silently returns nullptr for those formats.  Results are
+	// cached by the backends (keyed on path, shared across backends), same as
+	// getMesh() — so whichever backend loads a given path first wins.
+	irr::scene::IAnimatedMesh* loadMesh(const std::string& path,
+	                                    GltfBackend gltfBackend = GltfBackend::Fast) const;
+
     void setAmbientLight(irr::video::SColor color = irr::video::SColor(255, 255, 255, 255)) const { m_sceneManager->setAmbientLight(color); }
 
     void initDefaultSkyDome(std::string texture = "content/texture/color/black.png");
     void removeDefaultSkyDome();
     void swapSkyDomeTexture(std::string texture = "content/texture/color/black.png");
     std::string getCurrentSkydomeTexture() const { return m_currentSkydomeTexture; }
+    std::string getCurrentEnvMapTexture() const { return m_currentEnvMapTexture; }
 
     // Set an equirectangular (lat-long) texture as the ambient specular environment map.
     // All phong_perpixel and barrel_heat surfaces will reflect it based on their metallic/roughness.
@@ -729,6 +751,14 @@ public:
     void renderLine3DOverlay(const Line3D& line)
     {
         m_overlayLineList.emplace_back(line);
+    }
+
+    // Same as renderLine3DOverlay but drawn with the depth test disabled, so
+    // the line is always visible on top of scene geometry (editor gizmo cues
+    // like the sculpt cursor that must not hide behind bulged surfaces).
+    void renderLine3DOverlayOnTop(const Line3D& line)
+    {
+        m_overlayLineListOnTop.emplace_back(line);
     }
 
     void renderText2D(
@@ -972,6 +1002,12 @@ private:
     irr::video::SColor m_backgroundColor;
 
     std::string m_currentSkydomeTexture;
+    std::string m_currentEnvMapTexture;
+
+    // Width the env map is downsampled to on load (height is half — equirect is
+    // 2:1). phong_perpixel blurs it by roughness anyway, so detail beyond this
+    // buys nothing but VRAM and specular crawl.
+    static const irr::u32 ENV_MAP_WIDTH = 512;
     irr::scene::ISceneNode* m_defaultSkyDome;
 
     // Double-buffered 2D renderable lists to avoid race conditions with decoupled rendering
@@ -983,6 +1019,7 @@ private:
 
     // Single-buffer overlay lines — written during updateUI(), consumed and cleared each draw()
     std::vector<Line3D> m_overlayLineList;
+    std::vector<Line3D> m_overlayLineListOnTop;   // drawn with depth test off
 
 	irr::video::ITexture* m_effectRenderTarget;
 

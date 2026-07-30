@@ -1,4 +1,4 @@
-﻿#include "Weapon_BoltDriver.h"
+﻿#include "Weapon_HeavyRifle.h"
 
 #include "Engine/Engine.h"
 #include "Engine/Renderer/DecalManager.h"
@@ -11,22 +11,22 @@
 using namespace SPK;
 using namespace SPK::IRR;
 
-void Weapon_BoltDriver::precache()
+void Weapon_HeavyRifle::precache()
 {
 	ParticleManager::Get()->precache("spark", _asset_psys("spark"));
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/rifle/fire.wav", true);
 }
 
-void Weapon_BoltDriver::init()
+void Weapon_HeavyRifle::init()
 {
-	m_descriptor.name = "Player_Weapon_BoltDriver";
+	m_descriptor.name = "Player_Weapon_HeavyRifle";
 	m_descriptor.id = _entity_null_value;
 
-	m_viewPositionOffset = irr::core::vector3df(0.2650f, -0.0100f, 0.4150f);
-	m_viewRotationOffset = irr::core::vector3df(0.00f, 0.00f, -5.50f);
-	m_viewScaleOffset = irr::core::vector3df(1.0f, 1.0f, 1.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.1100f, -0.1450f, 0.2200f);
+	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
+	m_viewScaleOffset = irr::core::vector3df(0.01f, 0.01f, 0.01f);
 
-	m_mesh.mesh = "content/mesh/player/weapon/bolt_driver/hud.b3d";
+	m_mesh.mesh = _asset_glb("player/weapon/heavyrifle_animated");
 
 	m_mesh.trimesh = RenderManager::Get()->loadMesh(m_mesh.mesh);
 	if (!m_mesh.trimesh)
@@ -53,12 +53,13 @@ void Weapon_BoltDriver::init()
 	m_mesh.fps = 30;
 	m_mesh.node->setAnimationSpeed(30.0f);
 
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   163,   208,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",    209,  209,  true));
 	m_mesh.animationList.emplace_back(sAnimationData("move",    50,  79,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  89,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
-	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+	m_mesh.animationList.emplace_back(sAnimationData("fire",    0,  9,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload",  94,  152, false));
+	m_mesh.animationList.emplace_back(sAnimationData("reload_empty", 10, 93, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 153, 163, false));
 
 	playAnimation("idle"); // safe default until equip() runs
 
@@ -106,7 +107,7 @@ void Weapon_BoltDriver::init()
 
 	m_muzzleNode = m_mesh.node->getJointNode("FIRESPOT");
 	if (!m_muzzleNode)
-		spdlog::warn("Weapon_BoltDriver: 'FIRESPOT' joint not found");
+		spdlog::warn("Weapon_HeavyRifle: 'FIRESPOT' joint not found");
 
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair038.png");
 
@@ -124,7 +125,7 @@ void Weapon_BoltDriver::init()
 	m_effects.init(m_mesh.node, fx);
 }
 
-void Weapon_BoltDriver::destroy()
+void Weapon_HeavyRifle::destroy()
 {
 	m_effects.destroy();
 
@@ -134,7 +135,7 @@ void Weapon_BoltDriver::destroy()
 	WorldManager::Get()->freeEntityID(m_descriptor.id);
 }
 
-void Weapon_BoltDriver::update()
+void Weapon_HeavyRifle::update()
 {
 	if (!m_mesh.node || !m_mesh.node->isVisible())
 		return;
@@ -188,12 +189,12 @@ void Weapon_BoltDriver::update()
 	RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 }
 
-void Weapon_BoltDriver::persist()
+void Weapon_HeavyRifle::persist()
 {
 	m_effects.update(Engine::Get()->getDeltaTime());
 }
 
-void Weapon_BoltDriver::equip()
+void Weapon_HeavyRifle::equip()
 {
 	m_mesh.node->setVisible(true);
 	m_mesh.animation_call_back->hasAnimationEnded();
@@ -204,7 +205,7 @@ void Weapon_BoltDriver::equip()
 	m_isReloadingAnim = false;
 }
 
-void Weapon_BoltDriver::unequip()
+void Weapon_HeavyRifle::unequip()
 {
 	m_isEquipping = false;
 	m_isUnequipping = false;
@@ -213,7 +214,7 @@ void Weapon_BoltDriver::unequip()
 	m_mesh.node->setVisible(false);
 }
 
-void Weapon_BoltDriver::startUnequip()
+void Weapon_HeavyRifle::startUnequip()
 {
 	m_isUnequipping = true;
 	m_isEquipping = false;
@@ -223,17 +224,17 @@ void Weapon_BoltDriver::startUnequip()
 	playAnimation("unequip");
 }
 
-void Weapon_BoltDriver::idle()
+void Weapon_HeavyRifle::idle()
 {
 
 }
 
-void Weapon_BoltDriver::move()
+void Weapon_HeavyRifle::move()
 {
 
 }
 
-void Weapon_BoltDriver::fire()
+void Weapon_HeavyRifle::fire()
 {
 	playAnimation("fire");
 
@@ -246,7 +247,7 @@ void Weapon_BoltDriver::fire()
 
 	if (!m_mesh.node || !m_muzzleNode)
 	{
-		if (!m_muzzleNode) spdlog::warn("Weapon_BoltDriver: muzzle node not found - cannot fire");
+		if (!m_muzzleNode) spdlog::warn("Weapon_HeavyRifle: muzzle node not found - cannot fire");
 		return;
 	}
 
@@ -332,7 +333,7 @@ void Weapon_BoltDriver::fire()
 	SoundManager::Get()->sound()->playRandomized2D("content/sound/weapon/rifle/fire", 0.05f, 3, 0.6f, "rifle_fire");
 }
 
-void Weapon_BoltDriver::reload()
+void Weapon_HeavyRifle::reload()
 {
 	if (!m_isReloadingAnim)
 	{

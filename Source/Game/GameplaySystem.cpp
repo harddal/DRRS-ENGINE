@@ -1,5 +1,6 @@
 #include "GameplaySystem.h"
 
+#include <cmath>
 #include <unordered_map>
 
 #include <spdlog/spdlog.h>
@@ -110,16 +111,30 @@ void GameplaySystem::updateBrushVolumes()
     if (!ms->doesEntityExist("player"))
         return;
     auto& player = ms->getEntityByName("player");
-    if (!player.isValid() || !player.hasComponent<TransformComponent>())
+    if (!player.isValid() || !player.hasComponent<TransformComponent>()
+        || !player.hasComponent<DescriptorComponent>())
         return;
 
     const irr::core::vector3df p = player.getComponent<TransformComponent>().position;
 
-    // Ladder test points: feet and chest.  Two points make topping-out
-    // smooth — you stay climbable until your feet clear the volume.
-    const irr::core::vector3df ladderFeet  = p + irr::core::vector3df(0.0f, 0.3f, 0.0f);
-    const irr::core::vector3df ladderChest = p + irr::core::vector3df(0.0f, 1.3f, 0.0f);
+    // Body test points: feet and chest.  Two points make ladder topping-out
+    // smooth (you stay climbable until your feet clear the volume) and let a
+    // shallow hurt volume — lava, a slime pool — catch the player by the feet.
+    const irr::core::vector3df bodyFeet  = p + irr::core::vector3df(0.0f, 0.3f, 0.0f);
+    const irr::core::vector3df bodyChest = p + irr::core::vector3df(0.0f, 1.3f, 0.0f);
     bool onLadder = false;
+
+    auto touchesBody = [&](const Brush& b)
+    {
+        return (b.bounds.isPointInside(bodyFeet)  && BrushGeometry::containsPoint(b, bodyFeet)) ||
+               (b.bounds.isPointInside(bodyChest) && BrushGeometry::containsPoint(b, bodyChest));
+    };
+
+    // Damage is authored per second but dealt in whole points, so each hurt
+    // brush carries its own fractional remainder across frames.  Overlapping
+    // hurt volumes stack (Quake-style) rather than taking the max.
+    const auto& playerDesc = player.getComponent<DescriptorComponent>();
+    const float dtSeconds  = Engine::Get()->getDeltaTime() / 1000.0f;
 
     for (auto& brush : BrushManager::Get()->getAllBrushesMutable())
     {
@@ -127,10 +142,26 @@ void GameplaySystem::updateBrushVolumes()
             continue;
 
         if ((brush.contentFlags & CONTENT_LADDER) && !onLadder)
+            onLadder = touchesBody(brush);
+
+        if ((brush.contentFlags & CONTENT_HURT) && brush.hurtDamagePerSecond > 0.0f)
         {
-            onLadder =
-                (brush.bounds.isPointInside(ladderFeet)  && BrushGeometry::containsPoint(brush, ladderFeet)) ||
-                (brush.bounds.isPointInside(ladderChest) && BrushGeometry::containsPoint(brush, ladderChest));
+            if (playerDesc.isAlive && touchesBody(brush))
+            {
+                brush.hurtAccum += brush.hurtDamagePerSecond * dtSeconds;
+                if (brush.hurtAccum >= 1.0f)
+                {
+                    const unsigned int points = static_cast<unsigned int>(brush.hurtAccum);
+                    brush.hurtAccum -= static_cast<float>(points);
+                    damageEntity(playerDesc.id, points);
+                }
+            }
+            else
+            {
+                // Drop the remainder on exit so brief re-entries can't bank
+                // damage and land it all in one tick
+                brush.hurtAccum = 0.0f;
+            }
         }
 
         if (!(brush.contentFlags & CONTENT_TRIGGER))
@@ -150,6 +181,10 @@ void GameplaySystem::updateBrushVolumes()
 
     if (g_PlayerController)
         g_PlayerController->setOnLadder(onLadder);
+
+    // Fog is no longer resolved here: the global scene fog stays as WorldManager
+    // set it at scene load, and per-zone fog is rendered per-view-ray from the
+    // CONTENT_FOG volume array gathered in RenderManager::updatePerFrameUBO.
 }
 
 static void s_drawLinkArrow(const irr::core::vector3df& from, const irr::core::vector3df& to,
@@ -835,7 +870,7 @@ void GameplaySystem::update()
 
 void GameplaySystem::destroy()
 {
-	
+
 }
 
 HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type)

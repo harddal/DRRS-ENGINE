@@ -58,6 +58,12 @@ typedef char         GLchar;
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE        0x812F
 #endif
+#ifndef GL_TEXTURE_BASE_LEVEL
+#define GL_TEXTURE_BASE_LEVEL   0x813C
+#endif
+#ifndef GL_TEXTURE_MAX_LEVEL
+#define GL_TEXTURE_MAX_LEVEL    0x813D
+#endif
 
 namespace GLExt
 {
@@ -69,6 +75,9 @@ namespace GLExt
 
     // --- Multitexture (GL 1.3) ---
     extern void (__stdcall* ActiveTexture)(GLenum texture);
+
+    // --- Mipmap generation (GL 3.0 / ARB_framebuffer_object) ---
+    extern void (__stdcall* GenerateMipmap)(GLenum target);
 
     // --- Buffer objects (GL 1.5 / 3.0) ---
     extern void (__stdcall* GenBuffers)(GLsizei n, GLuint* buffers);

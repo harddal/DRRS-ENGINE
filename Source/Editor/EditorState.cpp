@@ -96,6 +96,7 @@ void EditorState::pause()
 	SceneDescriptor scenedesc;
 	scenedesc.ambient_light = RenderManager::Get()->sceneManager()->getAmbientLight();
 	scenedesc.skydome_texture = RenderManager::Get()->getCurrentSkydomeTexture();
+	scenedesc.envmap_texture  = RenderManager::Get()->getCurrentEnvMapTexture();
 	scenedesc.name = g_currentScene;
 	WorldManager::Get()->exportScene(_asset_zip_scn(std::string("editor/") + g_currentScene));
 

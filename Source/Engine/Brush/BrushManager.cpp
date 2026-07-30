@@ -318,10 +318,57 @@ void BrushManager::gatherChunkMembers(const BrushChunk& chunk, std::vector<const
     out.reserve(chunk.brushIds.size());
     for (uint32_t id : chunk.brushIds)
     {
+        if (id == m_editBrushId)    // live-edit preview node owns it meanwhile
+            continue;
         const Brush* b = getBrush(id);
         if (b && b->geometryValid)
             out.push_back(b);
     }
+}
+
+void BrushManager::beginBrushEdit(uint32_t id)
+{
+    if (m_editBrushId != 0)         // a stale edit shouldn't linger
+        endBrushEdit();
+
+    Brush* b = getBrush(id);
+    if (!b)
+        return;
+
+    m_editBrushId = id;
+    m_deferHeavy = true;            // no cooks while the drag is live
+
+    // Rebuild the owning chunk once, now without this brush (gatherChunkMembers
+    // skips m_editBrushId), so it isn't drawn twice under the preview node.
+    if (BrushChunk* c = getChunkByKey(b->chunkKey))
+        c->dirty = true;
+
+    updateBrushEditPreview(id);     // stand up the preview node
+}
+
+void BrushManager::updateBrushEditPreview(uint32_t id)
+{
+    Brush* b = getBrush(id);
+    if (!b || !b->geometryValid)
+        return;
+    // One-brush render node — cheap to rebuild every frame vs the whole chunk.
+    std::vector<const Brush*> one{ b };
+    BrushCompiler::updateChunkNode(m_editChunk, one);
+}
+
+void BrushManager::endBrushEdit()
+{
+    if (m_editBrushId == 0)
+        return;
+
+    const uint32_t id = m_editBrushId;
+    m_editBrushId = 0;                      // stop excluding it from the chunk
+
+    destroyChunkResources(m_editChunk);     // drop the preview node
+    m_editChunk = BrushChunk();
+
+    m_deferHeavy = false;                   // let the cook run again
+    markBrushDirty(id);                     // fold back into the chunk + heavy
 }
 
 void BrushManager::compileHeavy(BrushChunk& chunk)

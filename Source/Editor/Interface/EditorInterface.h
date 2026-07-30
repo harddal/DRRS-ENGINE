@@ -28,7 +28,7 @@ struct EditorWindowData
     bool draw_window_prop_prop         = false;
     bool draw_window_vegetation_painter = false;
     bool draw_window_texture_painter    = false;
-    bool draw_window_brush_editor       = false;
+    bool draw_window_brush_editor       = true;
     bool draw_window_script_editor      = false;
     bool draw_window_particle_designer  = false;
 

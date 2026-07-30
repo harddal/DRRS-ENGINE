@@ -20,15 +20,9 @@ enum PLAYER_WEAPON
 {
 	WEAP_NONE,
 	WEAP_MELEE,
-	WEAP_PISTOL,
+	WEAP_REVOLVER,
 	WEAP_SHOTGUN,
-	WEAP_MININGLASER,
-	WEAP_BOLTDRIVER,
-	WEAP_MINIGUN,
-	WEAP_ROCKETLAUNCHER,
-	WEAP_GRENADE,
-	WEAP_BIORIFLE,
-	WEAP_FUELROD,
+	WEAP_HEAVYRIFLE,
 	WEAP_COUNT
 };
 
@@ -104,6 +98,65 @@ public:
 	void addViewKick(const irr::core::vector3df& posKick, const irr::core::vector3df& rotKick);
 	void resetViewKick();
 
+	// --- Rigid glTF part addressing ------------------------------------------
+	// glTF weapons have no scene node per moving part. GltfImport gives every
+	// glTF node an Irrlicht joint and hands non-skinned geometry to it as buffer
+	// indices in SJoint::AttachedMeshes, so a part like a shell or a magazine is
+	// addressed by JOINT NAME, and "hiding" it means swapping the material on its
+	// buffers — there is no node to call setVisible() on.
+	//
+	// This exists because these weapon packs reuse one prop mesh for several
+	// jobs: the shotgun's single 'slug' is both the case flicked out by the pump
+	// and the fresh shell thumbed into the loading port, so it has to be hidden
+	// and shown per frame or it teleports across the screen.
+	struct MeshPart
+	{
+		std::vector<irr::u32>       buffers;                         // indices into the viewmodel's mesh buffers
+		irr::video::E_MATERIAL_TYPE material = irr::video::EMT_SOLID; // real material, restored on show
+		irr::scene::IBoneSceneNode* bone     = nullptr;               // transform probe; draws nothing itself
+		bool                        visible  = true;
+	};
+
+	// Matches the first joint whose name starts with jointNamePrefix AND carries
+	// geometry — the prefix form survives a re-export renaming the "_weapon_0"
+	// leaf. Call AFTER the node's materials are assigned: it caches the material
+	// so setMeshPartVisible() has something to restore. Returns false and warns
+	// if nothing matched.
+	bool resolveMeshPart(const char* jointNamePrefix, MeshPart& outPart);
+
+	void setMeshPartVisible(MeshPart& part, bool visible);
+
+	// World transform of the part, for spawning something exactly where it is.
+	// Forces the joint up to date, so call after animateJoints().
+	bool meshPartWorldTransform(MeshPart& part, irr::core::matrix4& outWorld);
+
+	// Per-axis scale that makes a stand-in mesh of size targetExtent match the
+	// on-screen size of this part. Axes are matched by RANK (shortest to
+	// shortest) rather than by index, because the glTF to Irrlicht conversion may
+	// permute them; and per-axis rather than one ratio, because a stand-in rarely
+	// shares the part's aspect ratio — matching only the long axis leaves it
+	// visibly too fat, and bulk goes as the square of the diameter.
+	irr::core::vector3df matchPartScale(const MeshPart& part,
+	                                    const irr::core::vector3df& targetExtent) const;
+
+	// --- Procedural idle breathing -------------------------------------------
+	// Small, never-repeating hold-steady motion for weapons whose idle clip is a
+	// single frame or absent. Call enableIdleBreathing() once in init(); the
+	// motion is then folded into updateWeaponSway()'s single transform write, so
+	// it composes with sway and kick instead of fighting them. Weapons still must
+	// not touch m_mesh.node's position/rotation themselves.
+	//
+	// scale is a master multiplier over every amplitude in IdleBreath, so the
+	// common case is tuned with one number: 0.5 for a braced two-hand hold,
+	// ~1.5-2 for a heavy weapon held one-handed.
+	void enableIdleBreathing(float scale = 1.0f);
+
+	// Current breathing displacement. updateWeaponSway() applies this for you;
+	// it is exposed so a weapon can inspect or damp it (e.g. while aiming down
+	// sights) without reimplementing the curve.
+	void idleBreathOffsets(irr::core::vector3df& outPosition,
+	                       irr::core::vector3df& outRotation) const;
+
 	// Hit-confirmation feedback. Weapons pass the HIT_RESULT from
 	// GameplaySystem::damageEntity(); HIT flashes the hitmarker + plays a tick
 	// (rate-limited), KILL shows a larger red marker + kill sound. NONE is a no-op.
@@ -112,6 +165,20 @@ public:
 	// Draws the fading hitmarker over the crosshair. Called once per frame by
 	// WeaponController::update() — weapons never call this themselves.
 	static void drawHitFeedback();
+
+	// Shared draw/holster handling sounds. Every weapon transitions the same way,
+	// so the paths live here instead of being repeated (and drifting) per weapon.
+	// Call from equip() and startUnequip() respectively — NOT from unequip(),
+	// which also runs as the instant-hide teardown and would double up.
+	// Both resolve through playRandomized2D, so dropping equip1.wav/equip2.wav
+	// next to equip.wav upgrades every weapon to variants with no code change.
+	static void playEquipSound();
+	static void playUnequipSound();
+
+	// Preloads the two sounds above. Called once by WeaponController alongside the
+	// per-weapon precache() pass, so no single weapon has to own assets they all
+	// share — and so the first draw of the session doesn't hitch on a disk read.
+	static void precacheSharedSounds();
 
 	// World point under the crosshair: camera-center ray hit, or the ray's far end.
 	irr::core::vector3df getCrosshairAimPoint(float maxRange = 1000.0f);
@@ -129,7 +196,19 @@ public:
 	irr::scene::IAnimatedMeshSceneNode* debugViewmodelNode() { return m_mesh.node; }
 	const std::string& debugWeaponName() const { return m_descriptor.name; }
 
+	// Weapons that compose a WeaponEffects return it so the viewmodel debug
+	// window can tune the muzzle offset live. Models without a FIRESPOT empty
+	// need that offset dialled in by eye; guessing it in code is what put the
+	// revolver's flash inside its own grip.
+	virtual class WeaponEffects* debugEffects() { return nullptr; }
+
 protected:
+	// Drives the viewmodel node from the clip named in m_mesh.animationList, so
+	// frame ranges are declared once in init() instead of being repeated (and
+	// drifting) at every call site. Loop mode comes from the clip's own flag.
+	// Returns false — leaving the current loop untouched — when the clip is missing.
+	bool playAnimation(const std::string& name);
+
 	bool picked_up;
 
 	unsigned int m_current_ammo;
@@ -153,6 +232,29 @@ protected:
 	irr::core::vector3df m_kickRot;          // rotational kick offset (degrees)
 	float m_kickPosRecovery = 15.0f;         // spring rate, per second
 	float m_kickRotRecovery = 10.0f;         // spring rate, per second
+
+	// Idle breathing tuning. Defaults are a relaxed two-handed hold; positions are
+	// in viewmodel units (same space as m_viewPositionOffset), rotations degrees.
+	struct IdleBreath
+	{
+		bool  enabled = false;
+		float scale   = 1.0f;             // master multiplier over everything below
+
+		// Breathing — the dominant slow rise and fall of the chest.
+		float breathRate  = 0.23f;        // Hz, about 14 breaths per minute
+		float breathPosY  = 0.0035f;      // vertical travel
+		float breathPitch = 0.30f;        // degrees; muzzle rides the breath
+
+		// Postural drift — the slower wander of someone not braced on anything.
+		float driftRate = 0.13f;          // Hz
+		float driftPosX = 0.0028f;
+		float driftPosZ = 0.0015f;
+		float driftYaw  = 0.42f;          // degrees
+		float driftRoll = 0.22f;          // degrees
+	};
+
+	IdleBreath m_idleBreath;
+	float m_idleBreathTime = 0.0f;       // seconds, advanced by updateWeaponSway()
 
 };
 

@@ -267,6 +267,13 @@ scene::IAnimatedMesh* IrrAssimpImport::createMesh(io::IReadFile* file)
     // Load meshes
     createMeshes();
 
+    // Resolve AttachedMeshes to buffer indices, then fold the static node
+    // transforms into the vertices so raw vertex readers agree with the renderer
+    m_animatedNodes.clear();
+    markAnimatedNodes(m_assimpScene->mRootNode, false);
+    remapAttachedMeshes();
+    bakeStaticNodeTransforms();
+
     // Load animations
     createAnimation();
 
@@ -333,12 +340,22 @@ void IrrAssimpImport::createMaterials()
 
 void IrrAssimpImport::createMeshes()
 {
+    // Skipped meshes compact the buffer list, so buffer index != Assimp mesh
+    // index.  SJoint::AttachedMeshes holds Assimp indices at this point and is
+    // remapped through this table by remapAttachedMeshes().
+    m_meshBufferIndex.set_used(m_assimpScene->mNumMeshes);
+    for (unsigned int i = 0; i < m_assimpScene->mNumMeshes; ++i)
+        m_meshBufferIndex[i] = -1;
+    m_bufferSkinned.clear();
+
     for (unsigned int i = 0; i < m_assimpScene->mNumMeshes; ++i)
     {
         if (!m_visibleMeshes[i])
             continue;
 
         aiMesh* mesh = m_assimpScene->mMeshes[i];
+        m_meshBufferIndex[i] = (irr::s32)m_irrMesh->getMeshBufferCount();
+        m_bufferSkinned.push_back(mesh->mNumBones > 0);
         const unsigned int uvCount = mesh->GetNumUVChannels();
         const unsigned int verticesCount = mesh->mNumVertices;
 
@@ -455,6 +472,177 @@ void IrrAssimpImport::createMeshes()
             }
         }
     }
+}
+
+// Apply a world matrix to a buffer's vertices in place: positions directly,
+// directions through the inverse transpose (the rotation part alone would tilt
+// normals off the surface under non-uniform scale), winding reversed when the
+// matrix mirrors.  Bounding box recomputed from the result.
+static void bakeMatrixIntoBuffer(scene::SSkinMeshBuffer* buffer, const core::matrix4& world)
+{
+    const u32 vertexCount = buffer->getVertexCount();
+    if (vertexCount == 0)
+        return;
+
+    core::matrix4 normalMatrix;
+    const bool haveNormalMatrix = world.getInverse(normalMatrix);
+    if (haveNormalMatrix)
+        normalMatrix = normalMatrix.getTransposed();
+
+    for (u32 v = 0; v < vertexCount; ++v)
+    {
+        world.transformVect(buffer->getPosition(v));
+        if (haveNormalMatrix)
+        {
+            normalMatrix.rotateVect(buffer->getNormal(v));
+            buffer->getNormal(v).normalize();
+        }
+    }
+
+    if (haveNormalMatrix && buffer->VertexType == video::EVT_TANGENTS)
+    {
+        for (u32 v = 0; v < vertexCount; ++v)
+        {
+            video::S3DVertexTangents& vert = buffer->Vertices_Tangents[v];
+            normalMatrix.rotateVect(vert.Tangent);
+            vert.Tangent.normalize();
+            normalMatrix.rotateVect(vert.Binormal);
+            vert.Binormal.normalize();
+        }
+    }
+
+    // A negative 3x3 determinant means the transform mirrors, which reverses
+    // triangle winding and would invert backface culling and PhysX face normals.
+    const f32* m = world.pointer();
+    const core::vector3df ax(m[0], m[1], m[2]);
+    const core::vector3df ay(m[4], m[5], m[6]);
+    const core::vector3df az(m[8], m[9], m[10]);
+    if (ax.crossProduct(ay).dotProduct(az) < 0.f)
+    {
+        for (u32 i = 0; i + 2 < buffer->Indices.size(); i += 3)
+        {
+            const u16 tmp = buffer->Indices[i + 1];
+            buffer->Indices[i + 1] = buffer->Indices[i + 2];
+            buffer->Indices[i + 2] = tmp;
+        }
+    }
+
+    core::aabbox3df bbox(buffer->getPosition(0));
+    for (u32 v = 1; v < vertexCount; ++v)
+        bbox.addInternalPoint(buffer->getPosition(v));
+    buffer->BoundingBox = bbox;
+}
+
+// Collect every node an animation can move, ancestors included: a child
+// inherits its parent's motion.  Gates bakeStaticNodeTransforms().
+void IrrAssimpImport::markAnimatedNodes(const aiNode* node, bool parentAnimated)
+{
+    bool animated = parentAnimated;
+    for (unsigned int a = 0; a < m_assimpScene->mNumAnimations && !animated; ++a)
+    {
+        const aiAnimation* anim = m_assimpScene->mAnimations[a];
+        for (unsigned int c = 0; c < anim->mNumChannels; ++c)
+        {
+            if (anim->mChannels[c]->mNodeName == node->mName)
+            {
+                animated = true;
+                break;
+            }
+        }
+    }
+
+    if (animated)
+        m_animatedNodes.insert(std::string(node->mName.C_Str()));
+
+    for (unsigned int i = 0; i < node->mNumChildren; ++i)
+        markAnimatedNodes(node->mChildren[i], animated);
+}
+
+// createNode() runs before createMeshes(), so it fills AttachedMeshes with
+// Assimp mesh indices.  Those only match buffer indices when no mesh was
+// skipped as invisible — translate them and drop the ones with no buffer.
+void IrrAssimpImport::remapAttachedMeshes()
+{
+    const core::array<scene::ISkinnedMesh::SJoint*>& joints = m_irrMesh->getAllJoints();
+    for (u32 j = 0; j < joints.size(); ++j)
+    {
+        core::array<u32> remapped;
+        for (u32 k = 0; k < joints[j]->AttachedMeshes.size(); ++k)
+        {
+            const u32 assimpIndex = joints[j]->AttachedMeshes[k];
+            if (assimpIndex < m_meshBufferIndex.size() && m_meshBufferIndex[assimpIndex] >= 0)
+                remapped.push_back((u32)m_meshBufferIndex[assimpIndex]);
+        }
+        joints[j]->AttachedMeshes = remapped;
+    }
+}
+
+// Fold each static node's world transform into its vertices.
+//
+// Irrlicht carries a non-skinned node's transform on
+// SSkinMeshBuffer::Transformation, and only CAnimatedMeshSceneNode::render()
+// applies it (AbsoluteTransformation * mb->Transformation).  PhysX cooking, the
+// SSAO geometry pre-pass, navmesh generation, lightmap unwrap and octree
+// triangle selectors all read the vertex buffers straight and miss it, so an
+// authored node offset put collision and AO somewhere the mesh visibly is not.
+// Baking makes the stored positions the one source of truth and leaves
+// Transformation identity, so both paths agree.
+//
+// Mirrors GltfImport::bakeNodeTransform().  A baked buffer is detached from its
+// joint — leaving it attached would apply the transform a second time.
+void IrrAssimpImport::bakeStaticNodeTransforms()
+{
+    const u32 bufferCount = m_irrMesh->getMeshBufferCount();
+    if (bufferCount == 0)
+        return;
+
+    const core::array<scene::ISkinnedMesh::SJoint*>& joints = m_irrMesh->getAllJoints();
+
+    // A buffer shared by several nodes (mesh instancing) has no single transform
+    // to bake, so those stay on Transformation.
+    core::array<u32> refCount;
+    refCount.set_used(bufferCount);
+    for (u32 b = 0; b < bufferCount; ++b)
+        refCount[b] = 0;
+    for (u32 j = 0; j < joints.size(); ++j)
+        for (u32 k = 0; k < joints[j]->AttachedMeshes.size(); ++k)
+            if (joints[j]->AttachedMeshes[k] < bufferCount)
+                ++refCount[joints[j]->AttachedMeshes[k]];
+
+    core::array<scene::SSkinMeshBuffer*>& buffers = m_irrMesh->getMeshBuffers();
+    u32 bakedCount = 0;
+
+    for (u32 j = 0; j < joints.size(); ++j)
+    {
+        scene::ISkinnedMesh::SJoint* joint = joints[j];
+        const bool animated =
+            m_animatedNodes.find(std::string(joint->Name.c_str())) != m_animatedNodes.end();
+
+        core::array<u32> kept;
+        for (u32 k = 0; k < joint->AttachedMeshes.size(); ++k)
+        {
+            const u32 bufIdx = joint->AttachedMeshes[k];
+            const bool skinned =
+                bufIdx < m_bufferSkinned.size() && m_bufferSkinned[bufIdx];
+
+            // Skinned buffers are placed by their weights, animated nodes need a
+            // live Transformation, and an identity transform has nothing to bake.
+            if (bufIdx >= bufferCount || animated || skinned ||
+                refCount[bufIdx] != 1 || joint->GlobalMatrix.isIdentity())
+            {
+                kept.push_back(bufIdx);
+                continue;
+            }
+
+            bakeMatrixIntoBuffer(buffers[bufIdx], joint->GlobalMatrix);
+            ++bakedCount;
+        }
+        joint->AttachedMeshes = kept;
+    }
+
+    if (bakedCount)
+        spdlog::debug("IrrAssimpImport: '{}' baked node transforms into {} of {} mesh buffers",
+            m_filePath.c_str(), bakedCount, bufferCount);
 }
 
 static std::string cleanAnimName(const std::string& raw)

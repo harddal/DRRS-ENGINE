@@ -17,7 +17,87 @@ layout(std140) uniform PerFrame
     mat4  uInvView;       // main camera view inverse — world-pos reconstruction
     mat4  uShadowMat[4];  // lightProj*lightView per shadow atlas slot
     vec4  uShadowRect[4]; // xy = atlas offset, z = scale, w = 1 if slot active
+    vec4  uFogVolParams;  // x = active fog-volume count, y = feather distance
+    vec4  uFogVolMin[8];  // xyz = AABB min, w = density
+    vec4  uFogVolMax[8];  // xyz = AABB max, w = start distance
+    vec4  uFogVolColor[8];// rgb = color, w = reserved
 };
+
+// ---------------------------------------------------------------------------
+// Localized fog: integrate fog along the camera->fragment ray.  The scene
+// default fog (uFogColor/uFogDensity/uFogStart) applies over the ray portion
+// outside every fog volume; each CONTENT_FOG AABB overrides density+color for
+// the segment inside it, softened by a feather at the faces.  Colour is an
+// optical-depth-weighted average (ordering-free) — an approximation of true
+// front-to-back compositing that reads correctly for the target cases.
+// ---------------------------------------------------------------------------
+vec3 applyLocalFog(vec3 color, vec3 viewPos)
+{
+    vec3  camWS    = uInvView[3].xyz;
+    vec3  fragWS   = (uInvView * vec4(viewPos, 1.0)).xyz;
+    vec3  ray      = fragWS - camWS;
+    float fragDist = length(ray);
+    if (fragDist < 1e-4)
+        return color;
+    vec3 dir = ray / fragDist;
+
+    float feather = max(uFogVolParams.y, 1e-3);
+    int   count   = int(uFogVolParams.x + 0.5);
+
+    float tau      = 0.0;        // total optical depth along the ray
+    vec3  colNum   = vec3(0.0);  // sum of (segment colour * segment optical depth)
+    float inLenSum = 0.0;        // total path length inside any volume
+
+    for (int i = 0; i < 8; ++i)
+    {
+        if (i >= count)
+            break;
+
+        vec3 bmin = uFogVolMin[i].xyz;
+        vec3 bmax = uFogVolMax[i].xyz;
+
+        // Ray-AABB slab test in world space, clamped to [0, fragDist].
+        // Nudge exact-zero ray axes off zero first: 1.0/0.0 = inf, and inf on a
+        // face-aligned axis gives 0*inf = NaN, which whites out the fragment.
+        vec3 dsafe  = dir + vec3(equal(dir, vec3(0.0))) * 1e-6;
+        vec3 invD   = 1.0 / dsafe;
+        vec3 t0     = (bmin - camWS) * invD;
+        vec3 t1     = (bmax - camWS) * invD;
+        vec3 tsmall = min(t0, t1);
+        vec3 tbig   = max(t0, t1);
+        float tNear = max(max(tsmall.x, tsmall.y), tsmall.z);
+        float tFar  = min(min(tbig.x, tbig.y), tbig.z);
+        tNear = max(tNear, 0.0);
+        tNear = max(tNear, uFogVolMax[i].w);   // per-volume start distance from camera
+        tFar  = min(tFar, fragDist);
+
+        float inLen = max(tFar - tNear, 0.0);
+        if (inLen <= 0.0)
+            continue;
+
+        // Feather: ramp the segment's contribution up over the first `feather`
+        // world units so grazing/edge rays fade in instead of popping.
+        float r    = clamp(inLen / feather, 0.0, 1.0);
+        float soft = r * r * (3.0 - 2.0 * r);          // smoothstep
+        float tauI = uFogVolMin[i].w * inLen * soft;
+
+        tau      += tauI;
+        colNum   += tauI * uFogVolColor[i].rgb;
+        inLenSum += inLen;
+    }
+
+    // Scene-default fog over the ray portion not covered by any volume.
+    float outDist = max((fragDist - inLenSum) - uFogStart, 0.0);
+    float tauDef  = uFogDensity * outDist;
+    tau    += tauDef;
+    colNum += tauDef * uFogColor;
+
+    if (!(tau > 1e-5))   // also catches NaN (any comparison with NaN is false)
+        return color;
+
+    float fogFactor = clamp(1.0 - exp(-tau), 0.0, 1.0);
+    return mix(color, colNum / tau, fogFactor);
+}
 
 // Terrain Blend Fragment Shader
 // Identical to phong_perpixel.frag except albedo is derived from a splat map
@@ -204,8 +284,5 @@ void main()
     vec3 color = albedo * max(bakedLight, diffuseAccum) * diffuseFactor
                + specularAccum;
 
-    float fogDist   = length(vViewPos) - uFogStart;
-    float fogFactor = 1.0 - exp(-uFogDensity * max(fogDist, 0.0));
-    fogFactor       = clamp(fogFactor, 0.0, 1.0);
-    gl_FragColor    = vec4(mix(color, uFogColor, fogFactor), texColor.a);
+    gl_FragColor = vec4(applyLocalFog(color, vViewPos), texColor.a);
 }

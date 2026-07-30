@@ -51,10 +51,10 @@ void Weapon_MiningLaser::init()
 
 	m_mesh.mesh = "content/mesh/player/weapon/beam_cutter/hud.b3d";
 
-	m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh(m_mesh.mesh.c_str());
+	m_mesh.trimesh = RenderManager::Get()->loadMesh(m_mesh.mesh);
 	if (!m_mesh.trimesh)
 	{
-		spdlog::warn("In function PlayerWeapon::init() -> RenderManager::Get()->sceneManager()->getMesh() : Mesh does not exist, stand-in mesh loaded");
+		spdlog::warn("PlayerWeapon::init(): failed to load mesh \"{}\", stand-in mesh loaded", m_mesh.mesh);
 
 		m_mesh.trimesh = RenderManager::Get()->sceneManager()->getMesh("content/mesh/primitive/double_tetrahedron.obj");
 		m_mesh.node = RenderManager::Get()->sceneManager()->addAnimatedMeshSceneNode(m_mesh.trimesh, nullptr, m_descriptor.id);
@@ -75,8 +75,6 @@ void Weapon_MiningLaser::init()
 
 	m_mesh.fps = 30;
 	m_mesh.node->setAnimationSpeed(30.0f);
-	m_mesh.node->setLoopMode(true);
-	m_mesh.node->setFrameLoop(20, 50);
 
 	m_mesh.animationList.emplace_back(sAnimationData("equip",   1,   20,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    20,  50,  true));
@@ -84,6 +82,8 @@ void Weapon_MiningLaser::init()
 	m_mesh.animationList.emplace_back(sAnimationData("fire",    81,  95,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  96,  179, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 179, 190, false));
+
+	playAnimation("idle"); // safe default until equip() runs
 
 	m_mesh.node->setJointMode(irr::scene::EJUOR_READ);
 
@@ -221,8 +221,7 @@ void Weapon_MiningLaser::update()
 		if (animEnded)
 		{
 			m_isEquipping = false;
-			m_mesh.node->setLoopMode(true);
-			m_mesh.node->setFrameLoop(20, 50);
+			playAnimation("idle");
 		}
 		return;
 	}
@@ -232,8 +231,7 @@ void Weapon_MiningLaser::update()
 		if (animEnded)
 		{
 			m_isReloadingAnim = false;
-			m_mesh.node->setLoopMode(true);
-			m_mesh.node->setFrameLoop(20, 50);
+			playAnimation("idle");
 		}
 		return;
 	}
@@ -303,8 +301,7 @@ void Weapon_MiningLaser::equip()
 {
 	m_mesh.node->setVisible(true);
 	m_mesh.animation_call_back->hasAnimationEnded();
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(1, 20);
+	playAnimation("equip");
 	m_isEquipping = true;
 	m_isUnequipping = false;
 
@@ -329,8 +326,7 @@ void Weapon_MiningLaser::startUnequip()
 	if (m_fireLoopHandle) { m_fireLoopHandle->stop(); m_fireLoopHandle->drop(); m_fireLoopHandle = nullptr; }
 	if (m_laserNode) m_laserNode->setVisible(false);
 	m_mesh.animation_call_back->hasAnimationEnded();
-	m_mesh.node->setLoopMode(false);
-	m_mesh.node->setFrameLoop(179, 190);
+	playAnimation("unequip");
 }
 
 void Weapon_MiningLaser::idle()
@@ -421,10 +417,10 @@ void Weapon_MiningLaser::reload()
 {
 	if (!m_isReloadingAnim)
 	{
-		m_mesh.node->setLoopMode(false);
-		m_mesh.node->setFrameLoop(81, 95);
+		// NOTE: plays "fire", not "reload" — preserved from the hardcoded 81..95
+		// range this used to set. Likely a copy/paste slip worth revisiting.
+		playAnimation("fire");
 		m_isReloadingAnim = true;
-	
 	}
 }
 

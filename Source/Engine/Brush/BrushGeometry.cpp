@@ -336,6 +336,75 @@ void initFaceUV(BrushFace& face)
     face.rotationDeg = 0.0f;
 }
 
+bool extractQuadCorners(const Brush& b, const BrushFace& face, vector3df out[4])
+{
+    if (face.loop.size() < 3)
+        return false;
+
+    // Drop collinear loop verts (loops keep them to avoid T-junction cracks
+    // between adjacent faces; a displacement quad needs the four true corners).
+    std::vector<vector3df> corners;
+    const size_t n = face.loop.size();
+    for (size_t i = 0; i < n; i++)
+    {
+        const vector3df& prev = b.verts[face.loop[(i + n - 1) % n]];
+        const vector3df& cur  = b.verts[face.loop[i]];
+        const vector3df& next = b.verts[face.loop[(i + 1) % n]];
+        vector3df e0 = cur - prev, e1 = next - cur;
+        e0.normalize();
+        e1.normalize();
+        // sin^2(turn angle); ~0 means cur lies on the edge -> skip it.
+        if (e0.crossProduct(e1).getLengthSQ() < 1e-6f)
+            continue;
+        corners.push_back(cur);
+    }
+    if (corners.size() != 4)
+        return false;
+
+    // Order by proximity to the UV-space bounding-box corners so the (i,j)
+    // grid mapping is stable across reloads and loop-rotation independent.
+    const vector3df& ua = face.uAxis;
+    const vector3df& va = face.vAxis;
+    float pu[4], pv[4];
+    float minU = 1e30f, maxU = -1e30f, minV = 1e30f, maxV = -1e30f;
+    for (int k = 0; k < 4; k++)
+    {
+        pu[k] = corners[k].dotProduct(ua);
+        pv[k] = corners[k].dotProduct(va);
+        minU = std::min(minU, pu[k]); maxU = std::max(maxU, pu[k]);
+        minV = std::min(minV, pv[k]); maxV = std::max(maxV, pv[k]);
+    }
+    const float tu[4] = { minU, maxU, minU, maxU };   // targets: 00,10,01,11
+    const float tv[4] = { minV, minV, maxV, maxV };
+    bool used[4] = { false, false, false, false };
+    for (int o = 0; o < 4; o++)
+    {
+        int best = -1;
+        float bestD = 1e30f;
+        for (int k = 0; k < 4; k++)
+        {
+            if (used[k]) continue;
+            const float du = pu[k] - tu[o], dv = pv[k] - tv[o];
+            const float d = du * du + dv * dv;
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        if (best < 0) return false;
+        used[best] = true;
+        out[o] = corners[best];
+    }
+    return true;
+}
+
+vector3df dispBasePos(const vector3df corners[4], int i, int j, int side)
+{
+    const float fu = (side > 1) ? static_cast<float>(i) / static_cast<float>(side - 1) : 0.0f;
+    const float fv = (side > 1) ? static_cast<float>(j) / static_cast<float>(side - 1) : 0.0f;
+    // corners are [00,10,01,11]; bilinear across u then v.
+    const vector3df bottom = corners[0] + (corners[1] - corners[0]) * fu;
+    const vector3df top    = corners[2] + (corners[3] - corners[2]) * fu;
+    return bottom + (top - bottom) * fv;
+}
+
 BrushFace makeFace(const vector3df& a, const vector3df& b, const vector3df& c,
                    const std::string& material)
 {
@@ -429,6 +498,93 @@ Brush makeCylinder(const aabbox3df& box, int sides, const std::string& material)
 
     for (auto& f : b.faces)
         orientOutward(f, c);
+    rebuild(b);
+    return b;
+}
+
+Brush makeExtrudedPolygon(const std::vector<vector3df>& points,
+                          const vector3df& normal, float depth,
+                          const std::string& material)
+{
+    Brush b;
+    if (points.size() < 3 || depth <= 0.0f)
+        return b;
+
+    vector3df n = normal;
+    if (n.getLengthSQ() < 1e-8f)
+        return b;
+    n.normalize();
+
+    // In-plane basis for 2D hulling
+    vector3df t = n.crossProduct(
+        (std::fabs(n.Y) < 0.9f) ? vector3df(0, 1, 0) : vector3df(1, 0, 0));
+    t.normalize();
+    const vector3df bt = n.crossProduct(t);
+
+    // Snap, weld duplicates, project to the (t, bt) plane basis
+    struct P2 { float u, v; vector3df w; };
+    std::vector<P2> pts;
+    pts.reserve(points.size());
+    for (const auto& raw : points)
+    {
+        const vector3df q = quantize(raw);
+        bool dup = false;
+        for (const auto& e : pts)
+            if (e.w.getDistanceFromSQ(q) < WELD_EPSILON * WELD_EPSILON) { dup = true; break; }
+        if (!dup)
+            pts.push_back({ q.dotProduct(t), q.dotProduct(bt), q });
+    }
+    if (pts.size() < 3)
+        return b;
+
+    // 2D convex hull, Andrew's monotone chain.  Strict turns only (<= drops
+    // collinear points), so the hull is minimal; fully collinear input yields
+    // fewer than 3 hull points and is rejected.
+    std::sort(pts.begin(), pts.end(), [](const P2& a, const P2& c)
+              { return a.u < c.u || (a.u == c.u && a.v < c.v); });
+    auto cross2 = [](const P2& o, const P2& a, const P2& c)
+                  { return (a.u - o.u) * (c.v - o.v) - (a.v - o.v) * (c.u - o.u); };
+
+    const size_t np = pts.size();
+    std::vector<P2> hull(2 * np);
+    size_t k = 0;
+    for (size_t i = 0; i < np; i++)
+    {
+        while (k >= 2 && cross2(hull[k - 2], hull[k - 1], pts[i]) <= 0.0f) k--;
+        hull[k++] = pts[i];
+    }
+    const size_t lower = k + 1;
+    for (size_t i = np - 1; i-- > 0; )
+    {
+        while (k >= lower && cross2(hull[k - 2], hull[k - 1], pts[i]) <= 0.0f) k--;
+        hull[k++] = pts[i];
+    }
+    hull.resize(k - 1);
+
+    if (hull.size() < 3 || hull.size() + 2 > static_cast<size_t>(MAX_FACES))
+        return b;
+
+    // Side faces through consecutive hull edges along the extrusion, plus the
+    // two caps.  orientOutward fixes any winding slips against the centroid.
+    const vector3df ext = n * depth;
+    const size_t hn = hull.size();
+    for (size_t i = 0; i < hn; i++)
+    {
+        const vector3df& p0 = hull[i].w;
+        const vector3df& p1 = hull[(i + 1) % hn].w;
+        b.faces.push_back(makeFace(p0, p1, p0 - ext, material));
+    }
+    b.faces.push_back(makeFace(hull[0].w, hull[1].w, hull[2].w, material));
+    b.faces.push_back(makeFace(hull[0].w - ext, hull[2].w - ext, hull[1].w - ext, material));
+
+    vector3df centroid(0, 0, 0);
+    for (const auto& h : hull)
+        centroid += h.w;
+    centroid /= static_cast<float>(hn);
+    centroid -= ext * 0.5f;
+    for (auto& f : b.faces)
+        orientOutward(f, centroid);
+
     rebuild(b);
     return b;
 }
@@ -531,6 +687,28 @@ std::vector<Brush> carve(const Brush& target, const Brush& carver)
     Brush current = target;
     for (const auto& cf : carver.faces)
     {
+        // Classify the remainder against the plane BEFORE clipping.  A plane
+        // that merely grazes it (e.g. a carver face coincident with a target
+        // face — routine when an outline edge lies on the brush boundary, or
+        // when carver and target share a wall) must not go through clipBrush:
+        // the duplicated face invalidates the inside piece and the remainder
+        // would be dropped as if consumed.
+        int numFront = 0, numBack = 0;
+        for (const auto& v : current.verts)
+        {
+            const float d = cf.plane.getDistanceTo(v);
+            if      (d >  ON_EPSILON) numFront++;
+            else if (d < -ON_EPSILON) numBack++;
+        }
+        if (numFront == 0)
+            continue;               // nothing outside this plane — skip it
+        if (numBack == 0)
+        {
+            // Remainder is entirely outside the carver's volume
+            fragments.push_back(current);
+            return fragments;
+        }
+
         // Reuse the carver face's exact quantized points for the cut face
         BrushFace proto = cutProto;
         proto.planePoints[0] = cf.planePoints[0];
@@ -762,6 +940,60 @@ int runSelfTests()
         check(std::fabs(q.X - 128.0f * GRID_QUANTUM) < 1e-6f ||
               std::fabs(q.X * 128.0f - std::floor(q.X * 128.0f + 0.5f)) < 1e-4f,
               "quantize on grid");
+    }
+
+    // 14. Extruded polygon: sloppy point order + interior point are hulled;
+    //     the stamp cutout carves a through-hole
+    {
+        // Square on the +Y plane at y=1, clicked out of order, with a point
+        // inside the square that the hull must discard
+        std::vector<vector3df> pts = {
+            { 0, 1, 0 }, { 2, 1, 2 }, { 2, 1, 0 }, { 0, 1, 2 }, { 1, 1, 1 } };
+        Brush prism = makeExtrudedPolygon(pts, vector3df(0, 1, 0), 1.0f);
+        check(prism.geometryValid, "extruded polygon valid");
+        check(prism.faces.size() == 6, "extruded square is a box (interior point hulled away)");
+        check(prism.bounds.MinEdge.equals(vector3df(0, 0, 0), 0.01f) &&
+              prism.bounds.MaxEdge.equals(vector3df(2, 1, 2), 0.01f), "extruded polygon bounds");
+
+        // Collinear input is rejected
+        std::vector<vector3df> line = { { 0, 1, 0 }, { 1, 1, 0 }, { 2, 1, 0 } };
+        check(!makeExtrudedPolygon(line, vector3df(0, 1, 0), 1.0f).geometryValid,
+              "collinear outline rejected");
+
+        // Carving the prism through a bigger box yields fragments whose total
+        // count is > 1 and none of which contain the hole's center
+        Brush slab = makeBox(aabbox3df(vector3df(-2, 0.25f, -2), vector3df(4, 0.75f, 4)));
+        std::vector<Brush> frags = carve(slab, prism);
+        check(frags.size() > 1, "stamp carve splits the slab");
+        bool holeOpen = true;
+        for (const auto& f : frags)
+            if (containsPoint(f, vector3df(1, 0.5f, 1)))
+                holeOpen = false;
+        check(holeOpen, "stamp carve opens a through-hole");
+    }
+
+    // 15. Corner cut: carver planes coincident with target faces must not eat
+    //     the target (regression — grazing planes used to invalidate the
+    //     remainder inside carve and everything vanished)
+    {
+        Brush box = makeBox(aabbox3df(vector3df(0, 0, 0), vector3df(4, 1, 4)));
+        // Prism over the box's (0,·,0) corner: two side planes lie exactly on
+        // the box's x=0 and z=0 faces, poking through vertically with margin
+        std::vector<vector3df> corner = {
+            { 0, 1.1f, 0 }, { 1, 1.1f, 0 }, { 1, 1.1f, 1 }, { 0, 1.1f, 1 } };
+        Brush cornerPrism = makeExtrudedPolygon(corner, vector3df(0, 1, 0), 1.3f);
+        check(cornerPrism.geometryValid, "corner prism valid");
+
+        std::vector<Brush> frags = carve(box, cornerPrism);
+        check(!frags.empty(), "corner carve keeps the remainder");
+        bool cornerGone = true, bodyKept = false;
+        for (const auto& f : frags)
+        {
+            if (containsPoint(f, vector3df(0.5f, 0.5f, 0.5f))) cornerGone = false;
+            if (containsPoint(f, vector3df(2.5f, 0.5f, 2.5f))) bodyKept = true;
+        }
+        check(cornerGone, "corner carve removes the corner");
+        check(bodyKept, "corner carve keeps the body");
     }
 
     if (failures == 0)

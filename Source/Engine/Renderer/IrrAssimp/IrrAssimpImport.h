@@ -1,6 +1,7 @@
 #ifndef IRRASSIMPIMPORT_H
 #define IRRASSIMPIMPORT_H
 
+#include <set>
 #include <string>
 #include <vector>
 #include <ISkinnedMesh.h>
@@ -68,7 +69,16 @@ class IrrAssimpImport : public irr::scene::IMeshLoader
         void collectVisibleMeshes(const aiNode* node, irr::core::array<bool>& visible);
         void writeAnimFile();
 
+        // Node transform baking — see bakeStaticNodeTransforms() for the why
+        void markAnimatedNodes(const aiNode* node, bool parentAnimated);
+        void remapAttachedMeshes();
+        void bakeStaticNodeTransforms();
+
         irr::core::array<bool> m_visibleMeshes;
+        // Assimp mesh index -> mesh buffer index, -1 when the mesh was skipped
+        irr::core::array<irr::s32> m_meshBufferIndex;
+        irr::core::array<bool> m_bufferSkinned;   // buffer index -> has weights
+        std::set<std::string> m_animatedNodes;    // node names an animation moves
         std::vector<AnimRange> m_animRanges;
 
         // skinning

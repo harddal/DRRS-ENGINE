@@ -1,6 +1,7 @@
 #include "Engine/World/WorldManager.h"
 
 #include "Engine/Brush/BrushManager.h"
+#include "Engine/Diagnostics/HeapProbe.h"
 #include "Engine/Script/Bindings.h"
 #include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Physics/PhysicsManager.h"
@@ -385,6 +386,10 @@ void WorldManager::queueSceneSave(const std::string& file)
 
 void WorldManager::importScene(const std::string& file)
 {
+	// --- heap-corruption bisect (temporary; see Engine/Diagnostics/HeapProbe.h)
+	HEAP_PROBE_CHECK("importScene:enter");
+	HEAP_PROBE_GLTF("importScene:enter", g_heapProbeGltfAsset);
+
 	const bool isZip = file.size() >= 4 &&
 	                   file.compare(file.size() - 4, 4, ".pak") == 0;
 
@@ -453,10 +458,17 @@ void WorldManager::importScene(const std::string& file)
 			}
 			std::remove(tmpBrushes.c_str());
 
+			// Brush deserialize also runs compileAll -> PhysX cooking, the
+			// prime suspect for the heap writer
+			HEAP_PROBE_CHECK("after:brush-deserialize+compile");
+			HEAP_PROBE_GLTF("after:brush-deserialize+compile", g_heapProbeGltfAsset);
+
 			// Reattach baked chunk lightmaps — must follow deserialize
 			// (compileAll has recreated the chunks, clean) while the zip is
 			// still mounted so getTexture/createAndOpenFile resolve inside it
 			BrushManager::Get()->loadChunkLightmaps(fs, driver);
+
+			HEAP_PROBE_CHECK("after:brush-lightmaps");
 		}
 		else if (brushFile)
 		{
@@ -465,6 +477,10 @@ void WorldManager::importScene(const std::string& file)
 
 		deserializeEntity(tmpScn, _entity_null_value, true);
 		std::remove(tmpScn.c_str());
+
+		// Entity load = mesh imports + PhysX actor cooking + script VM
+		HEAP_PROBE_CHECK("after:entity-deserialize");
+		HEAP_PROBE_GLTF("after:entity-deserialize", g_heapProbeGltfAsset);
 
 		// Apply baked lightmaps — the zip is still mounted so driver->getTexture
 		// and fs->createAndOpenFile find the lightmap files transparently
@@ -516,6 +532,9 @@ void WorldManager::importScene(const std::string& file)
 			}
 		}
 
+		HEAP_PROBE_CHECK("after:navmesh");
+		HEAP_PROBE_GLTF("after:navmesh", g_heapProbeGltfAsset);
+
 		fs->removeFileArchive(fs->getFileArchiveCount() - 1);
 	}
 	else
@@ -523,6 +542,9 @@ void WorldManager::importScene(const std::string& file)
 		// Loose .scn — original behaviour unchanged
 		deserializeEntity(file, _entity_null_value, true);
 	}
+
+	HEAP_PROBE_CHECK("importScene:exit");
+	HEAP_PROBE_GLTF("importScene:exit", g_heapProbeGltfAsset);
 
 	// Common post-load steps
 	auto &entities = world()->getEntities();
@@ -536,6 +558,7 @@ void WorldManager::importScene(const std::string& file)
 
 	RenderManager::Get()->sceneManager()->setAmbientLight(m_currentSceneDescriptor.ambient_light);
 	RenderManager::Get()->swapSkyDomeTexture(m_currentSceneDescriptor.skydome_texture);
+	RenderManager::Get()->setEnvMap(m_currentSceneDescriptor.envmap_texture);
 
 	RenderManager::Get()->setPostProcessPassEnabled("fxaa", m_currentSceneDescriptor.useFXAA);
 	RenderManager::Get()->setBloomEnabled(m_currentSceneDescriptor.useBloom);

@@ -12,6 +12,7 @@ namespace GLExt
                                       GLint, GLint, GLint, GLint,
                                       GLbitfield, GLenum)                              = nullptr;
     void (__stdcall* ActiveTexture)(GLenum)                                            = nullptr;
+    void (__stdcall* GenerateMipmap)(GLenum)                                           = nullptr;
     void (__stdcall* GenBuffers)(GLsizei, GLuint*)                                     = nullptr;
     void (__stdcall* DeleteBuffers)(GLsizei, const GLuint*)                            = nullptr;
     void (__stdcall* BindBuffer)(GLenum, GLuint)                                       = nullptr;
@@ -42,6 +43,7 @@ namespace GLExt
         GLEXT_LOAD(BindFramebuffer,      "glBindFramebuffer");
         GLEXT_LOAD(BlitFramebuffer,      "glBlitFramebuffer");
         GLEXT_LOAD(ActiveTexture,        "glActiveTexture");
+        GLEXT_LOAD(GenerateMipmap,       "glGenerateMipmap");
         GLEXT_LOAD(GenBuffers,           "glGenBuffers");
         GLEXT_LOAD(DeleteBuffers,        "glDeleteBuffers");
         GLEXT_LOAD(BindBuffer,           "glBindBuffer");

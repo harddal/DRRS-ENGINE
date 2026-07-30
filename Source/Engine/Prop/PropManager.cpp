@@ -197,29 +197,16 @@ void PropManager::spawnNode(StaticProp& prop)
     auto* smgr   = RenderManager::Get()->sceneManager();
     auto* driver = RenderManager::Get()->driver();
 
-    // Load mesh (mirrors RenderSystem::setMeshComponentData logic)
-    const std::string ext = Utility::FileExtensionFromPath(prop.mesh);
-    if (ext == "glb" || ext == "gltf")
+    // Extension-routed load. Goes through RenderManager::loadMesh so props get
+    // the same backend routing AND the same exception containment as every
+    // other caller — this used to hand-roll the dispatch, leaving the glTF
+    // branch unguarded while only the fbx branch had a try/catch.
+    prop.trimesh = RenderManager::Get()->loadMesh(prop.mesh);
+    if (!prop.trimesh)
     {
-        // fastgltf backend; fall back to Assimp if it can't load the file
-        prop.trimesh = RenderManager::Get()->gltf()->getMesh(prop.mesh.c_str());
-        if (!prop.trimesh)
-            prop.trimesh = RenderManager::Get()->assimp()->getMesh(prop.mesh.c_str());
+        spdlog::error("PropManager::spawnNode: failed to load '{}'", prop.mesh);
+        return;
     }
-    else if (ext == "fbx")
-    {
-        try
-        {
-            prop.trimesh = RenderManager::Get()->assimp()->getMesh(prop.mesh.c_str());
-        }
-        catch (const std::exception& e)
-        {
-            spdlog::error("PropManager::spawnNode: Assimp failed to load '{}': {}", prop.mesh, e.what());
-            return;
-        }
-    }
-    else
-        prop.trimesh = smgr->getMesh(prop.mesh.c_str());
 
     if (!prop.trimesh)
     {
