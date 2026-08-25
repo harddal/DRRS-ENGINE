@@ -36,5 +36,5 @@ private:
 	bool m_isEquipping   = false;  // playing "equip", hand off to idle when it ends
 	bool m_isUnequipping = false;  // playing "unequip", hide the node when it ends
 	int  m_contactFrame  = 0;
-	unsigned int m_attackDamage = 10;
+	unsigned int m_attackDamage = 25; // Overwritten by struct MeleeAttack at top of *.cpp for multi attacks
 };

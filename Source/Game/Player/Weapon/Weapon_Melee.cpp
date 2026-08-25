@@ -29,11 +29,11 @@ namespace
 	};
 
 	// clip 34-52, extension plateaus 37-42
-	constexpr MeleeAttack kLightA { "fire1", 37, 10 };
+	constexpr MeleeAttack kLightA { "fire1", 37, 25 };
 	// clip 53-69, sharp extension peak at 54
-	constexpr MeleeAttack kLightB { "fire2", 55, 10 };
+	constexpr MeleeAttack kLightB { "fire2", 55, 25 };
 	// clip 71-89, extension plateaus 75-80
-	constexpr MeleeAttack kHeavy  { "fire3", 75, 25 };
+	constexpr MeleeAttack kHeavy  { "fire3", 75, 40 };
 	// clip 90-110, sharp extension peak at 93 — authored but not yet bound to input
 	constexpr MeleeAttack kStab   { "stab",  93, 20 };
 }

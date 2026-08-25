@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 #include <spdlog/spdlog.h>
 
@@ -221,6 +222,141 @@ namespace
         const plane3df pl(f.planePoints[0], f.planePoints[1], f.planePoints[2]);
         if (pl.getDistanceTo(interior) > 0.0f)
             std::swap(f.planePoints[1], f.planePoints[2]);
+    }
+
+    // ------------------------------------------------------------------
+    // parametric-primitive helpers (stairs / arch)
+    // ------------------------------------------------------------------
+
+    inline bool axisIsX(BrushGeometry::BrushAxis a)
+    {
+        return a == BrushGeometry::BrushAxis::PLUS_X ||
+               a == BrushGeometry::BrushAxis::MINUS_X;
+    }
+
+    inline bool axisIsNegative(BrushGeometry::BrushAxis a)
+    {
+        return a == BrushGeometry::BrushAxis::MINUS_X ||
+               a == BrushGeometry::BrushAxis::MINUS_Z;
+    }
+
+    // Stair layout in whole grid quanta, shared by makeStairs and
+    // makeStairClipRamp so the two can never disagree about the effective step
+    // count.  Working in integers is what makes every tread edge and every
+    // riser STRICTLY increasing by construction: once the step count is clamped
+    // to at most the number of quanta available on an axis, adding runQ >= n to
+    // the numerator always bumps the quotient, so no float rounding can collapse
+    // two steps together or leave the top step short of the box.
+    struct StairLayout
+    {
+        int              steps = 0;     // effective count after clamping
+        std::vector<int> edgeQ;         // steps+1 tread edges, quanta from the low end
+        std::vector<int> riseQ;         // steps riser tops, quanta above the floor
+    };
+
+    bool buildStairLayout(float run, float rise, int requested, StairLayout& out)
+    {
+        const float q = BrushGeometry::GRID_QUANTUM;
+        const int runQ  = static_cast<int>(std::floor(run  / q + 0.5f));
+        const int riseQ = static_cast<int>(std::floor(rise / q + 0.5f));
+        if (runQ < 1 || riseQ < 1)
+            return false;
+
+        // Two quanta, not one, is the real minimum feature size: ON_EPSILON
+        // (~0.008) is slightly LARGER than one quantum (0.0078125), so a
+        // one-quantum-thick box has its opposing faces inside the point-on-plane
+        // tolerance and rebuild() collapses it.
+        int n = requested;
+        if (n < 1)          n = 1;
+        if (n > 64)         n = 64;
+        if (n > runQ  / 2)  n = runQ  / 2;
+        if (n > riseQ / 2)  n = riseQ / 2;
+        if (n < 1)
+            return false;
+
+        out.steps = n;
+        out.edgeQ.resize(static_cast<size_t>(n) + 1);
+        out.riseQ.resize(static_cast<size_t>(n));
+        for (int i = 0; i <= n; i++)
+            out.edgeQ[static_cast<size_t>(i)] = (runQ * i + n / 2) / n;
+        for (int i = 0; i < n; i++)
+            out.riseQ[static_cast<size_t>(i)] = (riseQ * (i + 1) + n / 2) / n;
+        return true;
+    }
+
+    // Basis for a solid of revolution.  `aDir` points at the TAPERED end and
+    // uDir/vDir span the ring plane.  The PLUS_Y case reproduces makeCylinder's
+    // original parametrization exactly (cos on X, sin on Z), so a cylinder built
+    // through makeCone comes out vertex-for-vertex identical.
+    void revolveBasis(BrushGeometry::BrushRevolveAxis a,
+                      vector3df& aDir, vector3df& uDir, vector3df& vDir)
+    {
+        typedef BrushGeometry::BrushRevolveAxis RA;
+        switch (a)
+        {
+        case RA::PLUS_X:  aDir.set( 1, 0, 0); uDir.set(0, 0, 1); vDir.set(0, 1, 0); break;
+        case RA::MINUS_X: aDir.set(-1, 0, 0); uDir.set(0, 0, 1); vDir.set(0, 1, 0); break;
+        case RA::PLUS_Z:  aDir.set(0, 0,  1); uDir.set(1, 0, 0); vDir.set(0, 1, 0); break;
+        case RA::MINUS_Z: aDir.set(0, 0, -1); uDir.set(1, 0, 0); vDir.set(0, 1, 0); break;
+        case RA::MINUS_Y: aDir.set(0, -1, 0); uDir.set(1, 0, 0); vDir.set(0, 0, 1); break;
+        case RA::PLUS_Y:
+        default:          aDir.set(0,  1, 0); uDir.set(1, 0, 0); vDir.set(0, 0, 1); break;
+        }
+    }
+
+    // Prism over an already-convex, already-quantized cross-section polygon
+    // lying in the plane through `pts` with outward normal `n`, extruded
+    // `depth` units along -n.
+    //
+    // Unlike makeExtrudedPolygon this does NO hulling and NO reordering: the
+    // callers are generators whose points are computed exactly, so face order
+    // stays deterministic (one side face per polygon edge, then the +n cap,
+    // then the -n cap).  Consecutive duplicates are welded, so a degenerate
+    // collapse (a one-step ramp, a hair-thin voussoir) falls back to a
+    // lower-order prism instead of an invalid brush.  Winding-agnostic:
+    // orientOutward fixes the normals against the centroid.
+    Brush prismFromPolygon(const std::vector<vector3df>& pts, const vector3df& n,
+                           float depth, const std::string& material)
+    {
+        Brush b;
+        if (pts.size() < 3 || depth < BrushGeometry::GRID_QUANTUM)
+            return b;
+
+        const float weldSQ = BrushGeometry::WELD_EPSILON * BrushGeometry::WELD_EPSILON;
+        std::vector<vector3df> poly;
+        poly.reserve(pts.size());
+        for (size_t i = 0; i < pts.size(); i++)
+        {
+            if (!poly.empty() && poly.back().getDistanceFromSQ(pts[i]) < weldSQ)
+                continue;
+            poly.push_back(pts[i]);
+        }
+        while (poly.size() > 1 &&
+               poly.front().getDistanceFromSQ(poly.back()) < weldSQ)
+            poly.pop_back();
+
+        const size_t np = poly.size();
+        if (np < 3 || np + 2 > static_cast<size_t>(BrushGeometry::MAX_FACES))
+            return b;
+
+        const vector3df ext = n * depth;
+        for (size_t i = 0; i < np; i++)
+            b.faces.push_back(BrushGeometry::makeFace(poly[i], poly[(i + 1) % np],
+                                                      poly[i] - ext, material));
+        b.faces.push_back(BrushGeometry::makeFace(poly[0], poly[1], poly[2], material));
+        b.faces.push_back(BrushGeometry::makeFace(poly[0] - ext, poly[2] - ext,
+                                                  poly[1] - ext, material));
+
+        vector3df centroid(0, 0, 0);
+        for (size_t i = 0; i < np; i++)
+            centroid += poly[i];
+        centroid /= static_cast<float>(np);
+        centroid -= ext * 0.5f;
+        for (auto& f : b.faces)
+            orientOutward(f, centroid);
+
+        BrushGeometry::rebuild(b);
+        return b;
     }
 }
 
@@ -459,47 +595,150 @@ Brush makeWedge(const aabbox3df& box, const std::string& material)
     return b;
 }
 
-Brush makeCylinder(const aabbox3df& box, int sides, const std::string& material)
+static Brush makeConeOnce(const aabbox3df& box, int sides, float topScale,
+                          BrushRevolveAxis axis, const std::string& material)
 {
     Brush b;
-    if (sides < 3) sides = 3;
+    if (sides < 3)  sides = 3;
     if (sides > 32) sides = 32;
+    if (topScale < 0.0f) topScale = 0.0f;
+    // Above 1 the top ring would escape the box; flare the other way with the
+    // negative axis instead, which keeps the box-inscribed contract.
+    if (topScale > 1.0f) topScale = 1.0f;
 
     const vector3df m = quantize(box.MinEdge);
     const vector3df M = quantize(box.MaxEdge);
-    const float cx = (m.X + M.X) * 0.5f;
-    const float cz = (m.Z + M.Z) * 0.5f;
-    const float rx = (M.X - m.X) * 0.5f;
-    const float rz = (M.Z - m.Z) * 0.5f;
-    const vector3df c(cx, (m.Y + M.Y) * 0.5f, cz);
+    const vector3df c   = (m + M) * 0.5f;
+    const vector3df ext = M - m;
 
-    // Polygon corners are snapped to the grid FIRST so the side planes exactly
+    vector3df aDir, uDir, vDir;
+    revolveBasis(axis, aDir, uDir, vDir);
+
+    const float hA = std::fabs(ext.dotProduct(aDir)) * 0.5f;
+    const float rU = std::fabs(ext.dotProduct(uDir)) * 0.5f;
+    const float rV = std::fabs(ext.dotProduct(vDir)) * 0.5f;
+    if (hA < GRID_QUANTUM || rU < GRID_QUANTUM || rV < GRID_QUANTUM)
+        return b;
+
+    // Snap to a true apex when the top ring is finer than the grid can express.
+    // Both the RADIUS and the CHORD have to clear two quanta: an elongated box
+    // can leave a top ring whose radius looks fine while its chord — which is
+    // what separates adjacent side planes — is sub-grid, and near-coincident
+    // side planes make the whole plane set non-convex.  A ring that small is a
+    // point in all but name, so building the honest cone is the right answer.
+    const float minFeature = GRID_QUANTUM * 2.0f;
+    const float rTopMin    = ((rU < rV) ? rU : rV) * topScale;
+    const float topChord   = 2.0f * rTopMin * std::sin(PI / static_cast<float>(sides));
+    const bool  apex = (rTopMin < minFeature) || (topChord < minFeature);
+
+    // Deliberately NOT quantized.  The axial component already lands exactly on
+    // the box face (c +/- hA collapses to m or M, both quantized), while the
+    // in-plane components stay the exact centre — snapping those first and then
+    // adding the radius compounds two roundings and pushes the ring outside the
+    // box on small brushes.  Only the finished ring points are quantized, which
+    // is what makeCylinder always did.
+    const vector3df baseC = c - aDir * hA;      // wide end
+    const vector3df topC  = c + aDir * hA;      // tapered end
+
+    // Base ring corners are snapped to the grid FIRST so the side planes exactly
     // reproduce them on rebuild.
-    std::vector<vector3df> bottom(sides);
+    std::vector<vector3df> base(static_cast<size_t>(sides));
     for (int i = 0; i < sides; i++)
     {
         const float phi = 2.0f * PI * static_cast<float>(i) / static_cast<float>(sides);
-        bottom[i] = quantize(vector3df(cx + std::cos(phi) * rx, m.Y, cz + std::sin(phi) * rz));
+        const float cs = std::cos(phi), sn = std::sin(phi);
+        base[static_cast<size_t>(i)] =
+            quantize(baseC + uDir * (cs * rU) + vDir * (sn * rV));
     }
 
+    // Side planes.  The third point is derived from the QUANTIZED base corner by
+    // the exact taper — deliberately NOT quantized itself.  With
+    // t_i = topC + s*(b_i - baseC), the identity
+    //     t_1 = b_1 + (t_0 - b_0) + (s - 1)*(b_1 - b_0)
+    // puts t_1 exactly on the plane through b_0, b_1, t_0, so every side quad is
+    // exactly planar.  Snapping the top ring independently instead breaks that
+    // by up to a quantum, which for a small top ring is enough to make the whole
+    // plane set non-convex and get the brush rejected.
+    // The formula also unifies the three cases: s = 0 gives t_i == topC (the
+    // apex), and s = 1 gives an exact on-grid translate of the base ring (the
+    // cylinder, unchanged from before).
     for (int i = 0; i < sides; i++)
     {
-        const vector3df& b0 = bottom[i];
-        const vector3df& b1 = bottom[(i + 1) % sides];
+        const vector3df& b0 = base[static_cast<size_t>(i)];
+        const vector3df& b1 = base[static_cast<size_t>((i + 1) % sides)];
+        const vector3df  t0 = topC + (b0 - baseC) * topScale;
         if (b0.getDistanceFromSQ(b1) < GRID_QUANTUM * GRID_QUANTUM)
             continue;   // radius too small for this side count; neighbors merged by snapping
-        const vector3df t0(b0.X, M.Y, b0.Z);
+        if (b0.getDistanceFromSQ(t0) < GRID_QUANTUM * GRID_QUANTUM)
+            continue;
         b.faces.push_back(makeFace(b0, t0, b1, material));
     }
+    if (b.faces.size() < 3)
+        return b;
 
-    // Caps
-    b.faces.push_back(makeFace({ m.X, M.Y, m.Z }, { m.X, M.Y, M.Z }, { M.X, M.Y, m.Z }, material)); // +Y
-    b.faces.push_back(makeFace({ m.X, m.Y, m.Z }, { M.X, m.Y, m.Z }, { m.X, m.Y, M.Z }, material)); // -Y
+    // Caps from the axis frame rather than from ring points: three quantized
+    // ring points need not be exactly coplanar-perpendicular, and a tilted cap
+    // plane is what turns a tall thin cone into a rejected brush.  A centre plus
+    // two unit basis offsets is exactly on-grid and exactly perpendicular.
+    // The +axis cap is pushed first to preserve makeCylinder's face order.
+    if (!apex)
+        b.faces.push_back(makeFace(topC, topC + uDir, topC + vDir, material));
+    b.faces.push_back(makeFace(baseC, baseC + uDir, baseC + vDir, material));
 
     for (auto& f : b.faces)
         orientOutward(f, c);
     rebuild(b);
     return b;
+}
+
+Brush makeCone(const aabbox3df& box, int sides, float topScale,
+               BrushRevolveAxis axis, const std::string& material)
+{
+    if (sides < 3)  sides = 3;
+    if (sides > 32) sides = 32;
+
+    // Reduce the side count until the plane set both survives rebuild() AND
+    // still fits the box it was asked to fill.
+    //
+    // A narrow taper amplifies the base ring's quantization: the side planes are
+    // pinned by base corners that moved by up to half a quantum, and as those
+    // planes converge toward the tapered end that angular error grows into a
+    // positional one.  Past a certain side count it exceeds WELD_EPSILON and the
+    // top-ring vertices split into near-duplicates that never weld.
+    //
+    // Checking validity alone is NOT enough, and this is the subtle part: when
+    // the top ring collapses far enough, the enumeration finds the rulings'
+    // common apex instead, the top cap contributes no loop and is pruned as
+    // redundant, and rebuild() then SUCCEEDS — handing back a valid brush that
+    // is a full cone running out to the analytic apex, well outside the box.
+    // The box-inscribed contract is what actually distinguishes the shape we
+    // asked for, so test that.  One or two fewer sides is visually
+    // indistinguishable and always beats silently wrong geometry.
+    const vector3df qm = quantize(box.MinEdge);
+    const vector3df qM = quantize(box.MaxEdge);
+    const float tol = ON_EPSILON + GRID_QUANTUM * 2.0f;
+
+    for (int n = sides; n >= 3; n--)
+    {
+        Brush b = makeConeOnce(box, n, topScale, axis, material);
+        if (!b.geometryValid)
+            continue;
+        if (b.bounds.MinEdge.X < qm.X - tol || b.bounds.MaxEdge.X > qM.X + tol ||
+            b.bounds.MinEdge.Y < qm.Y - tol || b.bounds.MaxEdge.Y > qM.Y + tol ||
+            b.bounds.MinEdge.Z < qm.Z - tol || b.bounds.MaxEdge.Z > qM.Z + tol)
+            continue;               // top ring collapsed; this is a cone, not the frustum asked for
+
+        if (n < sides)
+            spdlog::warn("BrushGeometry::makeCone: {} sides do not survive this taper "
+                         "on the grid, reduced to {}", sides, n);
+        return b;
+    }
+    return Brush();
+}
+
+Brush makeCylinder(const aabbox3df& box, int sides, const std::string& material)
+{
+    return makeCone(box, sides, 1.0f, BrushRevolveAxis::PLUS_Y, material);
 }
 
 Brush makeExtrudedPolygon(const std::vector<vector3df>& points,
@@ -589,6 +828,421 @@ Brush makeExtrudedPolygon(const std::vector<vector3df>& points,
     return b;
 }
 
+std::vector<Brush> makeStairs(const aabbox3df& box, const StairParams& p,
+                              const std::string& material)
+{
+    std::vector<Brush> out;
+
+    const vector3df m = quantize(box.MinEdge);
+    const vector3df M = quantize(box.MaxEdge);
+
+    const bool  alongX = axisIsX(p.ascend);
+    const bool  flip   = axisIsNegative(p.ascend);
+    const float aLo = alongX ? m.X : m.Z;       // ascent axis, low world coord
+    const float aHi = alongX ? M.X : M.Z;
+    const float cLo = alongX ? m.Z : m.X;       // cross axis, full extent per step
+    const float cHi = alongX ? M.Z : M.X;
+
+    const float run  = aHi - aLo;
+    const float rise = M.Y - m.Y;
+    if (run < GRID_QUANTUM || rise < GRID_QUANTUM || cHi - cLo < GRID_QUANTUM)
+        return out;
+
+    // Every step needs at least one quantum of tread AND one of riser, else its
+    // plane set collapses.  The integer layout clamps up front so we never emit
+    // a step that rebuild() would only reject afterwards.
+    StairLayout layout;
+    if (!buildStairLayout(run, rise, p.steps, layout))
+        return out;
+    if (layout.steps < p.steps)
+        spdlog::warn("BrushGeometry::makeStairs: {} steps do not fit the grid, clamped to {}",
+                     p.steps, layout.steps);
+
+    out.reserve(static_cast<size_t>(layout.steps));
+    for (int i = 0; i < layout.steps; i++)
+    {
+        const float e0   = flip ? (aHi - layout.edgeQ[i]     * GRID_QUANTUM)
+                                : (aLo + layout.edgeQ[i]     * GRID_QUANTUM);
+        const float e1   = flip ? (aHi - layout.edgeQ[i + 1] * GRID_QUANTUM)
+                                : (aLo + layout.edgeQ[i + 1] * GRID_QUANTUM);
+        const float yTop = m.Y + layout.riseQ[i] * GRID_QUANTUM;
+
+        // Descending edges when ascending along -X/-Z; aabbox3df needs min <= max.
+        const float lo = (e0 < e1) ? e0 : e1;
+        const float hi = (e0 < e1) ? e1 : e0;
+
+        const aabbox3df stepBox =
+            alongX ? aabbox3df(vector3df(lo, m.Y, cLo), vector3df(hi, yTop, cHi))
+                   : aabbox3df(vector3df(cLo, m.Y, lo), vector3df(cHi, yTop, hi));
+
+        Brush s = makeBox(stepBox, material);
+        if (s.geometryValid)
+            out.push_back(std::move(s));
+    }
+    return out;
+}
+
+Brush makeStairClipRamp(const aabbox3df& box, const StairParams& p,
+                        const std::string& material)
+{
+    const vector3df m = quantize(box.MinEdge);
+    const vector3df M = quantize(box.MaxEdge);
+
+    const bool  alongX = axisIsX(p.ascend);
+    const bool  flip   = axisIsNegative(p.ascend);
+    const float aLo = alongX ? m.X : m.Z;
+    const float aHi = alongX ? M.X : M.Z;
+    const float cLo = alongX ? m.Z : m.X;
+    const float cHi = alongX ? M.Z : M.X;
+
+    const float run  = aHi - aLo;
+    const float rise = M.Y - m.Y;
+    if (run < GRID_QUANTUM || rise < GRID_QUANTUM || cHi - cLo < GRID_QUANTUM)
+        return Brush();
+
+    // Same layout the steps themselves use, so the ramp can never disagree with
+    // them about the effective step count after grid clamping.
+    StairLayout layout;
+    if (!buildStairLayout(run, rise, p.steps, layout))
+        return Brush();
+    const int steps = layout.steps;
+
+    // Step i's top is at y0 + rise*(i+1)/N over the tread [a_i, a_i+1].  A ramp
+    // through the nosings would sit at y0 + rise*i/N at the BACK of each tread,
+    // i.e. buried inside the solid step.  Lifting the ramp by exactly one riser
+    // makes it touch each tread's back-top corner and clear the rest.
+    const float aStart = flip ? aHi : aLo;      // low end of the climb
+    const float aEnd   = flip ? (aHi - layout.edgeQ[steps]     * GRID_QUANTUM)
+                              : (aLo + layout.edgeQ[steps]     * GRID_QUANTUM);
+    const float aLast  = flip ? (aHi - layout.edgeQ[steps - 1] * GRID_QUANTUM)
+                              : (aLo + layout.edgeQ[steps - 1] * GRID_QUANTUM);
+    const float yLip   = m.Y + layout.riseQ[0] * GRID_QUANTUM;
+
+    // The pentagon's two distinguishing features — the one-riser lip and the
+    // final clamped tread — must each be at least two quanta.  Below that the
+    // cross-section is finer than the kernel's own resolution (ON_EPSILON is
+    // about one quantum), so rebuild() would reject it as degenerate anyway.
+    // Bail explicitly instead: callers treat an invalid ramp as "no ramp", and
+    // stairs that shallow are climbable without one regardless.  Note the
+    // pentagon cannot be simplified away — dropping the clamped tread makes the
+    // slope shallower, which stops covering the BACK of every tread, and
+    // dropping the lip buries the ramp inside the solid steps entirely.
+    const float minFeature = GRID_QUANTUM * 2.0f;
+    if ((yLip - m.Y) < minFeature || std::fabs(aEnd - aLast) < minFeature)
+        return Brush();
+
+    // Cross-section on the cHi face, extruded across to cLo.  For steps == 1 the
+    // last two points coincide and prismFromPolygon welds them into a plain box.
+    const vector3df n = alongX ? vector3df(0, 0, 1) : vector3df(1, 0, 0);
+    std::vector<vector3df> poly;
+    poly.reserve(5);
+    const float sect[5][2] = {
+        { aStart, m.Y }, { aEnd, m.Y }, { aEnd, M.Y }, { aLast, M.Y }, { aStart, yLip }
+    };
+    for (int i = 0; i < 5; i++)
+    {
+        poly.push_back(alongX ? vector3df(sect[i][0], sect[i][1], cHi)
+                              : vector3df(cHi, sect[i][1], sect[i][0]));
+    }
+    return prismFromPolygon(poly, n, cHi - cLo, material);
+}
+
+// Voussoir band shared by the arch family.
+//
+// `unitCurve` samples the OUTER curve in a normalized frame: X in [-1,1] along
+// the span axis, Y in [-1,1] up from mid-height, so the curve inscribes the box
+// by construction.  Both rings are the same samples scaled by the outer and
+// inner radii, so the band is `wallDepth` thick at the extremes and thins
+// slightly in between — the behaviour makeArch's ellipse has always had, now
+// stated once instead of once per generator.  `closed` wraps the last segment
+// back to sample 0 (a full ring); otherwise the curve carries one more sample
+// than it has segments.
+// Samples an arch's OUTER curve at a given segment count.  Passed to
+// buildVoussoirBand so it can re-sample at a lower count when the geometry that
+// falls out turns out to contain slivers.
+typedef std::function<void(int segs, std::vector<vector2df>& out)> CurveFn;
+
+static std::vector<Brush> buildVoussoirBandOnce(const aabbox3df& box, BrushAxis span,
+                                                const std::vector<vector2df>& unitCurve,
+                                                bool closed, float wallDepth,
+                                                const std::string& material,
+                                                int& outWanted)
+{
+    std::vector<Brush> out;
+
+    const int ringN = static_cast<int>(unitCurve.size());
+    const int segs  = closed ? ringN : ringN - 1;
+    outWanted = segs;
+    if (segs < 1)
+        return out;
+
+    const vector3df m = quantize(box.MinEdge);
+    const vector3df M = quantize(box.MaxEdge);
+
+    const bool  alongX = axisIsX(span);
+    const float sSign  = axisIsNegative(span) ? -1.0f : 1.0f;
+
+    const float rx  = (alongX ? (M.X - m.X) : (M.Z - m.Z)) * 0.5f;   // outer, span axis
+    const float ry  = (M.Y - m.Y) * 0.5f;                            // outer, vertical
+    const float dLo = alongX ? m.Z : m.X;                            // depth axis extent
+    const float dHi = alongX ? M.Z : M.X;
+    const float depth = dHi - dLo;
+    if (rx < GRID_QUANTUM || ry < GRID_QUANTUM || depth < GRID_QUANTUM)
+        return out;
+
+    // Radial band.  Like Hammer this subtracts from both radii rather than
+    // offsetting at constant thickness, so a wide ellipse thins slightly at the
+    // crown.  Two clamps keep it well-conditioned at both extremes:
+    //
+    //  - a thin band needs a real minimum thickness, not merely a representable
+    //    one.  A hair-thin band is a sliver whose faces sit within the kernel's
+    //    own point-on-plane tolerance along its length, so rebuild() discards
+    //    it — and it would z-fight and cook badly even if it survived.  Eight
+    //    quanta (1/16 unit) is the thinnest band that behaves.
+    //  - a thick band floors the inner radii PROPORTIONALLY (10% of their outer
+    //    radius) rather than at a bare minimum, because a sliver inner ellipse
+    //    leaves the END voussoirs so nearly-degenerate that grid snapping tips
+    //    them concave and they are silently lost.
+    const float minBand = GRID_QUANTUM * 8.0f;
+    const float rxFloor = (rx * 0.1f > minBand) ? rx * 0.1f : minBand;
+    const float ryFloor = (ry * 0.1f > minBand) ? ry * 0.1f : minBand;
+    const float wallMax = ((rx - rxFloor) < (ry - ryFloor)) ? (rx - rxFloor) : (ry - ryFloor);
+    if (wallMax < minBand)
+        return out;                 // opening too small to carry a band at all
+    float wall = wallDepth;
+    if (wall < minBand)  wall = minBand;
+    if (wall > wallMax)  wall = wallMax;
+    const float rxIn = rx - wall;
+    const float ryIn = ry - wall;
+
+    const float spanC = alongX ? (m.X + M.X) * 0.5f : (m.Z + M.Z) * 0.5f;
+    const float yC    = (m.Y + M.Y) * 0.5f;
+
+    // Ring points are snapped FIRST (makeCylinder discipline) so the side planes
+    // reproduce them exactly.  A closed ring wraps by modulo onto sample 0, so
+    // the seam is bit-identical and no sliver can appear.
+    const vector3df dDir = alongX ? vector3df(0, 0, 1) : vector3df(1, 0, 0);
+    auto ringPoint = [&](float c, float s, float radSpan, float radY)
+    {
+        const float sp = spanC + sSign * c * radSpan;
+        const float y  = yC + s * radY;
+        return quantize(alongX ? vector3df(sp, y, dHi) : vector3df(dHi, y, sp));
+    };
+
+    std::vector<vector3df> outer(static_cast<size_t>(ringN));
+    std::vector<vector3df> inner(static_cast<size_t>(ringN));
+    for (int i = 0; i < ringN; i++)
+    {
+        const float c = unitCurve[static_cast<size_t>(i)].X;
+        const float s = unitCurve[static_cast<size_t>(i)].Y;
+        outer[i] = ringPoint(c, s, rx,   ry);
+        inner[i] = ringPoint(c, s, rxIn, ryIn);
+    }
+
+    out.reserve(static_cast<size_t>(segs));
+    for (int i = 0; i < segs; i++)
+    {
+        const int j = closed ? ((i + 1) % ringN) : (i + 1);
+        // Skip a voussoir whose in-plane quad has collapsed (tiny radius against
+        // a high segment count, or a band thinner than the grid) — same guard
+        // shape as makeCylinder's merged-neighbour skip.
+        if (outer[i].getDistanceFromSQ(outer[j]) < GRID_QUANTUM * GRID_QUANTUM ||
+            outer[i].getDistanceFromSQ(inner[i]) < GRID_QUANTUM * GRID_QUANTUM)
+        {
+            spdlog::warn("BrushGeometry: voussoir {} degenerate, skipped", i);
+            continue;
+        }
+
+        std::vector<vector3df> quad;
+        quad.reserve(4);
+        quad.push_back(outer[i]);
+        quad.push_back(outer[j]);
+        quad.push_back(inner[j]);
+        quad.push_back(inner[i]);
+
+        Brush v = prismFromPolygon(quad, dDir, depth, material);
+        if (v.geometryValid)
+            out.push_back(std::move(v));
+    }
+    return out;
+}
+
+// Build the band, reducing the segment count until every voussoir survives.
+//
+// A dropped voussoir leaves a visible GAP in the arch, so it is much better to
+// hand back fewer, valid ones.  This is the same principle as the callers' chord
+// clamp, but measured on the geometry that actually came out instead of
+// estimated from the radii — and the estimate cannot see anisotropy.  On a tall
+// narrow opening (rx << ry) the voussoirs near the crown turn into slivers that
+// prismFromPolygon rejects long before the chord estimate says anything is
+// wrong, which silently cost the arch its apex.
+static std::vector<Brush> buildVoussoirBand(const aabbox3df& box, BrushAxis span,
+                                            bool closed, float wallDepth,
+                                            const std::string& material,
+                                            int segsRequested, int segsMin,
+                                            const CurveFn& curveFn)
+{
+    std::vector<vector2df> curve;
+    for (int segs = segsRequested; segs >= segsMin; segs--)
+    {
+        curveFn(segs, curve);
+        int wanted = 0;
+        std::vector<Brush> band =
+            buildVoussoirBandOnce(box, span, curve, closed, wallDepth, material, wanted);
+
+        if (wanted > 0 && static_cast<int>(band.size()) == wanted)
+        {
+            if (segs < segsRequested)
+                spdlog::warn("BrushGeometry: {} segments produced slivers at this shape, "
+                             "reduced to {} so every voussoir survives", segsRequested, segs);
+            return band;
+        }
+    }
+    return std::vector<Brush>();
+}
+
+std::vector<Brush> makeArch(const aabbox3df& box, const ArchParams& p,
+                            const std::string& material)
+{
+    int segs = p.segments;
+    if (segs < 3)  segs = 3;
+    if (segs > 32) segs = 32;
+
+    float arc = p.arcDegrees;
+    if (arc < 10.0f)  arc = 10.0f;
+    if (arc > 360.0f) arc = 360.0f;
+    const bool closed = (arc >= 359.999f);
+
+    const vector3df m = quantize(box.MinEdge);
+    const vector3df M = quantize(box.MaxEdge);
+    const bool  alongX = axisIsX(p.span);
+    const float rx = (alongX ? (M.X - m.X) : (M.Z - m.Z)) * 0.5f;
+    const float ry = (M.Y - m.Y) * 0.5f;
+    if (rx < GRID_QUANTUM || ry < GRID_QUANTUM)
+        return std::vector<Brush>();
+
+    // Clamp the segment count to what the arc can actually express: the chord
+    // between consecutive ring points shrinks with both the sweep and the
+    // smaller radius, and below two quanta the points snap together and the
+    // voussoir is discarded.  The bound uses the OUTER radii — the outer ring
+    // is what must stay distinct, whereas inner points collapsing merely welds
+    // a voussoir's quad down to a triangle, which prismFromPolygon handles.
+    // Clamping here means the caller gets fewer, valid voussoirs instead of a
+    // silently gap-toothed arch.
+    const float sweep   = arc * PI / 180.0f;
+    const float rOutMin = (rx < ry) ? rx : ry;
+    const int   segsMax = static_cast<int>(rOutMin * sweep / (GRID_QUANTUM * 2.0f));
+    if (segs > segsMax)
+    {
+        spdlog::warn("BrushGeometry::makeArch: {} segments do not fit a {:.0f} degree arc "
+                     "at this radius, clamped to {}", segs, arc, segsMax);
+        segs = segsMax;
+    }
+    if (segs < 3)
+        return std::vector<Brush>();    // arc too fine to express on the grid
+
+    const float start = p.startDegrees * PI / 180.0f;
+    CurveFn curveFn = [start, sweep, closed](int n, std::vector<vector2df>& out)
+    {
+        const int ringN = closed ? n : n + 1;
+        out.resize(static_cast<size_t>(ringN));
+        for (int i = 0; i < ringN; i++)
+        {
+            const float th = start + sweep * static_cast<float>(i) / static_cast<float>(n);
+            out[static_cast<size_t>(i)] = vector2df(std::cos(th), std::sin(th));
+        }
+    };
+    return buildVoussoirBand(box, p.span, closed, p.wallDepth, material, segs, 3, curveFn);
+}
+
+// Unit gothic curve: springing (-1,0) -> apex (0,1) -> springing (+1,0).
+//
+// Two circular arcs of radius Rc = 1 + d centred at (+d,0) and (-d,0), d being
+// the pointiness.  d = 0 puts both centres on the axis and the curve IS a
+// semicircle; d = 1 centres each arc on the OPPOSITE springing with radius equal
+// to the full span — the equilateral gothic.
+//
+// The raw apex sits at h = sqrt(Rc^2 - d^2) = sqrt(1 + 2d)  (1 at d = 0, sqrt(3)
+// at d = 1).  Dividing Y by h renormalizes it to 1, so the arch inscribes its
+// box exactly whatever the pointiness: the extents stay pinned by the box and
+// `pointiness` is a pure shape control, never a size one.
+static void gothicUnitCurve(int segsPerSide, float pointiness,
+                            std::vector<vector2df>& out)
+{
+    float d = pointiness;
+    if (d < 0.0f) d = 0.0f;
+    if (d > 1.0f) d = 1.0f;
+
+    const float rc     = 1.0f + d;
+    const float h      = std::sqrt(1.0f + 2.0f * d);
+    const float thApex = std::acos(-d / rc);     // where the left arc crosses x = 0
+
+    out.clear();
+    out.reserve(static_cast<size_t>(2 * segsPerSide + 1));
+
+    // Left arc, theta from PI (the -1 springing) down to thApex.  At theta = PI
+    // this gives X = d + rc*(-1) = -1 and Y = 0 exactly.
+    for (int i = 0; i < segsPerSide; i++)
+    {
+        const float th = PI + (thApex - PI) * static_cast<float>(i)
+                                            / static_cast<float>(segsPerSide);
+        out.push_back(vector2df(d + rc * std::cos(th), rc * std::sin(th) / h));
+    }
+
+    // The apex ONCE, written analytically rather than evaluated: both centre
+    // voussoirs then quantize the identical ring point, so no sliver can open at
+    // the seam.  (At thApex, cos = -d/rc gives X = 0 and sin = h/rc gives Y = 1,
+    // so this is the exact value, not an approximation.)
+    out.push_back(vector2df(0.0f, 1.0f));
+
+    // Right arc = the left samples mirrored, so the arch is exactly symmetric
+    // and the +1 springing is exact rather than a second acos round-trip.
+    for (int i = segsPerSide - 1; i >= 0; i--)
+        out.push_back(vector2df(-out[static_cast<size_t>(i)].X,
+                                 out[static_cast<size_t>(i)].Y));
+}
+
+std::vector<Brush> makeGothicArch(const aabbox3df& box, const GothicArchParams& p,
+                                  const std::string& material)
+{
+    int segs = p.segments;
+    if (segs < 2)  segs = 2;
+    if (segs > 16) segs = 16;
+
+    const vector3df m = quantize(box.MinEdge);
+    const vector3df M = quantize(box.MaxEdge);
+    const bool  alongX = axisIsX(p.span);
+    const float rx = (alongX ? (M.X - m.X) : (M.Z - m.Z)) * 0.5f;
+    const float ry = (M.Y - m.Y) * 0.5f;
+    if (rx < GRID_QUANTUM || ry < GRID_QUANTUM)
+        return std::vector<Brush>();
+
+    float d = p.pointiness;
+    if (d < 0.0f) d = 0.0f;
+    if (d > 1.0f) d = 1.0f;
+
+    // Same chord clamp makeArch uses, applied to ONE arc's sweep.
+    const float rc      = 1.0f + d;
+    const float sweep   = PI - std::acos(-d / rc);
+    const float rOutMin = (rx < ry) ? rx : ry;
+    const int   segsMax = static_cast<int>(rOutMin * sweep / (GRID_QUANTUM * 2.0f));
+    if (segs > segsMax)
+    {
+        spdlog::warn("BrushGeometry::makeGothicArch: {} segments per side do not fit at "
+                     "this radius, clamped to {}", segs, segsMax);
+        segs = segsMax;
+    }
+    if (segs < 1)
+        return std::vector<Brush>();
+
+    CurveFn curveFn = [d](int n, std::vector<vector2df>& out)
+    {
+        gothicUnitCurve(n, d, out);
+    };
+    return buildVoussoirBand(box, p.span, /*closed=*/false, p.wallDepth, material,
+                             segs, 1, curveFn);
+}
+
 void clipBrush(const Brush& in, const plane3df& plane,
                Brush* outFront, Brush* outBack,
                const BrushFace* cutFaceTemplate)
@@ -663,7 +1317,19 @@ void clipBrush(const Brush& in, const plane3df& plane,
     }
 }
 
-std::vector<Brush> carve(const Brush& target, const Brush& carver)
+// Successive-clip subtraction shared by carve() and hollow().
+//
+// When `inheritCarverAttribs` is set the cut face is a full copy of the carver
+// face — material, shader and Valve-220 frame — which is what makes a hollowed
+// room's interior wear the same texture as the wall it was cut from.  Otherwise
+// it is carve()'s historical behaviour: target.faces[0]'s material on a freshly
+// initialized UV frame.
+//
+// Note the fragments inherit the target's id/name/flags, because clipBrush
+// starts each piece as a copy of the input brush.  Callers that add fragments as
+// NEW brushes must clear id/name themselves (see BrushTool::carveWithSelected).
+static std::vector<Brush> subtractImpl(const Brush& target, const Brush& carver,
+                                       bool inheritCarverAttribs)
 {
     std::vector<Brush> fragments;
 
@@ -710,12 +1376,26 @@ std::vector<Brush> carve(const Brush& target, const Brush& carver)
         }
 
         // Reuse the carver face's exact quantized points for the cut face
-        BrushFace proto = cutProto;
-        proto.planePoints[0] = cf.planePoints[0];
-        proto.planePoints[1] = cf.planePoints[1];
-        proto.planePoints[2] = cf.planePoints[2];
-        proto.plane = cf.plane;
-        initFaceUV(proto);
+        BrushFace proto;
+        if (inheritCarverAttribs)
+        {
+            // Whole-face copy: material, shader and the Valve-220 frame come
+            // across, so a hollowed wall's inner face matches its outer one.
+            // clipBrush copies DispInfo along with the face, and a sculpted
+            // displacement makes no sense on a freshly cut surface — drop it.
+            proto = cf;
+            proto.disp = DispInfo();
+            proto.loop.clear();
+        }
+        else
+        {
+            proto = cutProto;
+            proto.planePoints[0] = cf.planePoints[0];
+            proto.planePoints[1] = cf.planePoints[1];
+            proto.planePoints[2] = cf.planePoints[2];
+            proto.plane = cf.plane;
+            initFaceUV(proto);
+        }
 
         Brush outside, inside;
         clipBrush(current, cf.plane, &outside, &inside, &proto);
@@ -729,6 +1409,92 @@ std::vector<Brush> carve(const Brush& target, const Brush& carver)
 
     // `current` is fully inside the carver — discarded.
     return fragments;
+}
+
+std::vector<Brush> carve(const Brush& target, const Brush& carver)
+{
+    return subtractImpl(target, carver, /*inheritCarverAttribs=*/false);
+}
+
+bool offsetBrush(Brush& b, float distance)
+{
+    if (!b.geometryValid || b.faces.size() < 4)
+        return false;
+
+    // Re-derive each face's plane points spread across the whole brush rather
+    // than translating the stored ones.  Quantizing three points that sit close
+    // together tilts their plane by roughly quantum/spread radians, and a
+    // cylinder's side face stores points barely a chord apart; spreading them
+    // over the brush diagonal bounds the worst-case plane error at about one
+    // quantum anywhere on the brush.  For an axis-aligned face planeBasis gives
+    // axis-aligned tangents, so quantize only moves the points WITHIN the plane
+    // and boxes offset with zero drift.
+    const vector3df ref    = b.bounds.getCenter();
+    const float     extent = b.bounds.getExtent().getLength();
+
+    for (auto& f : b.faces)
+    {
+        // Irrlicht convention: getDistanceTo(p) == p.dot(Normal) + D, with a
+        // unit normal, so moving the plane outward by `distance` is D -= it.
+        plane3df moved = f.plane;
+        moved.D -= distance;
+
+        vector3df pts[3];
+        makePlanePoints(moved, ref, extent, pts);   // wound so normal == moved.Normal
+        for (int i = 0; i < 3; i++)
+            f.planePoints[i] = quantize(pts[i]);
+
+        f.loop.clear();
+        f.disp = DispInfo();        // an offset face is a new surface
+    }
+
+    // rebuild() doubles as the "does this offset fit" test: shrinking past the
+    // solid's own size collapses it.  It also prunes faces the shrink swallowed
+    // entirely, which is geometrically right — the wall that face would have
+    // produced is simply absorbed into its neighbours and the shell still tiles.
+    return rebuild(b);
+}
+
+std::vector<Brush> hollow(const Brush& b, float thickness)
+{
+    std::vector<Brush> out;
+    if (!b.geometryValid)
+        return out;
+
+    // Two quanta, not one: ON_EPSILON is larger than one quantum, so a
+    // one-quantum wall has its inner and outer faces inside the point-on-plane
+    // tolerance and rebuild() silently discards it.  Snapping to the grid first
+    // keeps the offset planes exactly on-grid for axis-aligned faces.
+    const float minWall = GRID_QUANTUM * 2.0f;
+    float t = snapf(std::fabs(thickness));
+    if (t < minWall)
+        t = minWall;
+
+    if (thickness >= 0.0f)
+    {
+        Brush cavity = b;
+        if (!offsetBrush(cavity, -t))
+        {
+            spdlog::warn("BrushGeometry::hollow: brush {} is too small for a {:.4f} wall",
+                         b.id, t);
+            return out;         // empty == declined; the caller leaves the brush alone
+        }
+        out = subtractImpl(b, cavity, /*inheritCarverAttribs=*/true);
+    }
+    else
+    {
+        // Outward: the brush's own volume becomes the room.  Growing a convex
+        // solid can never collapse it, so this direction has no minimum-size
+        // failure mode.
+        Brush shell = b;
+        if (!offsetBrush(shell, t))
+            return out;
+        out = subtractImpl(shell, b, /*inheritCarverAttribs=*/true);
+    }
+
+    if (out.empty())
+        spdlog::warn("BrushGeometry::hollow: brush {} produced no walls", b.id);
+    return out;
 }
 
 bool raycast(const Brush& b, const vector3df& origin, const vector3df& dir,
@@ -994,6 +1760,587 @@ int runSelfTests()
         }
         check(cornerGone, "corner carve removes the corner");
         check(bodyKept, "corner carve keeps the body");
+    }
+
+    auto containsAny = [](const std::vector<Brush>& bs, const vector3df& p)
+    {
+        for (const auto& b : bs)
+            if (containsPoint(b, p)) return true;
+        return false;
+    };
+    auto sharesVertex = [](const Brush& a, const Brush& b)
+    {
+        for (const auto& va : a.verts)
+            for (const auto& vb : b.verts)
+                if (va.getDistanceFromSQ(vb) < WELD_EPSILON * WELD_EPSILON) return true;
+        return false;
+    };
+
+    // 16. Stairs: N solid floor-anchored boxes, butting, spanning the footprint
+    {
+        const aabbox3df stairBox(vector3df(0, 0, 0), vector3df(4, 2, 3));
+        StairParams sp;
+        sp.steps = 4;
+        sp.ascend = BrushAxis::PLUS_X;
+        std::vector<Brush> st = makeStairs(stairBox, sp);
+        check(st.size() == 4, "stairs produce exactly N brushes");
+
+        bool allBoxes = true, floorAnchored = true, monotone = true;
+        bool noOverlap = true, crossFull = true;
+        for (size_t i = 0; i < st.size(); i++)
+        {
+            if (!st[i].geometryValid || st[i].faces.size() != 6 || st[i].verts.size() != 8)
+                allBoxes = false;
+            if (std::fabs(st[i].bounds.MinEdge.Y) > ON_EPSILON)
+                floorAnchored = false;
+            if (std::fabs(st[i].bounds.MinEdge.Z) > ON_EPSILON ||
+                std::fabs(st[i].bounds.MaxEdge.Z - 3.0f) > ON_EPSILON)
+                crossFull = false;
+            if (i > 0)
+            {
+                if (st[i].bounds.MaxEdge.Y <= st[i - 1].bounds.MaxEdge.Y)
+                    monotone = false;
+                if (st[i].bounds.MinEdge.X < st[i - 1].bounds.MaxEdge.X - ON_EPSILON)
+                    noOverlap = false;
+            }
+        }
+        check(allBoxes, "stair steps are valid boxes");
+        check(floorAnchored, "stair steps are solid to the floor");
+        check(monotone, "stair steps rise monotonically");
+        check(noOverlap, "stair steps butt without overlapping");
+        check(crossFull, "stair steps span the cross axis");
+        check(std::fabs(st.front().bounds.MinEdge.X) < ON_EPSILON &&
+              std::fabs(st.back().bounds.MaxEdge.X - 4.0f) < ON_EPSILON,
+              "stairs span the footprint");
+        check(std::fabs(st.back().bounds.MaxEdge.Y - 2.0f) < ON_EPSILON,
+              "top stair step reaches the box top");
+
+        // -X ascent: still lowest-first, but the tall step is now at the -X end
+        sp.ascend = BrushAxis::MINUS_X;
+        std::vector<Brush> rev = makeStairs(stairBox, sp);
+        check(rev.size() == 4, "reversed stairs produce N brushes");
+        check(!rev.empty() && std::fabs(rev.back().bounds.MinEdge.X) < ON_EPSILON,
+              "reversed stairs climb toward -X");
+
+        // Anti-drift: 7 risers over height 2 are off-grid at every intermediate
+        // step, but independent quantization still lands exactly on the top.
+        sp.steps = 7;
+        sp.ascend = BrushAxis::PLUS_X;
+        std::vector<Brush> st7 = makeStairs(stairBox, sp);
+        check(st7.size() == 7, "7-step stairs produce 7 brushes");
+        check(!st7.empty() && std::fabs(st7.back().bounds.MaxEdge.Y - 2.0f) < 1e-4f,
+              "stair risers do not accumulate grid drift");
+
+        // Absurd step counts clamp rather than emitting degenerate brushes
+        sp.steps = 10000;
+        std::vector<Brush> many = makeStairs(stairBox, sp);
+        bool manyValid = !many.empty() && many.size() <= 64;
+        for (const auto& b : many)
+            if (!b.geometryValid) manyValid = false;
+        check(manyValid, "absurd stair count clamps to valid brushes");
+    }
+
+    // 17. Stair clip ramp: covers every tread top, stays inside the stair box
+    {
+        const aabbox3df stairBox(vector3df(0, 0, 0), vector3df(4, 2, 3));
+        StairParams sp;
+        sp.steps = 4;
+        sp.ascend = BrushAxis::PLUS_X;
+        std::vector<Brush> st = makeStairs(stairBox, sp);
+        Brush ramp = makeStairClipRamp(stairBox, sp);
+        check(ramp.geometryValid, "stair clip ramp valid");
+        check(ramp.faces.size() == 7, "stair clip ramp is a 5-sided prism");
+
+        // The assertion that catches a naive nosing-line wedge: such a wedge is
+        // buried inside the solid steps and fails this at every tread.
+        bool coversTreads = true;
+        for (const auto& s : st)
+        {
+            const vector3df mid((s.bounds.MinEdge.X + s.bounds.MaxEdge.X) * 0.5f,
+                                s.bounds.MaxEdge.Y, 1.5f);
+            if (!containsPoint(ramp, mid)) coversTreads = false;
+        }
+        check(coversTreads, "stair clip ramp covers every tread top");
+        check(ramp.bounds.MaxEdge.Y <= 2.0f + ON_EPSILON &&
+              ramp.bounds.MinEdge.X >= -ON_EPSILON &&
+              ramp.bounds.MaxEdge.X <= 4.0f + ON_EPSILON,
+              "stair clip ramp stays inside the stair box");
+
+        // One step: the pentagon welds down to a plain box
+        sp.steps = 1;
+        Brush flat = makeStairClipRamp(stairBox, sp);
+        check(flat.geometryValid && flat.faces.size() == 6,
+              "one-step clip ramp collapses to a box");
+    }
+
+    // 18. Arch: segmented band, open below the springing line, closes at 360
+    {
+        const aabbox3df archBox(vector3df(0, 0, 0), vector3df(8, 4, 1));
+        ArchParams ap;
+        ap.segments = 8;
+        ap.arcDegrees = 180.0f;
+        ap.wallDepth = 0.5f;
+        ap.span = BrushAxis::PLUS_X;
+        std::vector<Brush> arch = makeArch(archBox, ap);
+        check(arch.size() == 8, "arch produces one brush per segment");
+
+        bool voussoirsOk = true, inBox = true;
+        for (const auto& v : arch)
+        {
+            if (!v.geometryValid || v.faces.size() != 6) voussoirsOk = false;
+            if (v.bounds.MinEdge.X < -ON_EPSILON || v.bounds.MaxEdge.X > 8.0f + ON_EPSILON ||
+                v.bounds.MinEdge.Y < -ON_EPSILON || v.bounds.MaxEdge.Y > 4.0f + ON_EPSILON ||
+                v.bounds.MinEdge.Z < -ON_EPSILON || v.bounds.MaxEdge.Z > 1.0f + ON_EPSILON)
+                inBox = false;
+        }
+        check(voussoirsOk, "arch voussoirs are valid 6-face prisms");
+        check(inBox, "arch fits its bounding box");
+        check(!containsAny(arch, vector3df(4, 0.5f, 0.5f)), "arch doorway is open");
+        check(containsAny(arch, vector3df(4, 3.75f, 0.5f)), "arch crown is solid");
+
+        // 360 degrees: the seam reuses ring point 0 exactly, so no sliver
+        ap.arcDegrees = 360.0f;
+        std::vector<Brush> ring = makeArch(archBox, ap);
+        check(ring.size() == 8, "closed arch produces one brush per segment");
+        check(ring.size() == 8 && sharesVertex(ring.front(), ring.back()),
+              "closed arch seam shares vertices");
+
+        // Clamps
+        ap.arcDegrees = 180.0f;
+        ap.segments = 2;
+        check(makeArch(archBox, ap).size() == 3, "arch segment count clamps up to 3");
+        ap.segments = 999;
+        check(makeArch(archBox, ap).size() == 32, "arch segment count clamps down to 32");
+
+        // A wall thicker than the opening clamps instead of inverting
+        ap.segments = 8;
+        ap.wallDepth = 100.0f;
+        std::vector<Brush> thick = makeArch(archBox, ap);
+        bool thickOk = thick.size() == 8;
+        for (const auto& v : thick)
+            if (!v.geometryValid) thickOk = false;
+        check(thickOk, "over-thick arch wall clamps to valid voussoirs");
+    }
+
+    // 19. Degenerate inputs: sub-unit boxes and hair-thin bands must clamp to
+    //     valid geometry, never to something rebuild() silently discards.
+    //     ON_EPSILON (~0.008) is slightly LARGER than one quantum (0.0078125),
+    //     so every generator floors its features at two quanta; these cases are
+    //     the regressions that pinned that down.
+    {
+        // A 0.1-unit cube asked for more steps than the grid can carry: the
+        // count clamps, but the staircase must still reach the top of its box.
+        const aabbox3df tiny(vector3df(0, 0, 0), vector3df(0.1f, 0.1f, 0.1f));
+        const float tinyTop = quantize(vector3df(0.1f, 0.1f, 0.1f)).Y;
+        bool tinyOk = true;
+        for (int n = 1; n <= 40; n++)
+        {
+            StairParams sp;
+            sp.steps = n;
+            sp.ascend = BrushAxis::PLUS_X;
+            std::vector<Brush> st = makeStairs(tiny, sp);
+            if (st.empty()) continue;
+            for (size_t i = 0; i < st.size(); i++)
+                if (!st[i].geometryValid || st[i].faces.size() != 6) tinyOk = false;
+            if (std::fabs(st.back().bounds.MaxEdge.Y - tinyTop) > ON_EPSILON)
+                tinyOk = false;
+        }
+        check(tinyOk, "sub-unit stairs clamp to valid steps reaching the box top");
+
+        // Whenever a clip ramp IS produced it must cover every tread; on boxes
+        // too fine to express the pentagon it must decline outright rather than
+        // hand back a ramp the player could fall through.
+        bool rampOk = true;
+        for (int n = 1; n <= 40; n++)
+        {
+            StairParams sp;
+            sp.steps = n;
+            sp.ascend = BrushAxis::PLUS_X;
+            std::vector<Brush> st = makeStairs(tiny, sp);
+            Brush ramp = makeStairClipRamp(tiny, sp);
+            if (!ramp.geometryValid) continue;      // declining is allowed here
+            for (size_t i = 0; i < st.size(); i++)
+            {
+                vector3df mid = st[i].bounds.getCenter();
+                mid.Y = st[i].bounds.MaxEdge.Y;
+                if (!containsPoint(ramp, mid)) rampOk = false;
+            }
+        }
+        check(rampOk, "a produced clip ramp always covers every tread");
+
+        // A hair-thin wall request floors to a viable band instead of
+        // collapsing every voussoir into a discarded sliver.
+        {
+            ArchParams ap;
+            ap.segments = 8;
+            ap.arcDegrees = 359.0f;     // not closed: the seam is a real gap
+            ap.wallDepth = 0.01f;       // ~1 quantum, below the band floor
+            ap.span = BrushAxis::PLUS_X;
+            std::vector<Brush> hair = makeArch(aabbox3df(vector3df(0, 0, 0),
+                                                         vector3df(4, 2, 3)), ap);
+            bool hairOk = hair.size() == 8;
+            for (const auto& v : hair)
+                if (!v.geometryValid) hairOk = false;
+            check(hairOk, "hair-thin arch wall floors to valid voussoirs");
+        }
+
+        // Too many segments for the arc: clamp to what the chord can express
+        // rather than returning a gap-toothed ring of discarded voussoirs.
+        {
+            ArchParams ap;
+            ap.segments = 32;
+            ap.arcDegrees = 10.0f;      // 32 segments across 10 degrees is impossible
+            ap.wallDepth = 0.1f;
+            ap.span = BrushAxis::PLUS_X;
+            std::vector<Brush> fine = makeArch(aabbox3df(vector3df(0, 0, 0),
+                                                         vector3df(4, 2, 3)), ap);
+            bool fineOk = !fine.empty() && fine.size() < 32;
+            for (const auto& v : fine)
+                if (!v.geometryValid) fineOk = false;
+            check(fineOk, "over-fine arch segments clamp to valid voussoirs");
+        }
+    }
+
+    auto countContaining = [](const std::vector<Brush>& bs, const vector3df& p)
+    {
+        int n = 0;
+        for (const auto& b : bs)
+            if (containsPoint(b, p)) n++;
+        return n;
+    };
+
+    // 20. Hollow tiles the shell: every sample is in EXACTLY one wall when it is
+    //     outside the cavity and exactly zero when inside.  That one assertion
+    //     proves non-overlap, cavity emptiness and full coverage together.
+    {
+        Brush src = makeBox(aabbox3df(vector3df(0, 0, 0), vector3df(4, 4, 4)));
+        for (size_t i = 0; i < src.faces.size(); i++)
+            src.faces[i].materialName = "mat" + std::to_string(i);
+
+        std::vector<Brush> walls = hollow(src, 0.5f);
+        check(walls.size() == 6, "hollow box gives one wall per face");
+
+        bool wallsValid = true, inBounds = true;
+        for (const auto& w : walls)
+        {
+            if (!w.geometryValid) wallsValid = false;
+            if (w.bounds.MinEdge.X < -ON_EPSILON || w.bounds.MaxEdge.X > 4.0f + ON_EPSILON ||
+                w.bounds.MinEdge.Y < -ON_EPSILON || w.bounds.MaxEdge.Y > 4.0f + ON_EPSILON ||
+                w.bounds.MinEdge.Z < -ON_EPSILON || w.bounds.MaxEdge.Z > 4.0f + ON_EPSILON)
+                inBounds = false;
+        }
+        check(wallsValid, "hollow walls are valid");
+        check(inBounds, "hollow walls stay inside the original brush");
+
+        // Oracle for "is this point in the cavity", and for the wall-to-wall
+        // interfaces — those lie on the cavity face planes extended, so one
+        // proximity test against every cavity plane covers both.
+        Brush cavity = src;
+        const bool cavityOk = offsetBrush(cavity, -0.5f);
+        check(cavityOk, "hollow cavity oracle builds");
+
+        // Lattice deliberately off-grid so samples never land on a cavity plane
+        // (a 0.5-spaced lattice would sit exactly on every one of them).
+        const float skip = ON_EPSILON * 4.0f;
+        int tested = 0, outsideSeen = 0, insideSeen = 0;
+        bool tiles = true;
+        for (int ix = 0; ix < 11 && cavityOk; ix++)
+        for (int iy = 0; iy < 11; iy++)
+        for (int iz = 0; iz < 11; iz++)
+        {
+            const vector3df p(0.17f + 0.36f * ix, 0.17f + 0.36f * iy, 0.17f + 0.36f * iz);
+
+            bool nearPlane = false, insideCavity = true;
+            for (const auto& cf : cavity.faces)
+            {
+                const float d = cf.plane.getDistanceTo(p);
+                if (std::fabs(d) < skip) nearPlane = true;
+                if (d > 0.0f) insideCavity = false;
+            }
+            if (nearPlane)
+                continue;               // off the epsilon knife-edge
+
+            tested++;
+            const int hits = countContaining(walls, p);
+            if (insideCavity) { insideSeen++;  if (hits != 0) tiles = false; }
+            else              { outsideSeen++; if (hits != 1) tiles = false; }
+        }
+        check(tested > 500 && outsideSeen > 100 && insideSeen > 100,
+              "hollow lattice sweep covers both regions");
+        check(tiles, "hollow walls tile the shell exactly once and leave the cavity empty");
+
+        // Each wall's cavity-facing face must wear the material of the exterior
+        // face it was cut from.  Before the subtractImpl(inherit) fix every cut
+        // face took faces[0]'s material instead.
+        bool matsOk = cavityOk;
+        for (const auto& w : walls)
+            for (const auto& wf : w.faces)
+                for (const auto& cf : cavity.faces)
+                {
+                    if (wf.plane.Normal.dotProduct(cf.plane.Normal) > -0.999f)
+                        continue;       // not the reverse of this cavity face
+                    if (std::fabs(cf.plane.getDistanceTo(wf.planePoints[0])) > ON_EPSILON)
+                        continue;       // not on its plane
+                    if (wf.materialName != cf.materialName)
+                        matsOk = false;
+                }
+        check(matsOk, "hollow inner faces inherit the exterior material");
+    }
+
+    // 21. Thickness limits: too thick declines outright, too thin floors
+    {
+        Brush small = makeBox(aabbox3df(vector3df(0, 0, 0), vector3df(2, 1, 3)));
+        check(hollow(small, 5.0f).empty(), "over-thick hollow declines");
+
+        std::vector<Brush> zero = hollow(small, 0.0f);
+        bool zeroOk = zero.size() == 6;
+        for (const auto& w : zero)
+            if (!w.geometryValid) zeroOk = false;
+        check(zeroOk, "zero hollow thickness floors to a valid shell");
+
+        std::vector<Brush> hair = hollow(small, 0.001f);
+        bool hairOk = hair.size() == 6;
+        for (const auto& w : hair)
+            if (!w.geometryValid) hairOk = false;
+        check(hairOk, "sub-quantum hollow thickness floors to a valid shell");
+    }
+
+    // 22. Hollowing a cylinder gives a tube
+    {
+        Brush cyl = makeCylinder(aabbox3df(vector3df(0, 0, 0), vector3df(4, 2, 4)), 8);
+        std::vector<Brush> walls = hollow(cyl, 0.25f);
+        bool valid = !walls.empty() && walls.size() <= 10;
+        for (const auto& w : walls)
+            if (!w.geometryValid) valid = false;
+        check(valid, "hollow cylinder gives valid walls");
+        check(countContaining(walls, vector3df(2, 1, 2)) == 0, "tube bore is open");
+        // Sample along a side-face normal (22.5 degrees), not along +X where the
+        // octagon has a vertex: the face planes sit at the INRADIUS
+        // 2*cos(22.5) = 1.848, so the wall band is 1.598..1.848 from the axis.
+        check(countContaining(walls, vector3df(2.0f + 1.72f * 0.92388f, 1.0f,
+                                               2.0f + 1.72f * 0.38268f)) == 1,
+              "tube wall band is solid once");
+        check(countContaining(walls, vector3df(2, 1.9f, 2)) == 1, "tube keeps its top cap");
+        check(countContaining(walls, vector3df(2, 0.1f, 2)) == 1, "tube keeps its bottom cap");
+    }
+
+    // 23. Negative thickness wraps a shell around the brush instead
+    {
+        Brush src = makeBox(aabbox3df(vector3df(0, 0, 0), vector3df(4, 4, 4)));
+        std::vector<Brush> walls = hollow(src, -0.5f);
+        bool valid = walls.size() == 6, grown = true;
+        for (const auto& w : walls)
+        {
+            if (!w.geometryValid) valid = false;
+            if (w.bounds.MinEdge.X < -0.5f - ON_EPSILON || w.bounds.MaxEdge.X > 4.5f + ON_EPSILON ||
+                w.bounds.MinEdge.Y < -0.5f - ON_EPSILON || w.bounds.MaxEdge.Y > 4.5f + ON_EPSILON ||
+                w.bounds.MinEdge.Z < -0.5f - ON_EPSILON || w.bounds.MaxEdge.Z > 4.5f + ON_EPSILON)
+                grown = false;
+        }
+        check(valid, "outward hollow gives one valid wall per face");
+        check(grown, "outward hollow stays within the grown bounds");
+        check(countContaining(walls, vector3df(2, 2, 2)) == 0, "outward hollow leaves the original volume empty");
+        check(countContaining(walls, vector3df(4.25f, 2, 2)) == 1, "outward hollow covers the outside once");
+    }
+
+    // 24. Cone / frustum / revolve axis
+    {
+        const aabbox3df coneBox(vector3df(0, 0, 0), vector3df(4, 4, 4));
+
+        // Apex sweep: all n side planes meet at one vertex, which is the case
+        // most likely to expose an ill-conditioned triple-plane intersection.
+        bool apexOk = true;
+        for (int n = 3; n <= 32; n++)
+        {
+            Brush cone = makeCone(coneBox, n, 0.0f, BrushRevolveAxis::PLUS_Y);
+            if (!cone.geometryValid ||
+                cone.faces.size() != static_cast<size_t>(n) + 1 ||
+                cone.verts.size() != static_cast<size_t>(n) + 1)
+            { apexOk = false; break; }
+        }
+        check(apexOk, "cone apex is valid for every side count");
+
+        Brush cone8 = makeCone(coneBox, 8, 0.0f, BrushRevolveAxis::PLUS_Y);
+        bool apexAtTop = false;
+        for (const auto& v : cone8.verts)
+            if (v.equals(vector3df(2, 4, 2), 0.01f)) apexAtTop = true;
+        check(apexAtTop, "cone apex sits at the box top centre");
+
+        // Frustum keeps both caps and both rings
+        Brush frustum = makeCone(coneBox, 8, 0.5f, BrushRevolveAxis::PLUS_Y);
+        check(frustum.geometryValid && frustum.faces.size() == 10 &&
+              frustum.verts.size() == 16, "frustum keeps both rings and caps");
+        check(frustum.bounds.MinEdge.equals(vector3df(0, 0, 0), 0.01f) &&
+              frustum.bounds.MaxEdge.equals(vector3df(4, 4, 4), 0.01f), "frustum fills its box");
+
+        // topScale 1 is exactly a cylinder
+        Brush asCyl = makeCone(coneBox, 8, 1.0f, BrushRevolveAxis::PLUS_Y);
+        Brush cyl   = makeCylinder(coneBox, 8);
+        check(asCyl.geometryValid && asCyl.faces.size() == cyl.faces.size() &&
+              asCyl.verts.size() == cyl.verts.size(), "topScale 1 reproduces the cylinder");
+
+        // A top ring finer than the grid snaps to a true apex, no sliver cap
+        Brush sliver = makeCone(coneBox, 8, 1e-4f, BrushRevolveAxis::PLUS_Y);
+        check(sliver.geometryValid && sliver.faces.size() == 9,
+              "sub-grid top ring snaps to an apex");
+
+        // Every axis builds, fills its box, and tapers at the expected end
+        const BrushRevolveAxis axes[6] = {
+            BrushRevolveAxis::PLUS_X, BrushRevolveAxis::MINUS_X,
+            BrushRevolveAxis::PLUS_Y, BrushRevolveAxis::MINUS_Y,
+            BrushRevolveAxis::PLUS_Z, BrushRevolveAxis::MINUS_Z };
+        bool axesOk = true, tapersRight = true;
+        for (int a = 0; a < 6; a++)
+        {
+            Brush ck = makeCone(coneBox, 8, 0.0f, axes[a]);
+            if (!ck.geometryValid || ck.faces.size() != 9 || ck.verts.size() != 9)
+            { axesOk = false; continue; }
+            if (!ck.bounds.MinEdge.equals(vector3df(0, 0, 0), 0.01f) ||
+                !ck.bounds.MaxEdge.equals(vector3df(4, 4, 4), 0.01f))
+                axesOk = false;
+
+            // The apex is the lone vertex at the tapered end: exactly one vert
+            // should sit on that side of the box.
+            vector3df aDir, uDir, vDir;
+            switch (axes[a])
+            {
+            case BrushRevolveAxis::PLUS_X:  aDir.set( 1, 0, 0); break;
+            case BrushRevolveAxis::MINUS_X: aDir.set(-1, 0, 0); break;
+            case BrushRevolveAxis::PLUS_Z:  aDir.set(0, 0,  1); break;
+            case BrushRevolveAxis::MINUS_Z: aDir.set(0, 0, -1); break;
+            case BrushRevolveAxis::MINUS_Y: aDir.set(0, -1, 0); break;
+            default:                        aDir.set(0,  1, 0); break;
+            }
+            const vector3df want = vector3df(2, 2, 2) + aDir * 2.0f;
+            int atTip = 0;
+            for (const auto& v : ck.verts)
+                if (v.equals(want, 0.01f)) atTip++;
+            if (atTip != 1) tapersRight = false;
+        }
+        check(axesOk, "every revolve axis builds a valid cone filling its box");
+        check(tapersRight, "the revolve axis sign picks which end tapers");
+
+        // Sub-unit boxes: decline or be fully valid, never silently discarded
+        const aabbox3df tinyBox(vector3df(0, 0, 0), vector3df(0.1f, 0.1f, 0.1f));
+        bool tinyOk = true;
+        for (int n = 3; n <= 32; n++)
+            for (int s = 0; s <= 4; s++)
+            {
+                Brush t = makeCone(tinyBox, n, static_cast<float>(s) * 0.25f,
+                                   BrushRevolveAxis::PLUS_Y);
+                if (t.geometryValid && t.faces.size() < 4) tinyOk = false;
+            }
+        check(tinyOk, "sub-unit cones are valid or decline cleanly");
+
+        // Regression: a narrow taper at a high side count used to collapse the
+        // top ring, get its cap pruned as redundant, and come back VALID — but
+        // as a full cone running out to the analytic apex, far outside the box.
+        // Validity alone never distinguished that from the frustum requested;
+        // the box-inscribed contract does.
+        bool inscribed = true;
+        const aabbox3df eccBox(vector3df(0, 0, 0), vector3df(8, 4, 1));
+        for (int n = 3; n <= 32; n++)
+            for (int s = 1; s <= 4; s++)
+            {
+                const float ts = static_cast<float>(s) * 0.125f;
+                for (int a = 0; a < 6; a++)
+                {
+                    Brush ck = makeCone(eccBox, n, ts, axes[a]);
+                    if (!ck.geometryValid) continue;
+                    const float tol = ON_EPSILON + GRID_QUANTUM * 2.0f;
+                    if (ck.bounds.MinEdge.X < -tol || ck.bounds.MaxEdge.X > 8.0f + tol ||
+                        ck.bounds.MinEdge.Y < -tol || ck.bounds.MaxEdge.Y > 4.0f + tol ||
+                        ck.bounds.MinEdge.Z < -tol || ck.bounds.MaxEdge.Z > 1.0f + tol)
+                        inscribed = false;
+                }
+            }
+        check(inscribed, "a tapered cone never escapes its box as a collapsed full cone");
+    }
+
+    // 25. Gothic arch
+    {
+        const aabbox3df gBox(vector3df(0, 0, 0), vector3df(8, 4, 1));
+        GothicArchParams gp;
+        gp.segments = 4;
+        gp.pointiness = 0.0f;
+        gp.wallDepth = 0.5f;
+        gp.span = BrushAxis::PLUS_X;
+
+        std::vector<Brush> round = makeGothicArch(gBox, gp);
+        check(round.size() == 8, "gothic arch gives two voussoirs per segment per side");
+
+        bool prisms = true, inBox = true;
+        float topY = 0.0f;
+        for (const auto& v : round)
+        {
+            if (!v.geometryValid || v.faces.size() != 6) prisms = false;
+            if (v.bounds.MinEdge.X < -ON_EPSILON || v.bounds.MaxEdge.X > 8.0f + ON_EPSILON ||
+                v.bounds.MinEdge.Y < -ON_EPSILON || v.bounds.MaxEdge.Y > 4.0f + ON_EPSILON)
+                inBox = false;
+            if (v.bounds.MaxEdge.Y > topY) topY = v.bounds.MaxEdge.Y;
+        }
+        check(prisms, "gothic voussoirs are valid 6-face prisms");
+        check(inBox, "gothic arch fits its bounding box");
+        check(std::fabs(topY - 4.0f) < ON_EPSILON, "gothic apex lands exactly on the box top");
+        check(!containsAny(round, vector3df(4, 0.5f, 0.5f)), "gothic doorway is open");
+        check(containsAny(round, vector3df(4, 3.75f, 0.5f)), "gothic crown is solid");
+
+        // The apex ring point is shared, so the two centre voussoirs touch
+        check(sharesVertex(round[3], round[4]), "gothic apex seam shares vertices");
+
+        // pointiness 0 must reproduce the semicircular arch's footprint
+        ArchParams ap;
+        ap.segments = 8;
+        ap.arcDegrees = 180.0f;
+        ap.wallDepth = 0.5f;
+        ap.span = BrushAxis::PLUS_X;
+        std::vector<Brush> semi = makeArch(gBox, ap);
+        aabbox3df gAll, sAll;
+        gAll.reset(round[0].bounds.MinEdge);
+        for (const auto& v : round) { gAll.addInternalBox(v.bounds); }
+        sAll.reset(semi[0].bounds.MinEdge);
+        for (const auto& v : semi)  { sAll.addInternalBox(v.bounds); }
+        check(gAll.MinEdge.equals(sAll.MinEdge, ON_EPSILON * 2) &&
+              gAll.MaxEdge.equals(sAll.MaxEdge, ON_EPSILON * 2),
+              "pointiness 0 matches the semicircular arch");
+
+        // A genuine gothic keeps the apex pinned but is demonstrably pointier:
+        // a sample high on the centre line is open under a semicircle (whose
+        // crown is thin there) and solid under the equilateral arch.
+        gp.pointiness = 1.0f;
+        std::vector<Brush> pointed = makeGothicArch(gBox, gp);
+        float ptop = 0.0f;
+        bool pValid = pointed.size() == 8;
+        for (const auto& v : pointed)
+        {
+            if (!v.geometryValid) pValid = false;
+            if (v.bounds.MaxEdge.Y > ptop) ptop = v.bounds.MaxEdge.Y;
+        }
+        check(pValid, "equilateral gothic arch is valid");
+        check(std::fabs(ptop - 4.0f) < ON_EPSILON,
+              "gothic apex stays on the box top at full pointiness");
+        // Springings stay at the box sides at mid-height whatever the pointiness
+        check(containsAny(pointed, vector3df(0.1f, 2.0f, 0.5f)) &&
+              containsAny(round,   vector3df(0.1f, 2.0f, 0.5f)),
+              "gothic springs from the box sides at mid-height");
+        // Pointier: the curve sits higher, so a point just inside the round
+        // arch's haunch is still solid, while the sample that distinguishes them
+        // is on the centre line where the pointed arch has more material.
+        check(containsAny(pointed, vector3df(4, 3.9f, 0.5f)),
+              "equilateral gothic is solid at the crown");
+
+        // Clamps
+        gp.segments = 1;
+        check(makeGothicArch(gBox, gp).size() == 4, "gothic segment count clamps up to 2");
+        gp.segments = 999;
+        check(makeGothicArch(gBox, gp).size() == 32, "gothic segment count clamps down to 16");
+        gp.segments = 4;
+        gp.wallDepth = 0.001f;
+        bool thinOk = makeGothicArch(gBox, gp).size() == 8;
+        gp.wallDepth = 100.0f;
+        bool thickOk = makeGothicArch(gBox, gp).size() == 8;
+        check(thinOk,  "hair-thin gothic wall floors to valid voussoirs");
+        check(thickOk, "over-thick gothic wall clamps to valid voussoirs");
     }
 
     if (failures == 0)

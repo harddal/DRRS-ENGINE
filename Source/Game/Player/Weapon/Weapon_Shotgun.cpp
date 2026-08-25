@@ -12,6 +12,10 @@ using namespace SPK::IRR;
 void Weapon_Shotgun::precache()
 {
 	ParticleManager::Get()->precache("spark_smoke", _asset_psys("spark_smoke"));
+
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/dryfire.wav",              true);
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/insert_shell_shotgun.wav", true);
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/shotgun/Shotgun_Quick Pump_01.wav", true);
 }
 
 void Weapon_Shotgun::init()
@@ -110,6 +114,13 @@ void Weapon_Shotgun::init()
 	// material type so setMeshPartVisible() has something to restore.
 	resolveMeshPart("slug", m_slug);
 
+	// Reference point for pump stabilisation: the bore line at roughly the gun's
+	// mid-length. 'base' spans Z -31 to +84.6 and 4.92 is the bore height already
+	// measured for the muzzle, so this splits the rotation error between muzzle
+	// and stock instead of pinning one end and swinging the other.
+	enableClipStabilization("base", irr::core::vector3df(0.0f, 4.92f, -27.0f));
+	setStabilizationTuneAmount(m_pumpStabilize);
+
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 
 	if (!player.isValid())
@@ -139,12 +150,13 @@ void Weapon_Shotgun::init()
 	WeaponEffectsDesc fx;
 	// No FIRESPOT empty in this .glb, so the flash hangs off 'base' — the receiver
 	// and barrel joint — and inherits the recoil and pump for free. The offset is
-	// the barrel bore at the muzzle face, measured off the mesh: the 162 verts
-	// within 1 unit of its far end split into two rings, the upper at Y 5.85
-	// being the bore and the lower at Y 3.78 the magazine tube, so the flash
-	// belongs on the upper one. GltfImport's handedness conversion negates Z.
+	// the bore centre at the muzzle face: the 162 verts within 1 unit of the far
+	// end run evenly from Y 2.85 to 7.00 with no gap wider than 0.37, so they are
+	// ONE ring of radius ~2.08 and the bore is its midpoint at Y 4.92 — not two
+	// tubes with the bore on top, which is what splitting them at the median
+	// first suggested. GltfImport's handedness conversion negates Z.
 	fx.muzzleJointName   = "base";
-	fx.muzzleJointOffset = irr::core::vector3df(0.0f, 5.85f, -84.53f);
+	fx.muzzleJointOffset = irr::core::vector3df(0.0f, 4.92f, -84.61f);
 	fx.flashColor      = irr::video::SColor(255, 255, 214, 110);
 	fx.flashSize       = 1.0f;
 	fx.flashDuration   = 60.0f;
@@ -182,23 +194,46 @@ void Weapon_Shotgun::enterState(State next)
 	m_state = next;
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
 
+	// The working-the-action states run quicker than authored; everything else
+	// plays at 1x. Set here rather than at the call sites so no path can leave
+	// the node stuck at the faster speed.
+	const bool quick = (next == State::Firing
+	                 || next == State::Pumping
+	                 || next == State::Reloading
+	                 || next == State::ReloadEnd);
+	setClipSpeed(quick ? m_actionSpeed : 1.0f);
+
+	// Only the pump is stabilised. Same choke point as the speed above, so no
+	// path can leave the counter-offset applied to a clip that does not want it.
+	// Reads the tunable rather than the constant so the F2 slider survives here.
+	setStabilizationAmount(next == State::Pumping ? stabilizationTuneAmount() : 0.0f);
+
 	switch (next)
 	{
 	case State::Firing:      playAnimation("fire");       break;
 
 	case State::Pumping:
 		playAnimation("pump");
-		m_slugHandedOff  = false;
+		m_slugHandedOff   = false;
 		m_pumpSoundPlayed = false;
+		// Only a rack that follows a shot has brass in it. Coming from ReloadEnd
+		// the chamber was already emptied by the post-fire pump, so that rack
+		// chambers a fresh shell and throws nothing.
+		m_pumpEjects = (prev == State::Firing);
 		break;
 
 	// Second and later shells skip the move off the pump — see the clip table
 	case State::Reloading:
 		playAnimation(prev == State::Reloading ? "reload_loop" : "reload");
+		m_insertShellPlayed = false; // one click per shell, so re-arm each pass
 		break;
 
 	case State::ReloadEnd:   playAnimation("reload_end"); break;
-	case State::Equipping:   playAnimation("equip");      break;
+	case State::Equipping:
+		playAnimation("equip");
+		m_equipRackPlayed = false; // re-armed for this draw's rack
+		break;
+
 	case State::Unequipping: playAnimation("unequip");    break;
 
 	case State::Idle:
@@ -219,6 +254,17 @@ void Weapon_Shotgun::update()
 
 	updateSlug(frame);
 
+	// Read up here so the busy states below can see it too, but act on it only
+	// inside them: changing state before the switch would let this frame's
+	// already-latched animEnded fall through and end the clip we just started.
+	const bool lmb = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
+	if (!lmb)
+		m_firedThisPress = false;
+
+	// A press while the gun is busy, with shells to fire and not already spent on
+	// this press, queues a shot for the moment the action closes.
+	const bool wantsInterrupt = lmb && !m_firedThisPress && m_shells > 0;
+
 	switch (m_state)
 	{
 	// Holstering: stay visible until the clip finishes so the gun is seen being
@@ -232,7 +278,17 @@ void Weapon_Shotgun::update()
 
 	case State::Equipping:
 		if (animEnded)
+		{
 			enterState(State::Idle);
+		}
+		// The draw works the action at f111-124. Equip plays at 1x, but the lead
+		// still goes through soundLeadFrames() so it cannot drift if that changes.
+		else if (!m_equipRackPlayed &&
+			frame >= static_cast<irr::f32>(m_equipRackFrame - soundLeadFrames(m_pumpSoundLeadSec)))
+		{
+			m_equipRackPlayed = true;
+			playPumpSound();
+		}
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
 
@@ -249,17 +305,22 @@ void Weapon_Shotgun::update()
 		// shot. That is what makes it stay in sync — and what makes it play at
 		// all for the rack that closes an empty reload, which never went through
 		// fire() and so never armed a timer.
-		if (!m_pumpSoundPlayed && frame >= static_cast<irr::f32>(m_pumpSoundFrame))
+		if (!m_pumpSoundPlayed &&
+			frame >= static_cast<irr::f32>(m_rackBackFrame - soundLeadFrames(m_pumpSoundLeadSec)))
 		{
 			m_pumpSoundPlayed = true;
-			SoundManager::Get()->sound()->play2D(
-				"content/sound/weapon/shotgun/Shotgun_Quick Pump_01.wav",
-				false, 0, -1.0f, nullptr, false,
-				1.0f + Engine::Get()->rng()->getFloat(-0.03f, 0.03f));
+			playPumpSound();
 		}
 
 		if (animEnded)
-			enterState(State::Idle);
+			finishAction();
+		// Buffered input: press during the rack and the shot goes off the moment
+		// it finishes, rather than being dropped.
+		else if (wantsInterrupt)
+		{
+			m_firedThisPress  = true;
+			m_fireAfterReload = true;
+		}
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
 
@@ -276,6 +337,27 @@ void Weapon_Shotgun::update()
 			else
 				enterState(State::ReloadEnd);
 		}
+		// Fire pressed mid-reload: stop thumbing shells in, close the gun up and
+		// shoot as soon as it is ready. Topping off a tube one shell at a time is
+		// a long commitment, and this is the way out of it when something walks
+		// in. Shells already loaded are kept — each one was banked as its own
+		// clip ended.
+		else if (wantsInterrupt)
+		{
+			m_firedThisPress  = true;
+			m_fireAfterReload = true;
+			enterState(State::ReloadEnd);
+		}
+		// One click per shell, landing as it seats at f69. Both reload ranges
+		// (44-86 and 55-86) contain that frame, so the same absolute trigger
+		// serves the first shell and every repeat.
+		else if (!m_insertShellPlayed &&
+			frame >= static_cast<irr::f32>(m_reloadSeatFrame - soundLeadFrames(m_insertShellLeadSec)))
+		{
+			m_insertShellPlayed = true;
+			SoundManager::Get()->sound()->playRandomized2D(
+				"content/sound/weapon/insert_shell_shotgun", 0.06f, 2, -1.0f, "shotgun_insert");
+		}
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
 
@@ -287,12 +369,20 @@ void Weapon_Shotgun::update()
 			if (m_needsChamberRack)
 			{
 				m_needsChamberRack = false;
+				// A queued shot survives the hop: m_fireAfterReload is untouched,
+				// so the pump fires it once the chamber is loaded. The gun is
+				// never fired on an empty chamber just because fire was pressed.
 				enterState(State::Pumping);
 			}
 			else
 			{
-				enterState(State::Idle);
+				finishAction();
 			}
+		}
+		else if (wantsInterrupt)
+		{
+			m_firedThisPress  = true;
+			m_fireAfterReload = true;
 		}
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
@@ -304,11 +394,18 @@ void Weapon_Shotgun::update()
 
 	// --- Idle: input is live -------------------------------------------------
 
-	// Semi-auto: reset fire flag when mouse released
-	const bool lmb = InputManager::Get()->isMouseButtonPressed(MB_LEFT);
-	if (!lmb)
-		m_firedThisPress = false;
+	// Record where the stabilisation reference sits at rest. Done here rather
+	// than in init() because the joints are stale while the node is hidden, and
+	// once because the rest pose never changes.
+	if (!stabilizationRestValid())
+	{
+		m_mesh.node->updateAbsolutePosition();
+		m_mesh.node->animateJoints();
+		captureStabilizationRest();
+	}
 
+	// lmb and the semi-auto release reset are handled at the top of update(), so
+	// the busy states can see the press too.
 	if (lmb && !m_firedThisPress)
 	{
 		if (m_shells > 0)
@@ -346,11 +443,15 @@ void Weapon_Shotgun::updateSlug(float frame)
 	switch (m_state)
 	{
 	case State::Pumping:
-		// The case rides back with the pump, flicks up over f30-32, then SNAPS
-		// home at f33. Hide it at the top of that flick and hand it to a physics
-		// casing at the same transform, so what the player sees leave the port
-		// keeps going instead of reappearing in the receiver.
-		if (f >= m_pumpEjectFrame && !m_slugHandedOff)
+		// The case rides back with the pump and is thrown at the end of that
+		// rearward stroke. Hiding the slug and handing it to a physics casing at
+		// the same transform is what keeps the swap invisible — and it also means
+		// the artist's flick-up-then-snap-home at f30-33 is never seen.
+		//
+		// A rack with no brass in it (closing an empty reload) leaves the slug
+		// alone: hiding it without spawning anything would just make the shell
+		// vanish, which reads worse than the flick it avoids.
+		if (m_pumpEjects && f >= m_pumpEjectFrame && !m_slugHandedOff)
 		{
 			m_slugHandedOff = true;
 			ejectSpentShell();
@@ -369,6 +470,29 @@ void Weapon_Shotgun::updateSlug(float frame)
 		setMeshPartVisible(m_slug, true);
 		break;
 	}
+}
+
+// Back to idle, unless a shot was queued while the gun was busy — in which case
+// it goes off now that the action is closed. Routed through enterState(Idle)
+// first because fire() only runs from Idle, and that is also what puts the clip
+// speed and stabilisation back before the fire clip sets its own.
+void Weapon_Shotgun::finishAction()
+{
+	const bool fireNow = m_fireAfterReload && m_shells > 0;
+	m_fireAfterReload = false;
+
+	enterState(State::Idle);
+
+	if (fireNow)
+		fire();
+}
+
+void Weapon_Shotgun::playPumpSound()
+{
+	SoundManager::Get()->sound()->play2D(
+		"content/sound/weapon/shotgun/Shotgun_Quick Pump_01.wav",
+		false, 0, -1.0f, nullptr, false,
+		1.0f + Engine::Get()->rng()->getFloat(-0.03f, 0.03f));
 }
 
 void Weapon_Shotgun::ejectSpentShell()
@@ -409,9 +533,20 @@ void Weapon_Shotgun::ejectSpentShell()
 		axisRight * speed * Engine::Get()->rng()->getFloat(0.7f, 1.1f) +
 		axisUp    * speed * Engine::Get()->rng()->getFloat(0.5f, 0.9f);
 
+	// Turn the casing end for end. Taken straight from the source bone it flies
+	// mouth-first back at the camera; the open end belongs downrange.
+	//
+	// Composed as a LOCAL flip — the right operand applies first under Irrlicht's
+	// operator* — rather than by adding 180 to the Euler Y. Adding to the Euler
+	// yaws it in the PARENT frame, which only happens to look right while the
+	// source bone is upright and comes apart as soon as it pitches or rolls.
+	irr::core::matrix4 flip;
+	flip.setRotationDegrees(irr::core::vector3df(0.0f, 180.0f, 0.0f));
+	const irr::core::matrix4 oriented = world * flip;
+
 	m_effects.spawnShellAt(
 		world.getTranslation(),
-		world.getRotationDegrees(),
+		oriented.getRotationDegrees(),
 		velocity,
 		matchPartScale(m_slug, m_effects.shellMeshExtent()));
 }
@@ -428,8 +563,9 @@ void Weapon_Shotgun::persist()
 
 void Weapon_Shotgun::equip()
 {
-	m_firedThisPress = false;
-	m_slugHandedOff  = false;
+	m_firedThisPress   = false;
+	m_slugHandedOff    = false;
+	m_fireAfterReload  = false; // a shot queued before the switch does not carry over
 	resetViewKick();
 
 	// A reload abandoned by a weapon switch keeps the shells that were already
@@ -448,8 +584,9 @@ void Weapon_Shotgun::equip()
 
 void Weapon_Shotgun::unequip()
 {
-	m_slugHandedOff = false;
-	m_state         = State::Idle;
+	m_slugHandedOff   = false;
+	m_fireAfterReload = false;
+	m_state           = State::Idle;
 	setMeshPartVisible(m_slug, true);
 	m_mesh.node->setVisible(false);
 }
@@ -460,7 +597,8 @@ void Weapon_Shotgun::startUnequip()
 	if (!m_mesh.node || !m_mesh.node->isVisible() || m_state == State::Unequipping)
 		return;
 
-	m_firedThisPress = true; // block fire during transition
+	m_firedThisPress  = true; // block fire during transition
+	m_fireAfterReload = false;
 	setMeshPartVisible(m_slug, true);
 
 	playUnequipSound();

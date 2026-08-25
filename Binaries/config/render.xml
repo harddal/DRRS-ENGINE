@@ -2,7 +2,7 @@
 <cereal>
 	<value0>
 		<fullscreen>false</fullscreen>
-		<vSync>false</vSync>
+		<vSync>true</vSync>
 		<pointFilterOverride>false</pointFilterOverride>
 		<api>0</api>
 		<width>1920</width>
@@ -15,7 +15,7 @@
 		<dpi_scale>1</dpi_scale>
 		<anisotropyFactor>8</anisotropyFactor>
 		<antialiasingFactor>1</antialiasingFactor>
-		<frameLimit>60</frameLimit>
+		<frameLimit>0</frameLimit>
 	</value0>
 </cereal>
 

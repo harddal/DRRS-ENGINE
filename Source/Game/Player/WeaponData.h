@@ -23,6 +23,7 @@ enum PLAYER_WEAPON
 	WEAP_REVOLVER,
 	WEAP_SHOTGUN,
 	WEAP_HEAVYRIFLE,
+	WEAP_CROSSBOW,
 	WEAP_COUNT
 };
 
@@ -65,6 +66,7 @@ struct WeaponProjectile
 	SoundHandle flyingSound; // Looping 3D flight sound
 	bool isBouncing  = false; // If true, reflects off surfaces and detonates on timer instead of impact
 	int  bounceCount = 0;    // Number of times this projectile has bounced
+	bool isStuck     = false; // Embedded in a surface: frozen in place, running out its lifetime
 };
 
 class PlayerWeapon
@@ -97,6 +99,64 @@ public:
 	// exponential spring inside updateWeaponSway(). Call from fire()/swing paths.
 	void addViewKick(const irr::core::vector3df& posKick, const irr::core::vector3df& rotKick);
 	void resetViewKick();
+
+	// --- Clip playback speed -------------------------------------------------
+	// Multiplier over m_mesh.fps for the clip that is playing. Set it alongside
+	// playAnimation() and put it back to 1.0 when leaving that clip.
+	//
+	// Frame-triggered GAMEPLAY logic is unaffected, since it keys off
+	// getFrameNr(). Frame-triggered SOUND is not: a cue's lead-in is fixed in
+	// real time, so the number of animation frames it spans changes with speed.
+	// Use soundLeadFrames() rather than a hardcoded frame count for those.
+	void setClipSpeed(float multiplier);
+
+	// Animation frames of lead a cue needs for its transient to land ON a given
+	// frame, from the measured time between the start of the .wav and that
+	// transient. Converted at the CURRENT playback speed, so speeding a clip up
+	// cannot silently desync the sounds attached to it.
+	int soundLeadFrames(float transientSeconds) const;
+
+	// --- Clip stabilisation --------------------------------------------------
+	// Cancels part of a clip's gross screen-space motion, for animations that
+	// swing the whole weapon further than reads well in first person.
+	//
+	// It works by nailing a REFERENCE POINT on the gun rather than by countering
+	// the root transform: measure how far that point drifts from its rest
+	// position and counter-translate the viewmodel node by a fraction of the
+	// drift. A pure translation absorbs both the root's travel AND the much
+	// larger swing that a root ROTATION imparts to a point out along the barrel.
+	//
+	// Deliberately not a counter-rotation: the node's origin is not the gun's
+	// pivot, so rotating it back would move the gun again and drag the arms with
+	// it. The gun still visibly tilts here, which is what sells the action
+	// working — it just stops wandering off screen.
+	void enableClipStabilization(const char* jointName, const irr::core::vector3df& localOffset);
+
+	// The strength this weapon wants when it stabilises: 0 = off, 1 = the
+	// reference point is pinned dead still. Expect to want less than 1 — fully
+	// pinned, the arms appear to do all the moving and it reads uncanny.
+	//
+	// Kept separate from the currently-active amount so the F2 slider edits
+	// something durable: states re-apply the amount on every transition, and a
+	// slider writing the active value directly would be wiped by the next pump.
+	void  setStabilizationTuneAmount(float amount) { m_stabTuneAmount = amount; }
+	float stabilizationTuneAmount() const          { return m_stabTuneAmount; }
+
+	// Active amount for the clip that is playing. Set per animation state, using
+	// stabilizationTuneAmount() as the "on" value.
+	void setStabilizationAmount(float amount) { m_stabAmount = amount; }
+
+	// Records where the reference point sits at the REST pose. Must be called
+	// with the weapon idle and its joints live — not from init(), where the node
+	// is hidden and the joint transforms are stale. Cheap, and the rest pose
+	// never changes, so call it once behind stabilizationRestValid().
+	void captureStabilizationRest();
+	bool stabilizationRestValid() const { return m_stabRestValid; }
+
+	// Live tuning hooks for the viewmodel debug window (F2)
+	float&               debugStabilizationAmount() { return m_stabTuneAmount; }
+	irr::core::vector3df& debugStabilizationOffset() { return m_stabLocalOffset; }
+	bool                 hasClipStabilization() const { return m_stabBone != nullptr; }
 
 	// --- Rigid glTF part addressing ------------------------------------------
 	// glTF weapons have no scene node per moving part. GltfImport gives every
@@ -202,6 +262,20 @@ public:
 	// revolver's flash inside its own grip.
 	virtual class WeaponEffects* debugEffects() { return nullptr; }
 
+	// Projectile weapons expose their arc knobs the same way and for the same
+	// reason: launch speed and gravity decide whether a shot reads as a bolt or a
+	// mortar, and that is judged by eye, not from the source. Pointers rather
+	// than values so the debug window edits the live members in place.
+	//
+	// Returns false for hitscan weapons, which leaves the block out of the UI.
+	struct BallisticTuning
+	{
+		float* speed       = nullptr;
+		float* gravity     = nullptr;
+		float* maxAimRange = nullptr; // how far out the arc is solved to land
+	};
+	virtual bool debugBallistics(BallisticTuning&) { return false; }
+
 protected:
 	// Drives the viewmodel node from the clip named in m_mesh.animationList, so
 	// frame ranges are declared once in init() instead of being repeated (and
@@ -255,6 +329,19 @@ protected:
 
 	IdleBreath m_idleBreath;
 	float m_idleBreathTime = 0.0f;       // seconds, advanced by updateWeaponSway()
+
+	// Clip stabilisation state. m_stabRest and the per-frame reference are both in
+	// VIEWMODEL-NODE-LOCAL space (model units), which is what makes the maths
+	// independent of the node position being written this frame.
+	irr::scene::IBoneSceneNode* m_stabBone = nullptr;
+	irr::core::vector3df m_stabLocalOffset;   // reference point within the bone, model units
+	irr::core::vector3df m_stabRest;          // reference at the rest pose, node-local
+	irr::core::vector3df m_stabOffset;        // resulting counter-translation, parent space
+	float m_stabAmount     = 0.0f; // active this frame
+	float m_stabTuneAmount = 0.0f; // the weapon's chosen "on" strength
+	bool  m_stabRestValid  = false;
+
+	void updateClipStabilization();
 
 };
 

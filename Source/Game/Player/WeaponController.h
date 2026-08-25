@@ -11,6 +11,7 @@
 #include "Weapon/Weapon_Revolver.h"
 #include "Weapon/Weapon_Shotgun.h"
 #include "Weapon/Weapon_HeavyRifle.h"
+#include "Weapon/Weapon_Crossbow.h"
 
 
 #include "Weapon/Weapon_Pistol.h"
@@ -59,6 +60,7 @@ private:
 	Weapon_Revolver m_weapon_revolver;
 	Weapon_BoltDriver m_weapon_boltdriver;
 	Weapon_HeavyRifle m_weapon_heavyrifle;
+	Weapon_Crossbow m_weapon_crossbow;
 	Weapon_Minigun m_weapon_minigun;
 	Weapon_RocketLauncher m_weapon_rocketlauncher;
 	Weapon_Shotgun m_weapon_shotgun;

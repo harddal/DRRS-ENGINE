@@ -40,7 +40,7 @@ private:
 
 	// Fire rate and semi-auto tracking
 	int m_lastFireTime = 0;
-	float m_fireRate = 900.0f; // ms between shots (pump-action cadence)
+	float m_fireRate = 750.0f; // ms between shots (pump-action cadence)
 	bool m_firedThisPress = false; // semi-auto: one shot per click
 
 	// Tube magazine
@@ -58,15 +58,51 @@ private:
 	MeshPart m_slug;
 	bool     m_slugHandedOff = false; // a physics casing has replaced it this pump
 
+	// Whether the running pump has a spent case to throw. True for the rack that
+	// follows a shot; false for the one that closes an empty reload, where the
+	// post-fire pump already cleared the chamber and this rack is only chambering
+	// a fresh shell.
+	bool     m_pumpEjects = false;
+
+	// Set when fire is pressed while the gun is busy. From a reload it also cuts
+	// the per-shell loop short; from the pump or the reload's closing move it is
+	// just buffered input. Either way the shot is queued rather than immediate,
+	// so the gun is never fired mid-cycle with the action open.
+	bool     m_fireAfterReload = false;
+
 	// Frames within the clips, measured off the .glb (see init())
-	static const int m_pumpEjectFrame   = 32; // top of the case's flick; it snaps home at 33
+	// The pump slides back over f21-23, holds to f29, then returns forward over
+	// f31-34. Eject at the end of the REARWARD stroke: that is when a real pump
+	// throws the case, and it was previously f32, which is on the way forward.
+	// Hiding the slug here also means the artist's flick-up-and-snap-home at
+	// f30-33 never renders, so nothing has to be done about that separately.
+	static const int m_pumpEjectFrame   = 23;
 	static const int m_reloadShowFrame  = 55; // the hand arrives with the fresh shell
 	static const int m_reloadSeatFrame  = 69; // shell is home in the tube
 
-	// Pump slides back over f21-23. Shotgun_Quick Pump_01.wav has 1.9 frames of
-	// lead-in before its onset, so triggering here lands that onset on the start
-	// of the rack-back and its peak on the back stop.
-	static const int m_pumpSoundFrame   = 19;
+	// Pump slides back over f21-23; the rack sound should start there.
+	static const int m_rackBackFrame = 21;
+
+	// The draw works the action too, racking over f111-124 of the equip clip —
+	// the same gesture, at an absolute frame of its own.
+	static const int m_equipRackFrame = 111;
+
+	// Seconds from the start of each .wav to the transient that should land on the
+	// visual event. SECONDS, not frames: these clips run at m_actionSpeed, so the
+	// frame count they span differs from 1x. Convert with soundLeadFrames().
+	static constexpr float m_pumpSoundLeadSec   = 0.064f; // Shotgun_Quick Pump_01.wav onset
+	static constexpr float m_insertShellLeadSec = 0.104f; // insert_shell_shotgun.wav peak
+
+	// Fire, pump and both halves of the reload run quicker than authored.
+	// Applied in enterState() so no path can leave it stuck on.
+	static constexpr float m_actionSpeed = 1.3f;
+
+	// How much of the pump's screen-space swing to cancel. The clip moves the gun
+	// root only 10.6 model units but rotates it 24.75 degrees and holds that from
+	// f20 to f36 — and it is the rotation, swung out along an 85-unit barrel,
+	// that throws the weapon up and left. Below 1.0 on purpose: fully pinned, the
+	// arms look like they are doing all the moving.
+	static constexpr float m_pumpStabilize = 1.0f;
 
 	// Pellet stats
 	int m_pelletCount = 8;
@@ -75,7 +111,9 @@ private:
 
 	// Pump rack sound, triggered off the pump clip's own frame so it stays in
 	// sync and also fires for the rack that closes an empty reload.
-	bool m_pumpSoundPlayed = false;
+	bool m_pumpSoundPlayed   = false;
+	bool m_equipRackPlayed   = false;
+	bool m_insertShellPlayed = false; // re-armed per reload pass, so it plays once per shell
 
 	// Recoil animation (delivered through the shared PlayerWeapon view-kick spring)
 	float m_recoilAmount = 8.0f;
@@ -89,8 +127,10 @@ private:
 	irr::video::ITexture* m_crosshair = nullptr;
 
 	void enterState(State next);
+	void finishAction();
 	void updateSlug(float frame);
 	void ejectSpentShell();
+	void playPumpSound();
 
 public:
 	WeaponEffects* debugEffects() override { return &m_effects; }

@@ -54,6 +54,11 @@ enum BrushContentFlags : irr::u32
     CONTENT_CLIP_MASK = CONTENT_CLIP_PLAYER | CONTENT_CLIP_MONSTER | CONTENT_CLIP_WEAPON,
 };
 
+// Canonical label texture for player-clip tool brushes.  Visual only — the
+// content flag is what drives the behavior.  Shared by the brush panel's tool
+// presets and by generators that emit clip volumes (e.g. the stair clip ramp).
+constexpr const char* TOOL_TEXTURE_PLAYER_CLIP = "content/texture/tool/playerclip.png";
+
 // brushes.xml schema version, written as a <version> header element by
 // BrushManager::serialize.  Files without the element load as version 0.
 // v1: contentFlags + receiver.  v2: owner (mover brushes).  v3: fog-zone params.

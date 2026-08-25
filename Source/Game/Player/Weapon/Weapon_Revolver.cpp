@@ -253,7 +253,8 @@ void Weapon_Revolver::update()
 			playAnimation("idle");
 		}
 		else if (!m_equipSpinPlayed &&
-			m_mesh.node->getFrameNr() >= static_cast<irr::f32>(m_equipSpinFrame - m_spinSoundLead))
+			m_mesh.node->getFrameNr() >=
+				static_cast<irr::f32>(m_equipSpinFrame - soundLeadFrames(m_spinSoundLeadSec)))
 		{
 			m_equipSpinPlayed = true;
 
@@ -277,6 +278,7 @@ void Weapon_Revolver::update()
 
 				m_reloadPhase = 2;
 				m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
+				setClipSpeed(m_reloadSpeed); // the close is part of the reload
 				playAnimation("reload_close");
 			}
 			else
@@ -768,10 +770,12 @@ void Weapon_Revolver::updateReloadSounds(float frame)
 	// One click per round. Walks forward like creditSeatedRounds() so a frame
 	// hitch that skips several trigger points still plays them all, and the
 	// concurrency cap keeps that from becoming one blast.
+	const int insertLead = soundLeadFrames(m_insertSoundLeadSec);
+
 	while (m_insertSoundsPlayed < m_reloadRounds)
 	{
 		const int seatFrame = m_firstSeatFrame + m_insertStride * m_insertSoundsPlayed;
-		if (f < seatFrame - m_insertSoundLead)
+		if (f < seatFrame - insertLead)
 			break;
 
 		SoundManager::Get()->sound()->playRandomized2D(
@@ -781,7 +785,7 @@ void Weapon_Revolver::updateReloadSounds(float frame)
 	}
 
 	// The crane swings shut over f212-217 and latches at 217
-	if (!m_closeSoundPlayed && f >= m_cylinderLatchFrame - m_closeSoundLead)
+	if (!m_closeSoundPlayed && f >= m_cylinderLatchFrame - soundLeadFrames(m_closeSoundLeadSec))
 	{
 		m_closeSoundPlayed = true;
 
@@ -802,6 +806,10 @@ void Weapon_Revolver::endReload()
 	m_insertSoundsPlayed = 0;
 	m_closeSoundPlayed   = false;
 	m_fireAfterReload    = false;
+
+	// Every exit from a reload runs through here, so this is the one place the
+	// sped-up playback has to be put back.
+	setClipSpeed(1.0f);
 
 	for (int i = 0; i < m_roundCount; ++i)
 	{
@@ -944,6 +952,8 @@ void Weapon_Revolver::reload()
 	// playAnimation(). A six-round reload lands exactly on m_reloadCloseStart,
 	// making the phase-2 handoff seamless; shorter ones cut, cheaply (see init()).
 	const int lastSeatFrame = m_firstSeatFrame + m_insertStride * (m_reloadRounds - 1);
+
+	setClipSpeed(m_reloadSpeed);
 
 	m_mesh.node->setLoopMode(false);
 	m_mesh.node->setFrameLoop(m_reloadStartFrame, lastSeatFrame);

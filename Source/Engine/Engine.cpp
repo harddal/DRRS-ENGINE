@@ -125,20 +125,20 @@ void Engine::update()
 		if (m_renderManager.consumeWindowCloseRequest())
 			requestQuit();
 
-		m_currentTick = static_cast<float>(GetCounter());
+		m_currentTick = GetCounter();
 
-		// Calculate raw frame time in seconds
-		float frameTime = (m_currentTick - m_lastTick) / 1000.0f;
-		
+		// Calculate raw frame time in seconds (double — see m_currentTick in Engine.h)
+		double frameTime = (m_currentTick - m_lastTick) / 1000.0;
+
 		// Spiral of death protection: cap maximum frame time
 		if (frameTime > m_maxFrameTime) {
 			frameTime = m_maxFrameTime;
 		}
-		
+
 		m_lastTick = m_currentTick;
-		
+
 		// Store variable frame time for UI updates (used after fixed loop)
-		float variableDeltaMs = frameTime * 1000.0f;
+		const float variableDeltaMs = static_cast<float>(frameTime * 1000.0);
 
 		// --- Time scale ---------------------------------------------------
 		// The hit-stop countdown runs on REAL frame time (outside the scaled
@@ -146,7 +146,7 @@ void Engine::update()
 		float effectiveScale = m_timeScale;
 		if (m_hitStopRemainingMs > 0.0f)
 		{
-			m_hitStopRemainingMs -= frameTime * 1000.0f;
+			m_hitStopRemainingMs -= static_cast<float>(frameTime * 1000.0);
 			effectiveScale = m_hitStopScale < m_timeScale ? m_hitStopScale : m_timeScale;
 		}
 
@@ -214,7 +214,7 @@ void Engine::update()
 		bool logicUpdated = false;
 		
 		// Fixed timestep loop for physics and game logic
-		const float fixedDeltaMs = m_fixedTimeStep * 1000.0f;
+		const float fixedDeltaMs = static_cast<float>(m_fixedTimeStep * 1000.0);
 		while (m_accumulator >= m_fixedTimeStep)
 		{
 			logicUpdated = true;
@@ -238,9 +238,9 @@ void Engine::update()
 			// Physics update at fixed timestep
 			if (m_isGameMode)
 			{
-				m_currentPhysicsTick = static_cast<float>(GetCounter());
+				m_currentPhysicsTick = GetCounter();
 				m_physicsManager.update(fixedDeltaMs);
-				m_physicsTime = static_cast<float>(GetCounter()) - m_currentPhysicsTick;
+				m_physicsTime = static_cast<irr::f32>(GetCounter() - m_currentPhysicsTick);
 			}
 			
 			m_accumulator -= m_fixedTimeStep;
@@ -253,7 +253,7 @@ void Engine::update()
 		}
 		
 		// Calculate interpolation alpha for smooth rendering
-		m_interpolationAlpha = m_accumulator / m_fixedTimeStep;
+		m_interpolationAlpha = static_cast<float>(m_accumulator / m_fixedTimeStep);
 		
 		// Restore variable frame time for UI updates and rendering
 		m_deltaTime = variableDeltaMs;
@@ -261,22 +261,29 @@ void Engine::update()
 		// Update UI with variable timestep (for smooth UI interactions)
 		m_stateManager.updateUI(m_deltaTime);
 
-		// Render — only when we have new content to display.
-		// When VSync is on and no logic ran, skip the render pass to avoid black frames
-		// caused by clearing the backbuffer with nothing new to draw.
-		if (logicUpdated || !m_renderManager.Get()->getConfiguration().vSync)
-		{
-			m_currentRenderTick = static_cast<float>(GetCounter());
-			m_renderManager.draw(m_deltaTime);
-			m_renderTime = static_cast<float>(GetCounter()) - m_currentRenderTick;
-		}
+		// Render unconditionally.
+		//
+		// This used to skip draw() when VSync was on and no fixed step had run.
+		// endScene()/SwapBuffers lives at the end of draw(), so skipping it removed
+		// the only blocking call in the loop: a zero-step frame (see the accumulator
+		// beat — m_fixedTimeStep vs. real frame time) let the loop free-run at kHz
+		// for a full frame's worth of wall time, rebuilding the entire ImGui frame
+		// thousands of times before the accumulator refilled. ImGui::Render() also
+		// lives in draw(), so every one of those frames was begun and never ended.
+		// That was the "mega-stutter then crash" whenever VSync was enabled.
+		//
+		// Re-presenting unchanged content is correct and cheap; with VSync on the
+		// present IS the frame pacing.
+		m_currentRenderTick = GetCounter();
+		m_renderManager.draw(m_deltaTime);
+		m_renderTime = static_cast<irr::f32>(GetCounter() - m_currentRenderTick);
 
 		// Frame rate limiting (spin-wait using high-performance counter)
 		int frameLimit = m_renderManager.Get()->getConfiguration().frameLimit;
 		if (!m_renderManager.Get()->getConfiguration().vSync && frameLimit > 0)
 		{
 			double targetFrameTimeMs = 1000.0 / static_cast<double>(frameLimit);
-			double frameStartMs = static_cast<double>(m_currentTick);
+			const double frameStartMs = m_currentTick;   // already double — no precision loss
 
 			while ((GetCounter() - frameStartMs) < targetFrameTimeMs)
 			{

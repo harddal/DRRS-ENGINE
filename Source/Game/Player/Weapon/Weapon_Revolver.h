@@ -85,14 +85,22 @@ private:
 	static const int m_reloadCloseEnd   = 227; // last frame of the reload
 	static const int m_equipSpinFrame   = 252; // cylinder spin flourish begins
 
-	// Lead-in each clip needs before its transient, measured off the .wav files,
-	// so the sound is triggered early enough for its peak to land ON the visual
-	// event rather than after it. insert_shell.wav in particular carries 0.2s of
+	// Seconds from the start of each .wav to its transient, measured off the
+	// files, so a cue can be triggered early enough for that transient to land ON
+	// the visual event. insert_shell.wav in particular carries 0.2s of
 	// near-silence before the click — played on the seat frame it lands a third
 	// of a second late.
-	static const int m_insertSoundLead = 9; // insert_shell.wav peaks 9.2 frames in
-	static const int m_closeSoundLead  = 3; // revolver_close_cylinder.wav peaks 2.6 in
-	static const int m_spinSoundLead   = 2; // revolver_cylinder_spin.wav onsets 1.8 in
+	//
+	// Held in SECONDS, not frames: the reload runs at m_reloadSpeed, so the
+	// number of animation frames these span is not the same as at 1x. Convert
+	// with soundLeadFrames() at the point of use, never with a constant.
+	static constexpr float m_insertSoundLeadSec = 0.306f; // insert_shell.wav peak
+	static constexpr float m_closeSoundLeadSec  = 0.088f; // revolver_close_cylinder.wav peak
+	static constexpr float m_spinSoundLeadSec   = 0.059f; // revolver_cylinder_spin.wav onset
+
+	// The authored reload is a deliberate 7.2s at 1x, which reads as a liability
+	// in a firefight; this trims it without re-authoring the clip.
+	static constexpr float m_reloadSpeed = 1.3f;
 
 	// First frame of the ejector push. Spent-case world positions are sampled from
 	// here to m_ejectFrame so the casing handed off at the hide can inherit the

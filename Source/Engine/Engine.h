@@ -233,23 +233,34 @@ private:
 	double PCFreq = 0.0;
 	__int64 CounterStart = 0;
 
-    irr::f32 m_currentTick, m_lastTick;
-    irr::f32 m_deltaTime;
+	// Absolute timestamps, in milliseconds since process start. These MUST be
+	// double: GetCounter() returns double, and a 32-bit float only has a 24-bit
+	// mantissa, so an absolute ms value quantizes as uptime grows (0.0625ms at
+	// 10 minutes, 0.25ms at 35 minutes). frameTime is a difference of two of
+	// these, so that quantization landed straight in the accumulator below and
+	// showed up as frame-time jitter that got worse the longer the game ran.
+	double m_currentTick = 0.0, m_lastTick = 0.0;
+
+	irr::f32 m_deltaTime;                        // Frame DURATION in ms — float is fine
 
 	// Fixed timestep variables (Gaffer on Games approach)
-	const float m_fixedTimeStep = 0.01667f;      // 60Hz = 16.67ms in seconds
-	float m_accumulator = 0.0f;                  // Time accumulator for fixed updates
-	float m_interpolationAlpha = 0.0f;           // Render interpolation (0-1)
-	const float m_maxFrameTime = 0.25f;          // Spiral of death protection (250ms max)
-    float m_simulationTime = 0.0f;               // Actual simulation time in milliseconds (increments each fixed step)
+	const double m_fixedTimeStep = 1.0 / 60.0;   // exactly 60Hz. Was 0.01667 (= 59.988Hz),
+	                                             // which beat against the real frame rate and
+	                                             // produced periodic 0-step / 2-step frames.
+	double m_accumulator = 0.0;                  // Time accumulator for fixed updates
+	float m_interpolationAlpha = 0.0f;           // Render interpolation (0-1) — NOT YET CONSUMED
+	const double m_maxFrameTime = 0.25;          // Spiral of death protection (250ms max)
+	double m_simulationTime = 0.0;               // Actual simulation time in milliseconds (increments each fixed step)
 
 	// Time scale state (see setTimeScale/requestHitStop)
 	float m_timeScale = 1.0f;                    // Persistent world speed (bullet time)
 	float m_hitStopRemainingMs = 0.0f;           // Real-time countdown of the active hit-stop
 	float m_hitStopScale = 0.05f;                // Scale used while a hit-stop is active
 
-	irr::f32 m_currentPhysicsTick, m_physicsTime;
-	irr::f32 m_currentRenderTick, m_renderTime;
+	// Same rule as above: the *Tick members hold absolute times (double), the
+	// *Time members hold durations (float is fine, and the getters return f32).
+	double m_currentPhysicsTick = 0.0; irr::f32 m_physicsTime = 0.0f;
+	double m_currentRenderTick  = 0.0; irr::f32 m_renderTime  = 0.0f;
 
     std::string m_cmdLineArgs;
 

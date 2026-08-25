@@ -35,6 +35,7 @@ void WeaponController::init()
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Revolver>(m_weapon_revolver));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Shotgun>(m_weapon_shotgun));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_HeavyRifle>(m_weapon_heavyrifle));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Crossbow>(m_weapon_crossbow));
 }
 
 void WeaponController::update()
@@ -280,6 +281,48 @@ void WeaponController::drawViewmodelDebugUI()
 		snprintf(muzBuf, sizeof(muzBuf), "irr::core::vector3df(%.2ff, %.2ff, %.2ff)",
 			muzzle.X, muzzle.Y, muzzle.Z);
 		ImGui::InputText("##muzzle", muzBuf, sizeof(muzBuf), ImGuiInputTextFlags_ReadOnly);
+	}
+
+	// Clip stabilisation. Fire repeatedly while dragging: Amount 0 is the raw
+	// animation, 1 pins the reference point dead still. Dragging Ref along the
+	// barrel axis trades muzzle steadiness against stock steadiness.
+	if (weap->hasClipStabilization())
+	{
+		ImGui::Separator();
+		ImGui::TextDisabled("Clip stabilisation (ref is joint-local, model units)");
+
+		auto& amount = weap->debugStabilizationAmount();
+		auto& ref    = weap->debugStabilizationOffset();
+
+		ImGui::SliderFloat("Amount", &amount, 0.0f, 1.0f, "%.2f");
+
+		float s[3] = { ref.X, ref.Y, ref.Z };
+		if (ImGui::DragFloat3("Ref", s, 0.25f, -200.0f, 200.0f, "%.2f"))
+			ref = irr::core::vector3df(s[0], s[1], s[2]);
+
+		char stabBuf[160];
+		snprintf(stabBuf, sizeof(stabBuf), "%.2ff  /  irr::core::vector3df(%.2ff, %.2ff, %.2ff)",
+			amount, ref.X, ref.Y, ref.Z);
+		ImGui::InputText("##stab", stabBuf, sizeof(stabBuf), ImGuiInputTextFlags_ReadOnly);
+	}
+
+	// Projectile arc. Fire repeatedly while dragging: Speed and Gravity trade off
+	// against each other, so sweep one at a time. Aim Range is the horizon the arc
+	// is solved to land on — shorter keeps the shot flat, longer lobs it.
+	PlayerWeapon::BallisticTuning bal;
+	if (weap->debugBallistics(bal) && bal.speed && bal.gravity && bal.maxAimRange)
+	{
+		ImGui::Separator();
+		ImGui::TextDisabled("Ballistics (applies to the NEXT shot)");
+
+		ImGui::DragFloat("Speed",     bal.speed,       1.0f, 10.0f, 400.0f, "%.1f");
+		ImGui::DragFloat("Gravity",   bal.gravity,     0.1f,  0.0f,  40.0f, "%.2f");
+		ImGui::DragFloat("Aim range", bal.maxAimRange, 1.0f,  5.0f, 500.0f, "%.1f");
+
+		char balBuf[160];
+		snprintf(balBuf, sizeof(balBuf), "speed %.1ff  gravity %.2ff  range %.1ff",
+			*bal.speed, *bal.gravity, *bal.maxAimRange);
+		ImGui::InputText("##ballistics", balBuf, sizeof(balBuf), ImGuiInputTextFlags_ReadOnly);
 	}
 
 	ImGui::End();

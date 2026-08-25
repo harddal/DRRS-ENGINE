@@ -72,12 +72,109 @@ void PlayerWeapon::updateWeaponSway(float dt)
 		idleBreathOffsets(breathPos, breathRot);
 	}
 
-	// Single authoritative transform write: rest pose + sway + kick + breathing
-	m_mesh.node->setPosition(m_viewPositionOffset + m_swayOffset + m_kickPos + breathPos);
+	// Counter-translation for clips that swing the weapon too far. Computed here
+	// so it composes with the rest rather than being a second write, and BEFORE
+	// setPosition so it uses this frame's joint pose.
+	updateClipStabilization();
+
+	// Single authoritative transform write: rest pose + sway + kick + breathing,
+	// less whatever the running clip is being stabilised against
+	m_mesh.node->setPosition(m_viewPositionOffset + m_swayOffset + m_kickPos + breathPos + m_stabOffset);
 	m_mesh.node->setRotation(m_viewRotationOffset + m_kickRot + breathRot);
 
 	// Store current rotation for next frame
 	m_lastCameraRotation = currentRotation;
+}
+
+void PlayerWeapon::enableClipStabilization(const char* jointName,
+                                           const irr::core::vector3df& localOffset)
+{
+	m_stabLocalOffset = localOffset;
+	m_stabRestValid   = false;
+	m_stabAmount      = 0.0f;
+	m_stabOffset      = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+
+	if (!m_mesh.node || !jointName)
+		return;
+
+	m_stabBone = m_mesh.node->getJointNode(jointName);
+	if (!m_stabBone)
+		spdlog::warn("PlayerWeapon::enableClipStabilization(): joint '{}' not found — clip stabilisation disabled",
+			jointName);
+}
+
+// The reference point in viewmodel-node-local space. The node's own transform
+// cancels out of this, so it does not depend on the position being written this
+// frame — which is what stops the counter-offset feeding back into itself.
+static bool referencePointNodeLocal(irr::scene::IAnimatedMeshSceneNode* node,
+                                    irr::scene::IBoneSceneNode* bone,
+                                    const irr::core::vector3df& localOffset,
+                                    irr::core::vector3df& out)
+{
+	if (!node || !bone)
+		return false;
+
+	bone->updateAbsolutePosition();
+
+	out = localOffset;
+	bone->getAbsoluteTransformation().transformVect(out); // bone-local -> world
+
+	irr::core::matrix4 toNodeLocal = node->getAbsoluteTransformation();
+	toNodeLocal.makeInverse();
+	toNodeLocal.transformVect(out);                        // world -> node-local
+
+	return true;
+}
+
+void PlayerWeapon::captureStabilizationRest()
+{
+	if (referencePointNodeLocal(m_mesh.node, m_stabBone, m_stabLocalOffset, m_stabRest))
+		m_stabRestValid = true;
+}
+
+void PlayerWeapon::updateClipStabilization()
+{
+	m_stabOffset = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+
+	if (!m_stabBone || !m_stabRestValid || m_stabAmount <= 0.0f)
+		return;
+
+	irr::core::vector3df current;
+	if (!referencePointNodeLocal(m_mesh.node, m_stabBone, m_stabLocalOffset, current))
+		return;
+
+	irr::core::vector3df delta = current - m_stabRest; // node-local, model units
+
+	// Into the node's PARENT space, where m_viewPositionOffset lives. Taking
+	// rotation and scale from the node's own relative transform applies exactly
+	// what Irrlicht will, without assuming anything about the yaw or the scale.
+	irr::core::matrix4 rotScale = m_mesh.node->getRelativeTransformation();
+	rotScale.setTranslation(irr::core::vector3df(0.0f, 0.0f, 0.0f));
+	rotScale.transformVect(delta);
+
+	m_stabOffset = -delta * m_stabAmount;
+}
+
+void PlayerWeapon::setClipSpeed(float multiplier)
+{
+	if (!m_mesh.node)
+		return;
+
+	m_mesh.node->setAnimationSpeed(static_cast<irr::f32>(m_mesh.fps) * multiplier);
+}
+
+int PlayerWeapon::soundLeadFrames(float transientSeconds) const
+{
+	if (!m_mesh.node)
+		return 0;
+
+	// getAnimationSpeed() is frames per second and already carries whatever
+	// multiplier setClipSpeed() last applied.
+	const float fps = m_mesh.node->getAnimationSpeed();
+	if (fps <= 0.0f)
+		return 0;
+
+	return static_cast<int>(transientSeconds * fps + 0.5f);
 }
 
 bool PlayerWeapon::resolveMeshPart(const char* jointNamePrefix, MeshPart& outPart)
