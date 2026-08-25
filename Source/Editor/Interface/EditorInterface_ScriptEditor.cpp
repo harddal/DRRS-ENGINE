@@ -357,9 +357,13 @@ void drawScriptEditorPopups()
 
     // Host the modal in a top-level invisible window so it renders above
     // all docked windows and the scene viewport.
-    ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(io.DisplaySize);
+    // Anchored to the main viewport rather than (0,0): with multi-viewport enabled
+    // (0,0) is the primary monitor's corner, which would strand this invisible modal
+    // host — and the modal it parents — away from the editor window.
+    const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(mainViewport->Pos);
+    ImGui::SetNextWindowSize(mainViewport->Size);
+    ImGui::SetNextWindowViewport(mainViewport->ID);
     ImGui::SetNextWindowBgAlpha(0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,    ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);

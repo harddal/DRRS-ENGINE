@@ -383,6 +383,16 @@ void EditorInterface::draw_menubar_main()
 				function_showhide_menubar();
 			}
 
+			ImGui::MenuItem("Viewport", nullptr, &m_windowData.draw_window_viewport);
+
+			ImGui::Separator();
+
+			// Escape hatch for a mangled config/imgui.ini, and the only way back if the
+			// Viewport panel gets closed or dragged somewhere unusable.
+			if (ImGui::MenuItem("Reset Layout"))
+			{
+				g_resetDockLayout = true;
+			}
 
 			ImGui::EndMenu();
 		}

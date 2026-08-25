@@ -8,6 +8,7 @@
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Renderer/SplatMap.h"
 #include "Engine/Prop/PropManager.h"
+#include "Editor/EditorViewport.h"
 
 using namespace irr;
 using namespace core;
@@ -19,13 +20,12 @@ static const float k_pi = 3.14159265f;
 void TexturePainter::update(float dt)
 {
     if (!active || !targetProp || !targetProp->node || !targetProp->splatMap) return;
-    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive()) return;
+    if (!EditorViewport::acceptsSceneInput()) return;
 
-    // Build camera ray from cursor position.
-    auto* smgr   = RenderManager::Get()->sceneManager();
-    auto* cam    = smgr->getActiveCamera();
-    auto  pos2d  = RenderManager::Get()->device()->getCursorControl()->getPosition();
-    auto  ray    = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(pos2d, cam);
+    // Build camera ray from cursor position, mapped into the viewport panel.
+    auto* smgr = RenderManager::Get()->sceneManager();
+    auto* cam  = smgr->getActiveCamera();
+    auto  ray  = EditorViewport::rayFromMouse(cam);
 
     auto result = RenderManager::Get()->raycastWorldPosition(ray.start, ray.end, true);
 

@@ -17,8 +17,10 @@
 #include "Engine/Renderer/ClusteredLightManager.h"
 #include "Engine/Renderer/DecalManager.h"
 #include "Engine/Brush/BrushManager.h"
+#include "Engine/Interface/ImTransformControl.h"
 
 #include <IMGUI/backends/imgui_impl_opengl3.h>
+#include <IMGUI/backends/imgui_impl_win32.h>
 
 
 #include <GL/gl.h>
@@ -41,6 +43,21 @@ RenderManager* RenderManager::s_Instance = nullptr;
 irr::gui::IGUIFont* g_DefaultTextRenderableFontSm;
 
 // ---------------------------------------------------------------------------
+// ImGui assertion handler — wired up via IM_ASSERT in Include/imgui/imconfig.h.
+//
+// NDEBUG is defined in Release and RelWithDebInfo, so the default assert() was
+// compiled out and ImGui's internal guards never fired. Log in every build;
+// break only when a debugger is attached so shipping reports rather than dies.
+// ---------------------------------------------------------------------------
+void GameEngine_ImGuiAssertFailed(const char* expr, const char* file, int line)
+{
+    spdlog::critical("ImGui assertion failed: {}  [{}:{}]", expr, file, line);
+
+    if (::IsDebuggerPresent())
+        ::__debugbreak();
+}
+
+// ---------------------------------------------------------------------------
 // Window close interception
 //
 // Irrlicht lets DefWindowProc handle WM_CLOSE, which destroys the window right
@@ -55,8 +72,23 @@ irr::gui::IGUIFont* g_DefaultTextRenderableFontSm;
 static WNDPROC s_prevWndProc          = nullptr;
 static bool    s_windowCloseRequested = false;
 
+// imgui_impl_win32.h declares this inside an `#if 0`, so it has to be forward
+// declared by hand. It feeds ImGui the main window's mouse/keyboard/focus messages
+// and drives viewport move/resize.
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 static LRESULT CALLBACK CloseInterceptWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	// ImGui gets first look. It returns nonzero when it has fully handled a message.
+	//
+	// WM_SETCURSOR is deliberately excluded from the early-out: ImGui claims it
+	// whenever it changes the cursor, which would starve Irrlicht's own handler and
+	// lose any custom cursor icon. ImGui has already applied its cursor by then, so
+	// letting the message continue down the chain costs nothing.
+	const LRESULT imguiHandled = ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+	if (imguiHandled && msg != WM_SETCURSOR)
+		return imguiHandled;
+
 	if (msg == WM_CLOSE)
 	{
 		s_windowCloseRequested = true;
@@ -439,7 +471,7 @@ void BloomBlurCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("tBloom",     &slot,      1);
     services->setPixelShaderConstant("uDirection", direction,  2);
 
-    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    auto sz = RenderManager::Get()->renderSize();
     float rcpFrame[2] = {
         1.0f / static_cast<float>(sz.Width),
         1.0f / static_cast<float>(sz.Height)
@@ -469,7 +501,7 @@ void SharpenCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("tScene",    &slot,    1);
     services->setPixelShaderConstant("uStrength", &strength, 1);
 
-    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    auto sz = RenderManager::Get()->renderSize();
     float rcpFrame[2] = {
         1.0f / static_cast<float>(sz.Width),
         1.0f / static_cast<float>(sz.Height)
@@ -483,7 +515,7 @@ void PixelateCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("tScene",     &slot,     1);
     services->setPixelShaderConstant("uPixelSize", &pixelSize, 1);
 
-    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    auto sz = RenderManager::Get()->renderSize();
     float rcpFrame[2] = {
         1.0f / static_cast<float>(sz.Width),
         1.0f / static_cast<float>(sz.Height)
@@ -516,7 +548,7 @@ void FilmGrainCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("uGrainStrength", &strength, 1);
     services->setPixelShaderConstant("uTime",          &t,        1);
 
-    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    auto sz = RenderManager::Get()->renderSize();
     float res[2] = {
         static_cast<float>(sz.Width),
         static_cast<float>(sz.Height)
@@ -571,7 +603,7 @@ void FXAAShaderCallback::OnSetConstants(IMaterialRendererServices* services, s32
     int slot = 0;
     services->setPixelShaderConstant("tScene", &slot, 1);
 
-    auto sz = RenderManager::Get()->driver()->getScreenSize();
+    auto sz = RenderManager::Get()->renderSize();
     float rcpFrame[2] = {
         1.0f / static_cast<float>(sz.Width),
         1.0f / static_cast<float>(sz.Height)
@@ -588,6 +620,7 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     if (m_prepassRTT)    { m_driver->removeTexture(m_prepassRTT);    m_prepassRTT    = nullptr; }
     if (m_ssaoRTT[0])    { m_driver->removeTexture(m_ssaoRTT[0]);    m_ssaoRTT[0]    = nullptr; }
     if (m_ssaoRTT[1])    { m_driver->removeTexture(m_ssaoRTT[1]);    m_ssaoRTT[1]    = nullptr; }
+    if (m_viewportRTT)   { m_driver->removeTexture(m_viewportRTT);   m_viewportRTT   = nullptr; }
 
     irr::core::dimension2du sz(w, h);
     m_sceneRTT      = m_driver->addRenderTargetTexture(sz, "pp_scene",     QUAD_COLOR_MODE);
@@ -600,6 +633,12 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     m_prepassRTT = m_driver->addRenderTargetTexture(sz,   "prepass",  QUAD_COLOR_MODE);
     m_ssaoRTT[0] = m_driver->addRenderTargetTexture(half, "ssao_raw",  irr::video::ECF_R32F);
     m_ssaoRTT[1] = m_driver->addRenderTargetTexture(half, "ssao_blur", irr::video::ECF_R32F);
+
+    // LDR copy target for the editor viewport panel. Colour only — the scene is
+    // copied here from the backbuffer after every pass has resolved, so it never
+    // needs a depth attachment (which would be shared with m_sceneRTT anyway, since
+    // Irrlicht keys its depth renderbuffer cache on size alone).
+    m_viewportRTT = m_driver->addRenderTargetTexture(sz, "editor_viewport", irr::video::ECF_A8R8G8B8);
 
     if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT || !m_prepassRTT || !m_ssaoRTT[0] || !m_ssaoRTT[1])
         spdlog::error("RenderManager: failed to create post-process RTTs ({}x{})", w, h);
@@ -886,6 +925,7 @@ void RenderManager::drawShadowPass()
         m_driver->setRenderTarget(nullptr, false, false);
         auto sz = m_driver->getScreenSize();
         m_driver->setViewPort(irr::core::rect<irr::s32>(0, 0, (irr::s32)sz.Width, (irr::s32)sz.Height));
+        applyRenderViewport();
     }
 }
 
@@ -1238,6 +1278,8 @@ void RenderManager::runPostProcessChain()
         irr::video::ITexture* dst = isLast ? nullptr : m_ppRTT[i % 2];
 
         m_driver->setRenderTarget(dst, isLast ? false : true, false, irr::video::SColor(0));
+        if (isLast)
+            applyRenderViewport();
 
         // Vertex shader uses gl_Position = gl_Vertex directly (NDC bypass),
         // so no matrix setup is needed. Depth test and lighting must be off
@@ -1418,6 +1460,15 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	// After device creation:
 	irr::video::SExposedVideoData vd = m_device->getVideoDriver()->getExposedVideoData();
 	HWND hwnd = (HWND)vd.OpenGLWin32.HWnd; // or vd.D3D9.HWnd if using D3D9
+
+	// Keep the window/DC/context handles: the multi-viewport hooks make Irrlicht's
+	// single HGLRC current on each platform window's DC in turn. Use Irrlicht's own
+	// HDc rather than GetDC() — its window class has no CS_OWNDC, so a freshly
+	// fetched DC is not guaranteed to stay valid.
+	m_mainHwnd  = vd.OpenGLWin32.HWnd;
+	m_mainHDC   = vd.OpenGLWin32.HDc;
+	m_mainHGLRC = vd.OpenGLWin32.HRc;
+
 	BOOL dark = TRUE;
 	DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
 
@@ -1467,6 +1518,14 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 		m_device->setResizable(true);
 	}
 
+    // Multi-viewport gate. Editor only, and windowed only: Irrlicht responds to
+    // WM_ACTIVATE/WA_INACTIVE while fullscreen by minimising the app and dropping
+    // the display mode (CIrrDeviceWin32.cpp:858-878), which clicking any torn-off
+    // panel would trigger. Decided once, before the context exists, because
+    // ViewportsEnable must be set before the first NewFrame().
+    m_viewportsEnabled =
+        Utility::GetCmdlOptionExists(args, "editor") && !m_configuration.fullscreen;
+
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -1482,6 +1541,10 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
     io.Fonts->AddFontFromFileTTF("content/font/roboto/static/Roboto-Regular.ttf", uiFontSize, &fontCfg);
     io.Fonts->AddFontFromFileTTF("content/font/jetbrains_mono/JetBrainsMono-Regular.ttf", editorFontSize, &fontCfg);
 
+    // Platform backend. Must come before the renderer backend, and the ForOpenGL
+    // variant is required: it differs only by adding CS_OWNDC to the window class
+    // used for secondary viewports, which a GL drawable needs.
+    ImGui_ImplWin32_InitForOpenGL(m_mainHwnd);
     ImGui_ImplOpenGL3_Init("#version 130");
 
     Set_IMGUI_Default_Theme();
@@ -1505,6 +1568,18 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 
     if (m_configuration.dpi_scale > 1)
         ImGui::GetStyle().ScaleAllSizes(static_cast<float>(m_configuration.dpi_scale));
+
+    // Torn-off panels become borderless OS windows, which have no per-pixel alpha:
+    // rounded corners would render as black notches and a translucent WindowBg would
+    // show the desktop through. Both must be squared off when viewports are on.
+    if (m_viewportsEnabled)
+    {
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
+
+    initMultiViewport();
 
     m_driver->setTextureCreationFlag(ETCF_ALWAYS_32_BIT, true);
 
@@ -1627,8 +1702,23 @@ RenderManager::~RenderManager()
     delete m_radiationCallback;
     delete m_lumMeasureCallback;
 
+    // Order matters. ImGui_ImplOpenGL3_Shutdown() destroys the platform windows —
+    // calling our WGL destroy hook for each — and only afterwards clears the renderer
+    // handlers, so the hooks must still be installed here. It also issues glDelete*
+    // calls, so the context has to be current and Irrlicht still alive.
     ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    shutdownMultiViewport();
     ImGui::DestroyContext();
+
+    // Undo the subclass before the window goes away, so no message can reach a
+    // handler whose ImGui context has just been destroyed.
+    if (m_mainHwnd && s_prevWndProc)
+    {
+        SetWindowLongPtr(static_cast<HWND>(m_mainHwnd), GWLP_WNDPROC,
+                         reinterpret_cast<LONG_PTR>(s_prevWndProc));
+        s_prevWndProc = nullptr;
+    }
 
     m_device->closeDevice();
 	m_device->drop();
@@ -1636,20 +1726,357 @@ RenderManager::~RenderManager()
     s_Instance = nullptr;
 }
 
+// Pick this frame's render resolution and rebuild the RTT chain if it moved.
+//
+// Game mode renders at window size, exactly as before. Editor mode renders at the
+// viewport panel size so the panel gets a pixel-exact, correctly-proportioned image
+// instead of a stretched full-window one.
+void RenderManager::updateRenderSize()
+{
+    const irr::core::dimension2du screen = m_driver->getScreenSize();
+
+    const bool panelMode = m_useViewportPanel
+        && Engine::Get() && Engine::Get()->isEditorMode()
+        && m_requestedRenderSize.Width  > 0
+        && m_requestedRenderSize.Height > 0;
+
+    irr::core::dimension2du target = screen;
+    if (panelMode)
+    {
+        // The panel can be dragged larger than the window mid-resize; the backbuffer
+        // is the upper bound on what we can render into and copy back out of.
+        target.Width  = std::min(m_requestedRenderSize.Width,  screen.Width);
+        target.Height = std::min(m_requestedRenderSize.Height, screen.Height);
+    }
+
+    target.Width  = std::max(target.Width,  1u);
+    target.Height = std::max(target.Height, 1u);
+
+    if (m_renderSize.Width == 0 || m_renderSize.Height == 0)
+    {
+        // First frame — allocate immediately, no debounce.
+        m_renderSize        = target;
+        m_pendingRenderSize = target;
+        m_pendingSizeFrames = 0;
+        recreatePostProcessRTTs(m_renderSize.Width, m_renderSize.Height);
+        return;
+    }
+
+    if (target == m_renderSize)
+    {
+        m_pendingRenderSize = target;
+        m_pendingSizeFrames = 0;
+        return;
+    }
+
+    // Never reallocate mid-drag: Manipulate() computes its world delta from the
+    // projection matrix, and an aspect change while the gizmo is held would commit
+    // a discontinuous jump to the transform, not just flicker.
+    if (ImTransformControl::IsUsing())
+        return;
+
+    // Debounce. recreatePostProcessRTTs() frees and reallocates seven textures plus
+    // the shared depth renderbuffer, so a splitter drag must not trigger it per frame.
+    // A large jump (window resize, layout reset) is applied at once; small drifts wait
+    // for the size to settle. Until then the old RTT is stretched into the panel.
+    const int dw = static_cast<int>(target.Width)  - static_cast<int>(m_renderSize.Width);
+    const int dh = static_cast<int>(target.Height) - static_cast<int>(m_renderSize.Height);
+    const bool bigJump = (std::abs(dw) > 64 || std::abs(dh) > 64);
+
+    if (target == m_pendingRenderSize)
+        ++m_pendingSizeFrames;
+    else
+    {
+        m_pendingRenderSize = target;
+        m_pendingSizeFrames = 0;
+    }
+
+    if (!bigJump && m_pendingSizeFrames < 6)
+        return;
+
+    m_renderSize        = target;
+    m_pendingSizeFrames = 0;
+    recreatePostProcessRTTs(m_renderSize.Width, m_renderSize.Height);
+}
+
+// Constrain backbuffer rendering to the bottom-left renderSize() region.
+//
+// Two Irrlicht traps are handled here:
+//  1. setRenderTarget() calls glViewport() directly WITHOUT updating the driver's
+//     ViewPort member, and setViewPort() early-returns when the rect it is handed
+//     equals that stale member. A plain call would silently no-op from frame 2 on,
+//     so the rect is invalidated first.
+//  2. setViewPort(rect) maps to glViewport(x, screenH - y - height, ...), i.e. the
+//     rect is TOP-left anchored. The depth blit and the viewport copy both work in
+//     GL's bottom-left space, so the rect is placed at the bottom to make all three
+//     agree. getViewPort().getWidth()/getHeight() still report renderSize().
+void RenderManager::applyRenderViewport()
+{
+    if (!m_useViewportPanel || !Engine::Get() || !Engine::Get()->isEditorMode())
+        return;
+
+    const irr::core::dimension2du screen = m_driver->getScreenSize();
+    const irr::core::dimension2du rs     = renderSize();
+
+    // Deliberately no `if (rs == screen) return;` fast path: rendering a platform
+    // window swaps the current DC, and the viewport must be re-asserted afterwards
+    // even when it happens to equal the full window.
+
+    const irr::s32 top = static_cast<irr::s32>(screen.Height) - static_cast<irr::s32>(rs.Height);
+    const irr::core::recti want(0, top, static_cast<irr::s32>(rs.Width), static_cast<irr::s32>(screen.Height));
+
+    if (m_driver->getViewPort() == want)
+        m_driver->setViewPort(irr::core::recti(0, 0, 1, 1));   // invalidate the guard
+
+    m_driver->setViewPort(want);
+}
+
+// Copy the rendered region out of the backbuffer into m_viewportRTT, then restore a
+// full-window viewport and clear the backbuffer so the corner render is not left
+// showing through the UI. Called once, after every 3D pass has resolved and before
+// ImGui draws.
+void RenderManager::copyBackbufferToViewportRTT()
+{
+    if (!m_viewportRTT)
+        return;
+
+    const irr::core::dimension2du rs = renderSize();
+
+    // glCopyTexSubImage2D reads GL_READ_BUFFER (default GL_BACK) at the backbuffer's
+    // bottom-left origin, which is where applyRenderViewport() put the render.
+    glBindTexture(GL_TEXTURE_2D, m_viewportRTT->getNativeHandle());
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0,
+                        static_cast<GLsizei>(rs.Width), static_cast<GLsizei>(rs.Height));
+
+    // Leaving our binding in place would desync Irrlicht's setActiveTexture cache.
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    m_driver->setViewPort(irr::core::recti(0, 0, 1, 1));
+    m_driver->setViewPort(irr::core::recti(0, 0,
+        static_cast<irr::s32>(m_driver->getScreenSize().Width),
+        static_cast<irr::s32>(m_driver->getScreenSize().Height)));
+
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+unsigned int RenderManager::viewportGLTexture() const
+{
+    return m_viewportRTT ? static_cast<unsigned int>(m_viewportRTT->getNativeHandle()) : 0u;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-viewport WGL glue
+//
+// imgui_impl_win32 creates the OS windows but never touches WGL; imgui_impl_opengl3
+// draws but knows nothing about window surfaces. These four hooks are the missing
+// half, mirroring Include/imgui/examples/example_win32_opengl3/main.cpp with two
+// deliberate deviations (marked inline).
+//
+// Every platform window is drawn with Irrlicht's ONE context, made current on that
+// window's DC. Giving each window its own context would break every shared GL name
+// ImGui caches — the font atlas, the editor's RTT previews, the shader and VBO
+// handles — since ImGui stores exactly one GLuint per texture.
+// ---------------------------------------------------------------------------
+namespace
+{
+    struct ViewportWGLData { HDC hDC = nullptr; };
+
+    // Plain statics because these are C-style callbacks; mirrored from the
+    // RenderManager members in initMultiViewport().
+    HDC   s_mainHDC   = nullptr;
+    HGLRC s_mainHGLRC = nullptr;
+
+    typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int);
+
+    void s_viewportCreateWindow(ImGuiViewport* viewport)
+    {
+        HWND hWnd = static_cast<HWND>(viewport->PlatformHandle);
+        if (!hWnd || viewport->RendererUserData)
+            return;
+
+        HDC hDC = ::GetDC(hWnd);
+        if (!hDC)
+        {
+            spdlog::error("RenderManager: GetDC failed for platform viewport window");
+            return;
+        }
+
+        // DEVIATION 1: copy Irrlicht's pixel format BY INDEX rather than re-running
+        // ChoosePixelFormat as the example does. PIXELFORMATDESCRIPTOR has no
+        // sample-count field, so ChoosePixelFormat silently downgrades an MSAA/sRGB
+        // format — and then wglMakeCurrent fails with ERROR_INVALID_PIXEL_FORMAT.
+        const int pf = ::GetPixelFormat(s_mainHDC);
+        PIXELFORMATDESCRIPTOR pfd = {};
+        pfd.nSize = sizeof(pfd);
+        ::DescribePixelFormat(hDC, pf, sizeof(pfd), &pfd);
+
+        if (!::SetPixelFormat(hDC, pf, &pfd))
+        {
+            // Pixel format indices are per-device: on a hybrid-GPU or multi-adapter
+            // machine the main window's index need not exist on this DC. Leave the
+            // viewport without renderer data (the other hooks no-op on null) rather
+            // than taking the process down.
+            spdlog::error("RenderManager: pixel format {} rejected for platform viewport (GLE {}) — that window will not render",
+                          pf, static_cast<unsigned long>(::GetLastError()));
+            ::ReleaseDC(hWnd, hDC);
+            return;
+        }
+
+        auto* data = new ViewportWGLData();
+        data->hDC = hDC;
+        viewport->RendererUserData = data;
+
+        // RenderPlatformWindowsDefault() swaps every window in its own pass, and with
+        // vsync on each SwapBuffers blocks independently — N torn-off panels would
+        // cost framerate / (N+1). Only the main window needs to wait for vblank.
+        HDC   prevDC = ::wglGetCurrentDC();
+        HGLRC prevRC = ::wglGetCurrentContext();
+        if (::wglMakeCurrent(hDC, s_mainHGLRC))
+        {
+            if (auto setSwapInterval = reinterpret_cast<PFNWGLSWAPINTERVALEXTPROC>(::wglGetProcAddress("wglSwapIntervalEXT")))
+                setSwapInterval(0);
+        }
+        ::wglMakeCurrent(prevDC ? prevDC : s_mainHDC, prevRC ? prevRC : s_mainHGLRC);
+    }
+
+    void s_viewportDestroyWindow(ImGuiViewport* viewport)
+    {
+        // Called for EVERY viewport including the main one during shutdown; the main
+        // viewport never gets RendererUserData, so this guard is what protects
+        // Irrlicht's own DC from being released.
+        auto* data = static_cast<ViewportWGLData*>(viewport->RendererUserData);
+        if (!data)
+            return;
+
+        // DEVIATION 2: the example does wglMakeCurrent(nullptr, nullptr) here, which
+        // is unsafe for us. Viewports are garbage-collected from inside
+        // ImGui::NewFrame() (UpdateViewportsNewFrame), so an un-current context would
+        // persist through the whole scene render that follows — a black frame at best.
+        // Restore the main drawable instead of dropping currency.
+        if (::wglGetCurrentDC() == data->hDC)
+            ::wglMakeCurrent(s_mainHDC, s_mainHGLRC);
+
+        ::ReleaseDC(static_cast<HWND>(viewport->PlatformHandle), data->hDC);
+        delete data;
+        viewport->RendererUserData = nullptr;   // ImGui asserts this was cleared
+    }
+
+    void s_viewportRenderWindow(ImGuiViewport* viewport, void*)
+    {
+        // Runs before Renderer_RenderWindow: point the shared context at this window.
+        if (auto* data = static_cast<ViewportWGLData*>(viewport->RendererUserData))
+            ::wglMakeCurrent(data->hDC, s_mainHGLRC);
+    }
+
+    void s_viewportSwapBuffers(ImGuiViewport* viewport, void*)
+    {
+        // SwapBuffers works on a DC without that context being current, so unlike
+        // the render hook this one needs no wglMakeCurrent.
+        if (auto* data = static_cast<ViewportWGLData*>(viewport->RendererUserData))
+            ::SwapBuffers(data->hDC);
+    }
+}
+
+void RenderManager::initMultiViewport()
+{
+    if (!m_viewportsEnabled)
+        return;
+
+    s_mainHDC   = static_cast<HDC>(m_mainHDC);
+    s_mainHGLRC = static_cast<HGLRC>(m_mainHGLRC);
+
+    if (!s_mainHDC || !s_mainHGLRC)
+    {
+        spdlog::error("RenderManager: no main HDC/HGLRC — multi-viewport disabled");
+        m_viewportsEnabled = false;
+        return;
+    }
+
+    // Install after both backends have initialised; neither claims these four slots.
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    IM_ASSERT(platform_io.Renderer_CreateWindow  == nullptr);
+    IM_ASSERT(platform_io.Renderer_DestroyWindow == nullptr);
+    IM_ASSERT(platform_io.Renderer_SwapBuffers   == nullptr);
+    IM_ASSERT(platform_io.Platform_RenderWindow  == nullptr);
+
+    platform_io.Renderer_CreateWindow  = s_viewportCreateWindow;
+    platform_io.Renderer_DestroyWindow = s_viewportDestroyWindow;
+    platform_io.Renderer_SwapBuffers   = s_viewportSwapBuffers;
+    platform_io.Platform_RenderWindow  = s_viewportRenderWindow;
+
+    // Only now is it safe to advertise the feature. ImGui silently drops this flag
+    // during the first NewFrame() if either backend failed to set its viewport
+    // capability bit, so a missing tear-off is a backend-flag problem, not a hook one.
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    ImGui::GetIO().ConfigDpiScaleViewports = true;
+
+    spdlog::info("RenderManager: multi-viewport enabled (panels can be torn out of the main window)");
+}
+
+void RenderManager::renderPlatformWindows()
+{
+    if (!m_viewportsEnabled)
+        return;
+
+    // Guard: ImGui_ImplOpenGL3_RenderWindow issues a glClear for each platform
+    // window. If any FBO were still bound the clear would land there instead.
+    if (GLExt::BindFramebuffer)
+        GLExt::BindFramebuffer(GL_FRAMEBUFFER, 0u);
+
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+
+    // MANDATORY. The hooks above leave whichever window rendered last current, and
+    // Irrlicht's endScene() is about to SwapBuffers on the main DC and assumes its
+    // own context is current for the whole frame.
+    ::wglMakeCurrent(s_mainHDC, s_mainHGLRC);
+}
+
+void RenderManager::shutdownMultiViewport()
+{
+    if (!m_viewportsEnabled)
+        return;
+
+    // ImGui_ImplOpenGL3_Shutdown() destroys the platform windows (via the hooks
+    // above) BEFORE it clears the renderer handlers, so nothing extra is needed
+    // here — this exists to make the ordering dependency explicit and to stop the
+    // hooks being called again once the context is gone.
+    m_viewportsEnabled = false;
+}
+
 void RenderManager::beginImGui()
 {
     ImGuiIO& io = ImGui::GetIO();
+    // Feeds mouse/keyboard/focus, refreshes the monitor list, drives the OS cursor,
+    // and sets io.DisplaySize + io.DeltaTime itself (the latter from QPC, which is
+    // strictly better than the one-frame-stale value the engine used to supply).
+    //
+    // Also note this garbage-collects dead platform viewports, so the WGL destroy
+    // hook can fire from right here — see s_viewportDestroyWindow.
+    ImGui_ImplWin32_NewFrame();
+
+    // Re-assert DisplaySize AFTER the backend: renderSize() clamps to getScreenSize()
+    // and applyRenderViewport() positions the GL viewport from it, so ImGui and the
+    // renderer must agree on one value. The backend's GetClientRect can disagree with
+    // Irrlicht's cached screen size for a frame around a resize.
     auto sz = m_driver->getScreenSize();
     io.DisplaySize = ImVec2(static_cast<float>(sz.Width), static_cast<float>(sz.Height));
-    io.DeltaTime = 1.0f / 60.0f;
+
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 }
 
 void RenderManager::draw(f32 dt)
 {
+	// Belt against a platform window having been destroyed during NewFrame(): the
+	// WGL destroy hook restores the main drawable, but re-asserting here means no
+	// future hook change can leave the scene rendering into the wrong window.
+	if (m_viewportsEnabled)
+		::wglMakeCurrent(static_cast<HDC>(m_mainHDC), static_cast<HGLRC>(m_mainHGLRC));
+
 	updateDebugRender();
-	
+
 	// readBuffer is the buffer we're rendering from this frame
 	// Buffer swap is managed by Engine::update() and only occurs when logic runs
 	int readBuffer = m_renderBufferIndex;
@@ -1665,12 +2092,28 @@ void RenderManager::draw(f32 dt)
 //	}
 //#endif
 
-    if (m_driver->getScreenSize().Height != m_configuration.height ||
-        m_driver->getScreenSize().Width  != m_configuration.width)
+    // m_configuration keeps tracking the WINDOW regardless of where the scene is
+    // rendered — InputManager derives its mouse-centering point from it.
+    m_configuration.width  = m_driver->getScreenSize().Width;
+    m_configuration.height = m_driver->getScreenSize().Height;
+
+    // Decide the render resolution ONCE per frame, before any pass runs, so it
+    // cannot change mid-frame and desync the RTT chain from the GL viewport.
+    updateRenderSize();
+
+    // Keep the active camera matched to the render resolution. Irrlicht seeds a
+    // camera's aspect once, in its constructor, from whatever the render target size
+    // was then and never updates it — so without this the projection stays wrong for
+    // the whole session as soon as the viewport stops being the full window.
+    if (auto* cam = m_sceneManager->getActiveCamera())
     {
-        m_configuration.width  = m_driver->getScreenSize().Width;
-        m_configuration.height = m_driver->getScreenSize().Height;
-        recreatePostProcessRTTs(m_configuration.width, m_configuration.height);
+        const irr::core::dimension2du rs = renderSize();
+        if (rs.Height > 0)
+        {
+            const irr::f32 aspect = static_cast<irr::f32>(rs.Width) / static_cast<irr::f32>(rs.Height);
+            if (std::abs(cam->getAspectRatio() - aspect) > 0.0001f)
+                cam->setAspectRatio(aspect);
+        }
     }
 
     m_driver->beginScene(true, true, SColor(0xFF000000)/*m_backgroundColor*/);
@@ -1879,6 +2322,7 @@ void RenderManager::draw(f32 dt)
     // Return to backbuffer and run the post-process chain (reads m_sceneRTT)
     if (m_sceneRTT)
         m_driver->setRenderTarget(nullptr, false, false);
+    applyRenderViewport();
     if (m_autoExposure && m_lumRTT && m_lumMaterial >= 0)
         measureAndAdaptExposure(dt);
 
@@ -1925,6 +2369,7 @@ void RenderManager::draw(f32 dt)
         // LDR effect nodes are rendered to the backbuffer unconditionally below,
         // after the depth blit, so they always depth-test against scene geometry.
         m_driver->setRenderTarget(nullptr, false, false);
+        applyRenderViewport();
         {
             PostProcessPass* pixPass = activePasses.back();
             irr::video::SMaterial mat;
@@ -2114,8 +2559,19 @@ void RenderManager::draw(f32 dt)
 		text.font->draw(text.text, text.position, text.color, text.hcenter, text.vcenter);
 	}
 
+    // Hand the rendered scene to the editor viewport panel and wipe the backbuffer,
+    // so what remains under the UI is black rather than a corner-anchored 3D view.
+    // Note this runs even when the panel is hidden — the rest of draw() must not be
+    // skipped, as the 3D overlay line lists are consumed and cleared inside it.
+    if (m_useViewportPanel && Engine::Get() && Engine::Get()->isEditorMode())
+        copyBackbufferToViewportRTT();
+
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // Draw and present the torn-off panels, then restore the main context. Must come
+    // after the main viewport's draw and before endScene() swaps the main DC.
+    renderPlatformWindows();
 
 	//m_driver->runAllOcclusionQueries(false);
 	//m_driver->updateAllOcclusionQueries();
@@ -2576,41 +3032,48 @@ void RenderManager::clearEnvMap()
     m_shaderConstantCallBack->setEnvMap(nullptr);
 }
 
-ISceneNode *RenderManager::getNodeFromCursorPosition(ICameraSceneNode *camera)
+ISceneNode *RenderManager::getNodeFromRay(const line3d<f32>& ray)
 {
-    line3d<f32> ray = m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
-        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera());
-
     vector3df point;
     triangle3df triangle;
 
-    auto node =
-        m_sceneManager->getSceneCollisionManager()->getSceneNodeAndCollisionPointFromRay(ray, point, triangle, 0, nullptr, true);
-
-	return node;
+    return m_sceneManager->getSceneCollisionManager()->getSceneNodeAndCollisionPointFromRay(
+        ray, point, triangle, 0, nullptr, true);
 }
 
-ISceneNode *RenderManager::getNodeFromCursorPosition(vector3df& outHit, ICameraSceneNode *camera)
+ISceneNode *RenderManager::getNodeFromRay(const line3d<f32>& ray, vector3df& outHit)
 {
-    line3d<f32> ray = m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
-        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera());
-
     triangle3df triangle;
     return m_sceneManager->getSceneCollisionManager()->getSceneNodeAndCollisionPointFromRay(
         ray, outHit, triangle, 0, nullptr, true);
 }
 
-vector3df RenderManager::getPoint3DFromCursorPosition(ICameraSceneNode *camera)
+vector3df RenderManager::getPoint3DFromRay(const line3d<f32>& ray)
 {
-    line3d<f32> ray = m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
-        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera());
-
     vector3df point;
     triangle3df triangle;
 
     m_sceneManager->getSceneCollisionManager()->getSceneNodeAndCollisionPointFromRay(ray, point, triangle);
 
     return point;
+}
+
+ISceneNode *RenderManager::getNodeFromCursorPosition(ICameraSceneNode *camera)
+{
+    return getNodeFromRay(m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
+        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera()));
+}
+
+ISceneNode *RenderManager::getNodeFromCursorPosition(vector3df& outHit, ICameraSceneNode *camera)
+{
+    return getNodeFromRay(m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
+        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera()), outHit);
+}
+
+vector3df RenderManager::getPoint3DFromCursorPosition(ICameraSceneNode *camera)
+{
+    return getPoint3DFromRay(m_sceneManager->getSceneCollisionManager()->getRayFromScreenCoordinates(
+        m_device->getCursorControl()->getPosition(), camera ? camera : m_sceneManager->getActiveCamera()));
 }
 
 ISceneNode* RenderManager::getNodeFromRaycast(vector3df start, vector3df end)

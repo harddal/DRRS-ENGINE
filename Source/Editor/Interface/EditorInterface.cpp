@@ -8,6 +8,7 @@
 #include "Utility/Utility.h"
 
 #include <IMGUI/imgui.h>
+#include <IMGUI/imgui_internal.h>   // DockBuilder* for the default layout
 #include "Engine/Interface/ImGuiExtensions.h"
 
 #include "Shlwapi.h"
@@ -20,6 +21,11 @@
 
 // ---- Core cross-file state (extern'd in EditorInterface_Internal.h) ----
 EditorWindowData m_windowData;
+
+// Raised by View > Reset Layout. Acted on at the top of the next frame, because the
+// DockBuilder API must run before DockSpace() and before the windows it docks are
+// submitted — the menu bar is drawn after both.
+bool g_resetDockLayout = false;
 std::string g_currentScenePath;
 std::vector<entityid> g_undoEntities;
 
@@ -88,14 +94,26 @@ void EditorInterface::draw()
 	detectKeyShortcuts();
 
 	ImGuiIO& io = ImGui::GetIO();
-	ImGui::SetNextWindowPos(ImVec2(0, 0));
-	ImGui::SetNextWindowSize(io.DisplaySize);
+
+	// Anchor the host to the main viewport, never to (0,0). Once panels can be torn
+	// out of the main window, ImGui coordinates are desktop-absolute and (0,0) means
+	// the top-left of the PRIMARY MONITOR — which would drag the whole editor UI off
+	// onto the wrong screen whenever the window is not there.
+	//
+	// Pos/Size deliberately, not WorkPos/WorkSize: BeginMainMenuBar() already shrinks
+	// the viewport's work rect, and menubar_h is subtracted manually below, so the
+	// work rect would take the menu bar off twice.
+	const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(mainViewport->Pos);
+	ImGui::SetNextWindowSize(mainViewport->Size);
+	ImGui::SetNextWindowViewport(mainViewport->ID);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 	ImGui::Begin("editor_main_window", nullptr,
 	             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
 	             ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing |
+	             ImGuiWindowFlags_NoNavFocus |
 	             ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMouseInputs);
 	ImGui::PopStyleVar(2); // WindowPadding + WindowBorderSize — only needed for this host window
 	{
@@ -104,8 +122,42 @@ void EditorInterface::draw()
 		const float statusbar_h = m_windowData.draw_statusbar ? ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y        : 0.0f;
 
 		ImGui::SetCursorPosY(menubar_h + toolbar_h);
-		float ds_height = io.DisplaySize.y - menubar_h - toolbar_h - statusbar_h;
-		ImGui::DockSpace(ImGui::GetID("MainDockSpace"), ImVec2(0.0f, ds_height), ImGuiDockNodeFlags_PassthruCentralNode);
+		float ds_height = mainViewport->Size.y - menubar_h - toolbar_h - statusbar_h;
+		// PassthruCentralNode is gone: the central node now holds a real Viewport panel
+		// rather than a transparent hole onto the backbuffer, and Passthru would strip
+		// the central node of its hit target.
+		const ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
+
+		// The DockBuilder calls must happen BEFORE DockSpace() submits the node, and
+		// before any of the windows they reference are submitted. View > Reset Layout
+		// raises the same flag, deferred to the next frame for the same reason.
+		//
+		// Two cases trigger an automatic rebuild: no dockspace node at all (fresh
+		// install, or config/imgui.ini deleted), and an ini written before the Viewport
+		// panel existed — that one has a perfectly good dockspace but no home for the
+		// 3D view, which would otherwise show up floating over the editor.
+		{
+			static bool s_checkedViewportDocked = false;
+
+			bool rebuild = g_resetDockLayout || ImGui::DockBuilderGetNode(dockspaceId) == nullptr;
+
+			if (!rebuild && !s_checkedViewportDocked)
+			{
+				const ImGuiWindowSettings* vp = ImGui::FindWindowSettingsByID(ImHashStr("Viewport"));
+				if (vp == nullptr || vp->DockId == 0)
+					rebuild = true;
+
+				s_checkedViewportDocked = true;
+			}
+
+			if (rebuild)
+			{
+				g_resetDockLayout = false;
+				reset_dock_layout();
+			}
+		}
+
+		ImGui::DockSpace(dockspaceId, ImVec2(0.0f, ds_height));
 
 		// Restore opaque WindowBg for all child windows drawn inside this fullscreen container.
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.165f, 0.176f, 0.220f, 1.0f));
@@ -134,7 +186,11 @@ void EditorInterface::draw()
 		draw_window_script_editor();
 		draw_window_particle_designer();
 
-		g_sceneInteractor.draw();
+		// Submitted last so it does not steal focus from the panels above on the first
+		// frame. g_sceneInteractor.draw() now runs INSIDE this window — the gizmo binds
+		// to the current window's draw list, so it has to be submitted there to be
+		// clipped to the 3D view instead of drawing under every docked panel.
+		draw_window_viewport();
 
 		ImGui::PopStyleColor(); // opaque WindowBg for children
 	}

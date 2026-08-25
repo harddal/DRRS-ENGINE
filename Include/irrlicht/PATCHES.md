@@ -68,3 +68,30 @@ a GLSL-over-blend-base draw (SPARK soft particles, `BlendOperation` default
 particles rendered opaque for as long as a flash was visible. The function now
 applies textures + `setBasicRenderStates` **first** and the base material's
 blend state **last**, mirroring the builtin renderers' ordering.
+
+## 5. TranslateMessage for non-Irrlicht windows (2026-08)
+
+**File:** `source/Irrlicht/CIrrDeviceWin32.cpp` (`handleSystemMessages`)
+
+Vanilla skips `TranslateMessage` entirely, with the comment "we don't use WM_CHAR
+and it would conflict with our deadkey handling" — `WndProc` decodes characters
+itself into `SEvent::SKeyInput::Char`. Correct for Irrlicht, but it means **no
+`WM_CHAR` is ever generated anywhere in the process**.
+
+That became a problem once Dear ImGui multi-viewport was enabled: torn-off editor
+panels are real OS windows with their own window class, and `imgui_impl_win32`'s
+text path is driven by `WM_CHAR`. Without translation, typing into a floating
+Script Editor did nothing.
+
+The pump now translates only messages **not** addressed to Irrlicht's own `HWnd`:
+
+```cpp
+if (msg.hwnd && msg.hwnd != HWnd)
+    TranslateMessage(&msg);
+```
+
+Irrlicht's main window keeps its original untranslated path, so the deadkey
+handling the comment was protecting is untouched. ImGui receives characters for the
+main window from `IrrImGuiEventReceiver` (forwarding `KeyInput.Char`) and for
+torn-off windows from the backend — the hwnd split is what keeps those from
+double-feeding.

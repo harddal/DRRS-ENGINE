@@ -20,6 +20,17 @@
 //#define IM_ASSERT(_EXPR)  MyAssert(_EXPR)
 //#define IM_ASSERT(_EXPR)  ((void)(_EXPR))     // Disable asserts
 
+// --- Game Engine: keep ImGui's asserts live in every configuration ------------
+// This project defines NDEBUG in Release AND RelWithDebInfo, which strips assert()
+// to nothing and silently deletes every internal ImGui guard. That is how a
+// "Forgot to call Render() or EndFrame() at the end of the previous frame?"
+// violation (imgui.cpp, NewFrame) ran unreported until it crashed. Route asserts
+// to a handler that logs unconditionally and breaks only under a debugger, so a
+// shipping build reports the problem instead of dying at the assert itself.
+// Defined in Source/Engine/Renderer/RenderManager.cpp.
+extern void GameEngine_ImGuiAssertFailed(const char* expr, const char* file, int line);
+#define IM_ASSERT(_EXPR)  do { if (!(_EXPR)) GameEngine_ImGuiAssertFailed(#_EXPR, __FILE__, __LINE__); } while (0)
+
 //---- Define attributes of all API symbols declarations, e.g. for DLL under Windows
 // Using Dear ImGui via a shared library is not recommended, because of function call overhead and because we don't guarantee backward nor forward ABI compatibility.
 // - Windows DLL users: heaps and globals are not shared across DLL boundaries! You will need to call SetCurrentContext() + SetAllocatorFunctions()

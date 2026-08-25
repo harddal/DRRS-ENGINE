@@ -28,8 +28,13 @@ void EditorInterface::draw_toolbar()
 	const float menubar_h = ImGui::GetFrameHeight();
 	const float toolbar_h = ImGui::GetFrameHeight() + s.ItemSpacing.y * 2.0f;
 
-	ImGui::SetNextWindowPos(ImVec2(0.0f, menubar_h));
-	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, toolbar_h));
+	// Relative to the main viewport, not the primary monitor — see the note in
+	// EditorInterface::draw(). Pinning the viewport as well stops this strip from
+	// ever being promoted to its own OS window.
+	const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(ImVec2(mainViewport->Pos.x, mainViewport->Pos.y + menubar_h));
+	ImGui::SetNextWindowSize(ImVec2(mainViewport->Size.x, toolbar_h));
+	ImGui::SetNextWindowViewport(mainViewport->ID);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(s.ItemSpacing.x, s.ItemSpacing.y));
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
@@ -325,8 +330,11 @@ void EditorInterface::draw_statusbar()
 
 	const float statusbar_h = ImGui::GetFrameHeight() + s.ItemSpacing.y;
 
-	ImGui::SetNextWindowPos(ImVec2(0.0f, io.DisplaySize.y - statusbar_h));
-	ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, statusbar_h));
+	const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(ImVec2(mainViewport->Pos.x,
+	                               mainViewport->Pos.y + mainViewport->Size.y - statusbar_h));
+	ImGui::SetNextWindowSize(ImVec2(mainViewport->Size.x, statusbar_h));
+	ImGui::SetNextWindowViewport(mainViewport->ID);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(s.ItemSpacing.x, s.ItemSpacing.y * 0.5f));
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.094f, 0.098f, 0.122f, 1.0f));

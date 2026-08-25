@@ -5,6 +5,7 @@
 #include "Interface/EditorInterface.h"
 
 #include "Engine/Renderer/RenderManager.h"
+#include "Editor/EditorViewport.h"
 
 #include "Game/Components/MarkerComponent.h"
 
@@ -15,7 +16,17 @@ void EditorState::init(std::string args)
 	ImGui::GetIO().MouseDrawCursor = false;
 	RenderManager::Get()->device()->getCursorControl()->setVisible(true);
 	RenderManager::Get()->device()->maximizeWindow();
-	
+
+	// The 3D view is a dock panel in the editor: the scene renders at panel resolution
+	// and is copied into a texture the panel displays. Seed the pane with the window
+	// size so frame 1 (before the panel has been submitted) has a sane rect.
+	{
+		const auto screen = RenderManager::Get()->driver()->getScreenSize();
+		EditorViewport::initDefaults(ImVec2(static_cast<float>(screen.Width),
+		                                    static_cast<float>(screen.Height)));
+		RenderManager::Get()->useViewportPanel(true);
+	}
+
     m_camera.init();
 
 	InputManager::Get()->centerMouse();

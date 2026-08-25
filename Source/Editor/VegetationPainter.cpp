@@ -7,6 +7,7 @@
 #include "Engine/Input/InputManager.h"
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Prop/PropManager.h"
+#include "Editor/EditorViewport.h"
 
 using namespace irr;
 using namespace core;
@@ -43,16 +44,16 @@ void VegetationPainter::update(float dt)
 {
     if (!m_active || !PropManager::Get()) return;
 
-    // Suppress painting when the cursor is over or interacting with any ImGui widget.
-    // WantCaptureMouse can't be used here — it's always true due to the fullscreen
-    // background editor window. IsAnyItemHovered/Active correctly distinguishes
-    // actual UI panels from the 3D viewport.
-    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive()) return;
+    // Only paint when the cursor is actually over the 3D viewport panel.
+    // WantCaptureMouse can't be used here — it is always true under the fullscreen
+    // editor host window — and IsAnyItemHovered() no longer distinguishes UI from the
+    // viewport now that the viewport is a real panel.
+    if (!EditorViewport::acceptsSceneInput()) return;
 
     // Update brush position every frame regardless of painting
     {
         vector3df hit;
-        if (RenderManager::Get()->getNodeFromCursorPosition(hit))
+        if (RenderManager::Get()->getNodeFromRay(EditorViewport::rayFromMouse(nullptr), hit))
         {
             m_lastHit    = hit;
             m_hasLastHit = true;

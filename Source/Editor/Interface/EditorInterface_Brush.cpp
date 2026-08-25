@@ -56,7 +56,7 @@ namespace
         const char* texture;
     };
     const ToolPreset kToolPresets[] = {
-        { "Player Clip",  CONTENT_CLIP_PLAYER,  "content/texture/tool/playerclip.png"  },
+        { "Player Clip",  CONTENT_CLIP_PLAYER,  TOOL_TEXTURE_PLAYER_CLIP               },
         { "Monster Clip", CONTENT_CLIP_MONSTER, "content/texture/tool/monsterclip.png" },
         { "Weapon Clip",  CONTENT_CLIP_WEAPON,  "content/texture/tool/weaponclip.png"  },
         { "Trigger",      CONTENT_TRIGGER,      "content/texture/tool/trigger.png"     },
@@ -215,7 +215,7 @@ void EditorInterface::draw_window_brush_editor()
         ImGui::TextDisabled("Select: Shift+click a brush; gizmo moves it");
         break;
     case BrushToolMode::CREATE:
-        ImGui::TextDisabled("Drag a footprint; release extrudes upward");
+        ImGui::TextDisabled("Drag a footprint; release builds the primitive upward");
         break;
     case BrushToolMode::FACE:
         ImGui::TextDisabled("Click a face; gizmo pushes/pulls along its normal");
@@ -241,19 +241,162 @@ void EditorInterface::draw_window_brush_editor()
 
     // ---- Create settings ----
     ImGui::Text("Primitive");
-    static const char* primNames[] = { "Box", "Wedge", "Cylinder" };
+    // Must stay in BrushPrimitive order — the combo maps onto the enum by index.
+    static const char* primNames[] = { "Box", "Wedge", "Cylinder", "Cone",
+                                       "Stairs", "Arch", "Gothic Arch" };
     int prim = static_cast<int>(tool.primitive);
     ImGui::SetNextItemWidth(120);
-    if (ImGui::Combo("##brush_prim", &prim, primNames, 3))
+    if (ImGui::Combo("##brush_prim", &prim, primNames, IM_ARRAYSIZE(primNames)))
         tool.primitive = static_cast<BrushPrimitive>(prim);
 
-    if (tool.primitive == BrushPrimitive::CYLINDER)
+    // Per-primitive parameters.  Each primitive owns its own block; clamps are
+    // written out longhand rather than with std::min/max because this TU can
+    // reach the Windows min/max macros through RenderManager.h.
+    static const char* axisNames[]    = { "Auto", "+X", "-X", "+Z", "-Z" };
+    static const char* revolveNames[] = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+
+    switch (tool.primitive)
+    {
+    case BrushPrimitive::CYLINDER:
     {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(80);
         ImGui::InputInt("Sides", &tool.cylinderSides);
         if (tool.cylinderSides < 3)  tool.cylinderSides = 3;
         if (tool.cylinderSides > 32) tool.cylinderSides = 32;
+
+        int rax = static_cast<int>(tool.cylinderAxis);
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::Combo("Axis##cyl", &rax, revolveNames, IM_ARRAYSIZE(revolveNames)))
+            tool.cylinderAxis = static_cast<BrushRevolveChoice>(rax);
+        ImGui::SetItemTooltip("Axis of revolution.  Lay a tube on its side with +X or +Z,\n"
+                              "then Hollow it to get a tunnel.");
+        break;
+    }
+
+    case BrushPrimitive::CONE:
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Sides", &tool.cylinderSides);
+        if (tool.cylinderSides < 3)  tool.cylinderSides = 3;
+        if (tool.cylinderSides > 32) tool.cylinderSides = 32;
+        ImGui::SetItemTooltip("4 sides gives a pyramid or a tapered box.");
+
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputFloat("Top scale", &tool.coneTopScale, 0.0f, 0.0f, "%.3f");
+        if (tool.coneTopScale < 0.0f) tool.coneTopScale = 0.0f;
+        if (tool.coneTopScale > 1.0f) tool.coneTopScale = 1.0f;
+        ImGui::SetItemTooltip("0 = a point (spires, pyramids)\n"
+                              "between = a frustum (battered wall bases, plinths, capitals)\n"
+                              "1 = a plain prism\n"
+                              "A top ring too fine for the grid snaps to a true point.");
+
+        int rax = static_cast<int>(tool.coneAxis);
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::Combo("Axis##cone", &rax, revolveNames, IM_ARRAYSIZE(revolveNames)))
+            tool.coneAxis = static_cast<BrushRevolveChoice>(rax);
+        ImGui::SetItemTooltip("Axis of revolution.  The sign picks which end tapers,\n"
+                              "so -Y flares upward from the same drag.");
+        break;
+    }
+
+    case BrushPrimitive::STAIRS:
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Steps", &tool.stairSteps);
+        if (tool.stairSteps < 2)  tool.stairSteps = 2;
+        if (tool.stairSteps > 64) tool.stairSteps = 64;
+        ImGui::SetItemTooltip("Number of step brushes.  Each step is one solid box\n"
+                              "rising from the staircase floor to that step's top.");
+
+        int ax = static_cast<int>(tool.stairAxis);
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::Combo("Ascend", &ax, axisNames, IM_ARRAYSIZE(axisNames)))
+            tool.stairAxis = static_cast<BrushAxisChoice>(ax);
+        ImGui::SetItemTooltip("Direction the staircase climbs.\n"
+                              "Auto follows the dominant drag direction.");
+
+        ImGui::Checkbox("Player clip ramp", &tool.stairClipRamp);
+        ImGui::SetItemTooltip("Also emit one PLAYER CLIP brush sloped just above the step\n"
+                              "tops, so the player glides up instead of bumping each riser.\n"
+                              "It does not render.");
+        break;
+    }
+
+    case BrushPrimitive::ARCH:
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Segments", &tool.archSegments);
+        if (tool.archSegments < 3)  tool.archSegments = 3;
+        if (tool.archSegments > 32) tool.archSegments = 32;
+        ImGui::SetItemTooltip("Voussoirs around the arc — one brush each.");
+
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputFloat("Arc deg", &tool.archArcDeg, 0.0f, 0.0f, "%.0f");
+        if (tool.archArcDeg < 10.0f)  tool.archArcDeg = 10.0f;
+        if (tool.archArcDeg > 360.0f) tool.archArcDeg = 360.0f;
+        ImGui::SetItemTooltip("180 = doorway (upper half of the footprint)\n"
+                              "360 = closed ring / tunnel");
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputFloat("Start deg", &tool.archStartDeg, 0.0f, 0.0f, "%.0f");
+        ImGui::SetItemTooltip("Where the sweep begins, counter-clockwise from the span axis.");
+
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputFloat("Wall", &tool.archWallDepth, 0.0f, 0.0f, "%.2f");
+        if (tool.archWallDepth < 0.01f) tool.archWallDepth = 0.01f;
+        ImGui::SetItemTooltip("Radial thickness of the arch band (world units).\n"
+                              "Clamped at build time so the opening never closes.");
+
+        int ax = static_cast<int>(tool.archAxis);
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::Combo("Span", &ax, axisNames, IM_ARRAYSIZE(axisNames)))
+            tool.archAxis = static_cast<BrushAxisChoice>(ax);
+        ImGui::SetItemTooltip("Horizontal axis the arch spans; the other becomes its depth.\n"
+                              "Auto uses the longer footprint side.  A negative axis mirrors\n"
+                              "the sweep direction.");
+        break;
+    }
+
+    case BrushPrimitive::GOTHIC_ARCH:
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Segments", &tool.gothicSegments);
+        if (tool.gothicSegments < 2)  tool.gothicSegments = 2;
+        if (tool.gothicSegments > 16) tool.gothicSegments = 16;
+        ImGui::SetItemTooltip("Voussoirs PER SIDE — the arch is twice this many brushes.");
+
+        ImGui::SetNextItemWidth(120);
+        ImGui::SliderFloat("Pointiness", &tool.gothicPointiness, 0.0f, 1.0f, "%.2f");
+        ImGui::SetItemTooltip("0 = a plain semicircular arch\n"
+                              "1 = the equilateral gothic arch\n"
+                              "The apex always lands on the top of the box, so this only\n"
+                              "changes the shape, never the size.");
+
+        ImGui::SetNextItemWidth(90);
+        ImGui::InputFloat("Wall##gothic", &tool.gothicWallDepth, 0.0f, 0.0f, "%.2f");
+        if (tool.gothicWallDepth < 0.01f) tool.gothicWallDepth = 0.01f;
+        ImGui::SetItemTooltip("Radial thickness of the arch band (world units).\n"
+                              "Clamped at build time so the opening never closes.");
+
+        int ax = static_cast<int>(tool.gothicAxis);
+        ImGui::SetNextItemWidth(90);
+        if (ImGui::Combo("Span##gothic", &ax, axisNames, IM_ARRAYSIZE(axisNames)))
+            tool.gothicAxis = static_cast<BrushAxisChoice>(ax);
+        ImGui::SetItemTooltip("Horizontal axis the arch spans; the other becomes its depth.\n"
+                              "Auto uses the longer footprint side.");
+        break;
+    }
+
+    case BrushPrimitive::BOX:
+    case BrushPrimitive::WEDGE:
+    default:
+        break;
     }
 
     ImGui::Text("Height:");
@@ -410,7 +553,7 @@ void EditorInterface::draw_window_brush_editor()
         }
     }
 
-    // ---- Carve ----
+    // ---- Carve / Hollow ----
     if (!sel.empty() && tool.mode() == BrushToolMode::OFF)
     {
         ImGui::Separator();
@@ -418,6 +561,22 @@ void EditorInterface::draw_window_brush_editor()
             tool.carveWithSelected();
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Subtract the selected brush from every brush it overlaps.\nThe carver itself is kept — delete it afterwards if unwanted.");
+
+        // Hollow.  No magnitude clamp beyond a sanity bound: the kernel owns the
+        // two-quantum floor, and duplicating that rule here would let them drift.
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputFloat("##hollow_thick", &tool.hollowThickness, 0.0f, 0.0f, "%.3f");
+        if (tool.hollowThickness >  64.0f) tool.hollowThickness =  64.0f;
+        if (tool.hollowThickness < -64.0f) tool.hollowThickness = -64.0f;
+        ImGui::SameLine();
+        if (ImGui::Button("Hollow"))
+            tool.hollowSelected();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Replace each selected brush with a shell of wall brushes.\n"
+                              "Positive thickness hollows inward (the brush becomes the room);\n"
+                              "negative wraps a shell around it.  Works on any convex brush —\n"
+                              "a cylinder becomes a tube.  Brushes too small to carry the\n"
+                              "wall are left alone.");
 
         ImGui::SameLine();
         if (ImGui::Button("Convert to Mover"))

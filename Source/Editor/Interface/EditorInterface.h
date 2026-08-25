@@ -29,6 +29,7 @@ struct EditorWindowData
     bool draw_window_vegetation_painter = false;
     bool draw_window_texture_painter    = false;
     bool draw_window_brush_editor       = true;
+    bool draw_window_viewport           = true;
     bool draw_window_script_editor      = false;
     bool draw_window_particle_designer  = false;
 
@@ -63,6 +64,11 @@ namespace EditorInterface
 	void draw_quit_prompt();
 
 	void draw_menubar_main();
+	void draw_window_viewport();
+
+	// Lays out the dock nodes from scratch. Runs automatically when MainDockSpace
+	// has no saved layout (fresh install, deleted imgui.ini) and from View > Reset Layout.
+	void reset_dock_layout();
 	void draw_window_spawn_entity();
     void draw_window_spawn_prefab();
     void draw_window_spawn_mesh();

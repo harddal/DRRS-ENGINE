@@ -695,7 +695,7 @@ namespace ImTransformControl
        gContext.mWidth = width;
        gContext.mHeight = height;
        gContext.mXMax = gContext.mX + gContext.mWidth;
-       gContext.mYMax = gContext.mY + gContext.mXMax;
+       gContext.mYMax = gContext.mY + gContext.mHeight;
       gContext.mDisplayRatio = width / height;
    }
 
@@ -1152,7 +1152,10 @@ namespace ImTransformControl
 
    static bool CanActivate()
    {
-      if (ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive())
+      // IsAnyItemHovered() is deliberately NOT checked: once the 3D view is a real
+      // ImGui panel, hovering it makes that true and the gizmo could never be grabbed.
+      // IsInContextRect() is the meaningful bound now that SetRect computes mYMax correctly.
+      if (ImGui::IsMouseClicked(0) && !ImGui::IsAnyItemActive())
          return true;
       return false;
    }

@@ -23,11 +23,36 @@ enum class BrushToolMode
     SCULPT      // subdivide a quad face into a displacement and sculpt it
 };
 
+// NOTE: the brush panel's primNames[] combo maps straight onto this enum by
+// index, so the two must be edited together.  Nothing serializes BrushPrimitive,
+// so reordering is otherwise free.
 enum class BrushPrimitive
 {
     BOX,
     WEDGE,
-    CYLINDER
+    CYLINDER,
+    CONE,        // tapered prism: apex, frustum or plain prism via topScale
+    STAIRS,      // N solid step brushes, optionally plus a player-clip ramp
+    ARCH,        // N voussoir brushes swept around an arc
+    GOTHIC_ARCH  // two arcs meeting at a point, 2*N voussoirs
+};
+
+// Axis of revolution for CYLINDER / CONE.  No AUTO: a footprint drag says
+// nothing about which way a column should lie, so the pick stays explicit.
+enum class BrushRevolveChoice
+{
+    PLUS_X, MINUS_X, PLUS_Y, MINUS_Y, PLUS_Z, MINUS_Z
+};
+
+// Horizontal axis pick for the parametric primitives.  AUTO is resolved from
+// the footprint drag at commit time, so it never reaches BrushGeometry.
+enum class BrushAxisChoice
+{
+    AUTO,
+    PLUS_X,
+    MINUS_X,
+    PLUS_Z,
+    MINUS_Z
 };
 
 // Displacement sculpt sub-tools (SCULPT mode).
@@ -73,6 +98,34 @@ public:
     float defaultHeight = 2.0f;
     std::string defaultMaterial;
 
+    // ---- stairs (STAIRS primitive) ----
+    int             stairSteps    = 8;                       // 2..64
+    BrushAxisChoice stairAxis     = BrushAxisChoice::AUTO;   // ascent direction
+    bool            stairClipRamp = false;                   // also emit a player-clip ramp
+
+    // ---- arch (ARCH primitive) ----
+    int             archSegments  = 8;                       // 3..32
+    float           archArcDeg    = 180.0f;                  // 10..360
+    float           archStartDeg  = 0.0f;
+    float           archWallDepth = 0.5f;                    // radial band, world units
+    BrushAxisChoice archAxis      = BrushAxisChoice::AUTO;   // span axis
+
+    // ---- gothic arch (GOTHIC_ARCH primitive) ----
+    int             gothicSegments   = 6;                    // 2..16 PER SIDE
+    float           gothicPointiness = 1.0f;                 // 0 = round, 1 = equilateral
+    float           gothicWallDepth  = 0.5f;
+    BrushAxisChoice gothicAxis       = BrushAxisChoice::AUTO;
+
+    // ---- cone (CONE primitive) ----
+    // cylinderSides is shared with CYLINDER: it is the same knob, and only one
+    // of the two is ever on screen at a time.
+    float              coneTopScale = 0.0f;                          // 0 = apex, 1 = prism
+    BrushRevolveChoice coneAxis     = BrushRevolveChoice::PLUS_Y;
+    BrushRevolveChoice cylinderAxis = BrushRevolveChoice::PLUS_Y;
+
+    // ---- hollow (an operation on the selection, not a primitive) ----
+    float hollowThickness = 0.5f;   // world units; negative wraps a shell outward
+
     // ---- face selection (FACE mode) ----
     struct FaceRef
     {
@@ -114,6 +167,12 @@ public:
     // Subtract the primary selected brush from every brush it overlaps
     // (carver itself is kept; delete it separately if unwanted).
     void carveWithSelected();
+
+    // Replace every selected brush with a shell of wall brushes hollowThickness
+    // thick (Hammer's Ctrl+H).  Any convex brush works: a box becomes a room, a
+    // cylinder a tube.  Brushes too small to carry the wall are left untouched.
+    // Undo-recorded as one entry; the resulting shell is left selected.
+    void hollowSelected();
 
     // Transform src's plane points AND its Valve-220 texture frame by the
     // affine map A (texture lock: axes rotate/scale with the geometry, shift

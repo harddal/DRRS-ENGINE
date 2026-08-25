@@ -1797,8 +1797,16 @@ void CIrrDeviceWin32::handleSystemMessages()
 
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 	{
-		// No message translation because we don't use WM_CHAR and it would conflict with our
-		// deadkey handling.
+		// No message translation for our OWN window because we don't use WM_CHAR and it
+		// would conflict with our deadkey handling (WndProc builds KeyInput.Char itself).
+		//
+		// Fork change (see PATCHES.md): other windows in this process DO get translated.
+		// Dear ImGui's multi-viewport panels are real OS windows with their own window
+		// class, and their text fields need genuine WM_CHAR — without this, typing into a
+		// torn-off panel does nothing. Restricting it by hwnd leaves the main window's
+		// deadkey path exactly as it was.
+		if (msg.hwnd && msg.hwnd != HWnd)
+			TranslateMessage(&msg);
 
 		if (ExternalWindow && msg.hwnd == HWnd)
 			WndProc(HWnd, msg.message, msg.wParam, msg.lParam);

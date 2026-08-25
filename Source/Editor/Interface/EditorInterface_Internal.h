@@ -21,6 +21,7 @@ struct PropMeshFolder
 
 // Defined in EditorInterface.cpp
 extern EditorWindowData m_windowData;
+extern bool g_resetDockLayout;
 extern std::string g_currentScenePath;
 extern std::vector<entityid> g_undoEntities;
 

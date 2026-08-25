@@ -11,6 +11,7 @@
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Input/InputMap.h"
+#include "Editor/EditorViewport.h"
 #include "Engine/Interface/ImTransformControl.h"
 #include "Engine/Renderer/RenderManager.h"
 
@@ -38,6 +39,47 @@ namespace
         rm->renderLine3DOverlay(Line3D(line3df(p - vector3df(size, 0, 0), p + vector3df(size, 0, 0)), color));
         rm->renderLine3DOverlay(Line3D(line3df(p - vector3df(0, size, 0), p + vector3df(0, size, 0)), color));
         rm->renderLine3DOverlay(Line3D(line3df(p - vector3df(0, 0, size), p + vector3df(0, 0, size)), color));
+    }
+
+    // Resolve an AUTO axis pick against a hint vector.  `hint` is the signed
+    // drag vector for stairs (the staircase climbs the way you dragged) and the
+    // box extent for the arch (the longer footprint side becomes the span);
+    // `useSign` selects which reading applies.  A zero or perfectly symmetric
+    // hint deterministically yields +X — no ambiguity, no randomness.
+    BrushGeometry::BrushAxis resolveAxis(BrushAxisChoice choice,
+                                         const vector3df& hint, bool useSign)
+    {
+        typedef BrushGeometry::BrushAxis BA;
+        switch (choice)
+        {
+        case BrushAxisChoice::PLUS_X:  return BA::PLUS_X;
+        case BrushAxisChoice::MINUS_X: return BA::MINUS_X;
+        case BrushAxisChoice::PLUS_Z:  return BA::PLUS_Z;
+        case BrushAxisChoice::MINUS_Z: return BA::MINUS_Z;
+        default: break;
+        }
+
+        const bool xDominant = std::fabs(hint.X) >= std::fabs(hint.Z);
+        if (!useSign)
+            return xDominant ? BA::PLUS_X : BA::PLUS_Z;
+        if (xDominant)
+            return (hint.X >= 0.0f) ? BA::PLUS_X : BA::MINUS_X;
+        return (hint.Z >= 0.0f) ? BA::PLUS_Z : BA::MINUS_Z;
+    }
+
+    BrushGeometry::BrushRevolveAxis resolveRevolve(BrushRevolveChoice c)
+    {
+        typedef BrushGeometry::BrushRevolveAxis RA;
+        switch (c)
+        {
+        case BrushRevolveChoice::PLUS_X:  return RA::PLUS_X;
+        case BrushRevolveChoice::MINUS_X: return RA::MINUS_X;
+        case BrushRevolveChoice::MINUS_Y: return RA::MINUS_Y;
+        case BrushRevolveChoice::PLUS_Z:  return RA::PLUS_Z;
+        case BrushRevolveChoice::MINUS_Z: return RA::MINUS_Z;
+        case BrushRevolveChoice::PLUS_Y:
+        default:                          return RA::PLUS_Y;
+        }
     }
 }
 
@@ -103,7 +145,9 @@ void BrushTool::update(float dt)
 {
     if (m_mode == BrushToolMode::OFF || !BrushManager::Get())
         return;
-    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+    // Only act while the cursor is over the 3D viewport panel. IsAnyItemHovered() used
+    // to stand in for this, but it no longer separates UI from the 3D view.
+    if (!EditorViewport::acceptsSceneInput())
         return;
 
     switch (m_mode)
@@ -183,8 +227,7 @@ bool BrushTool::cursorWorldPoint(vector3df& out, bool lockToPlaneY, float planeY
     if (!cam)
         return false;
 
-    const line3df ray = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(
-        rm->device()->getCursorControl()->getPosition(), cam);
+    const line3df ray = EditorViewport::rayFromMouse(cam);
 
     if (lockToPlaneY)
     {
@@ -211,8 +254,7 @@ bool BrushTool::cursorBrushHit(uint32_t& brushId, int& faceIndex, vector3df& poi
     if (!cam)
         return false;
 
-    const line3df ray = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(
-        rm->device()->getCursorControl()->getPosition(), cam);
+    const line3df ray = EditorViewport::rayFromMouse(cam);
 
     vector3df dir = ray.end - ray.start;
     const float len = dir.getLength();
@@ -286,9 +328,8 @@ void BrushTool::drawWholeBrushGizmo()
 
     const vector3df preDragCenter = primary->bounds.getCenter();
 
-    ImGuiIO& io = ImGui::GetIO();
     ImTransformControl::SetDrawlist();
-    ImTransformControl::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+    EditorViewport::setGizmoRect();
     ImTransformControl::Manipulate(
         RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
         RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
@@ -478,37 +519,117 @@ void BrushTool::commitCreateDrag()
     if (extent.X < minExtent || extent.Z < minExtent || extent.Y < minExtent)
         return;     // degenerate footprint — ignore the click
 
-    Brush brush;
+    // The signed drag vector disambiguates AUTO axis picks; the box extent
+    // drives the arch's "longer footprint side is the span" rule.
+    const vector3df drag = m_createCurrent - m_createAnchor;
+
+    // Most primitives are one brush; stairs and arches are many.
+    std::vector<Brush> built;
     switch (primitive)
     {
     case BrushPrimitive::WEDGE:
-        brush = BrushGeometry::makeWedge(box, defaultMaterial);
+        built.push_back(BrushGeometry::makeWedge(box, defaultMaterial));
         break;
+
     case BrushPrimitive::CYLINDER:
-        brush = BrushGeometry::makeCylinder(box, cylinderSides, defaultMaterial);
+        built.push_back(BrushGeometry::makeCone(box, cylinderSides, 1.0f,
+                                                resolveRevolve(cylinderAxis), defaultMaterial));
         break;
+
+    case BrushPrimitive::CONE:
+        built.push_back(BrushGeometry::makeCone(box, cylinderSides, coneTopScale,
+                                                resolveRevolve(coneAxis), defaultMaterial));
+        break;
+
+    case BrushPrimitive::GOTHIC_ARCH:
+    {
+        BrushGeometry::GothicArchParams gp;
+        gp.segments   = gothicSegments;
+        gp.pointiness = gothicPointiness;
+        gp.wallDepth  = gothicWallDepth;
+        // Same "longer footprint side is the span" rule the round arch uses.
+        gp.span       = resolveAxis(gothicAxis, extent, /*useSign=*/false);
+        built = BrushGeometry::makeGothicArch(box, gp, defaultMaterial);
+        break;
+    }
+
+    case BrushPrimitive::STAIRS:
+    {
+        BrushGeometry::StairParams sp;
+        sp.steps  = stairSteps;
+        sp.ascend = resolveAxis(stairAxis, drag, /*useSign=*/true);
+        built = BrushGeometry::makeStairs(box, sp, defaultMaterial);
+
+        if (!built.empty() && stairClipRamp)
+        {
+            Brush ramp = BrushGeometry::makeStairClipRamp(box, sp, TOOL_TEXTURE_PLAYER_CLIP);
+            if (ramp.geometryValid)
+            {
+                ramp.contentFlags = CONTENT_CLIP_PLAYER;
+                built.push_back(std::move(ramp));
+            }
+            else
+                spdlog::warn("BrushTool: stair clip ramp degenerate, skipped");
+        }
+        break;
+    }
+
+    case BrushPrimitive::ARCH:
+    {
+        BrushGeometry::ArchParams ap;
+        ap.segments     = archSegments;
+        ap.arcDegrees   = archArcDeg;
+        ap.startDegrees = archStartDeg;
+        ap.wallDepth    = archWallDepth;
+        ap.span         = resolveAxis(archAxis, extent, /*useSign=*/false);
+        built = BrushGeometry::makeArch(box, ap, defaultMaterial);
+        break;
+    }
+
     case BrushPrimitive::BOX:
     default:
-        brush = BrushGeometry::makeBox(box, defaultMaterial);
+        built.push_back(BrushGeometry::makeBox(box, defaultMaterial));
         break;
     }
 
-    const uint32_t id = BrushManager::Get()->addBrush(brush);
-    if (id == 0)
+    // Add every piece, collecting one undo entry across all of them.  addBrush
+    // only pushes the brush and flags its chunk dirty (the PhysX cook and mesh
+    // compile are deferred to update()), so N sequential calls coalesce into a
+    // single rebuild.
+    const size_t wanted = built.size();
+    UndoEntry entry;
+    std::vector<uint32_t> newIds;
+    newIds.reserve(wanted);
+
+    for (size_t i = 0; i < built.size(); i++)
     {
-        spdlog::warn("BrushTool: create produced an invalid brush, discarded");
-        return;
+        const uint32_t id = BrushManager::Get()->addBrush(std::move(built[i]));
+        if (id == 0)
+            continue;                   // partial failure: keep whatever validated
+
+        BrushSnapshot snap;
+        snap.id = id;
+        snap.existed = false;           // undo deletes it
+        entry.brushes.push_back(std::move(snap));
+        newIds.push_back(id);
     }
 
-    // Undo: the brush did not exist before this operation
-    UndoEntry entry;
-    BrushSnapshot snap;
-    snap.id = id;
-    snap.existed = false;
-    entry.brushes.push_back(std::move(snap));
+    if (newIds.empty())
+    {
+        spdlog::warn("BrushTool: create produced no valid brushes, discarded");
+        return;
+    }
+    if (newIds.size() != wanted)
+        spdlog::warn("BrushTool: create dropped {} of {} brush(es) as invalid",
+                     wanted - newIds.size(), wanted);
+
+    // One undo entry over all N, so a single Ctrl+Z removes the whole staircase.
     m_owner->pushUndoEntry(std::move(entry));
 
-    m_owner->setSelectedBrush(id);
+    // Leave every piece selected so it can be moved/textured as a unit.
+    m_owner->setSelectedBrush(newIds[0]);
+    for (size_t i = 1; i < newIds.size(); i++)
+        m_owner->toggleBrushInSelection(newIds[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -616,9 +737,8 @@ void BrushTool::drawFaceMode()
     else
         transform.setTranslation(primaryCentroid);
 
-    ImGuiIO& io = ImGui::GetIO();
     ImTransformControl::SetDrawlist();
-    ImTransformControl::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+    EditorViewport::setGizmoRect();
     ImTransformControl::Manipulate(
         RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
         RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
@@ -863,7 +983,9 @@ void BrushTool::commitPaintStroke()
 void BrushTool::drawPaintMode()
 {
     // draw() is not behind update()'s ImGui guard — don't outline through UI
-    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+    // Only act while the cursor is over the 3D viewport panel. IsAnyItemHovered() used
+    // to stand in for this, but it no longer separates UI from the 3D view.
+    if (!EditorViewport::acceptsSceneInput())
         return;
 
     uint32_t brushId;
@@ -909,8 +1031,7 @@ void BrushTool::updateVertexMode()
     if (m_vertDragActive)
     {
         // Drag the vertex in the camera-facing plane through its grab position
-        const line3df ray = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(
-            rm->device()->getCursorControl()->getPosition(), cam);
+        const line3df ray = EditorViewport::rayFromMouse(cam);
 
         vector3df camDir = ray.end - ray.start;
         camDir.normalize();
@@ -978,16 +1099,19 @@ void BrushTool::updateVertexMode()
 
     if (input->getMousePressOnce(0, &m_vertMouseDown))
     {
-        const position2di cursor = rm->device()->getCursorControl()->getPosition();
-        auto* coll = smgr->getSceneCollisionManager();
+        // Both sides of the distance test must be in ImGui screen pixels — which are
+        // desktop-absolute once panels can be torn out of the main window, so this
+        // cannot come from Irrlicht's client-space cursor. worldToScreen() returns
+        // the same space. The radius below is in panel pixels, not render-target ones.
+        const ImVec2 cursor = ImGui::GetMousePos();
 
         int   best = -1;
         float bestDistSq = 12.0f * 12.0f;   // pixel radius
         for (size_t v = 0; v < brush->verts.size(); v++)
         {
-            const position2di s = coll->getScreenCoordinatesFrom3DPosition(brush->verts[v], cam);
-            const float dx = static_cast<float>(s.X - cursor.X);
-            const float dy = static_cast<float>(s.Y - cursor.Y);
+            const position2di s = EditorViewport::worldToScreen(brush->verts[v], cam);
+            const float dx = static_cast<float>(s.X) - cursor.x;
+            const float dy = static_cast<float>(s.Y) - cursor.y;
             const float d = dx * dx + dy * dy;
             if (d < bestDistSq)
             {
@@ -1298,6 +1422,82 @@ void BrushTool::carveWithSelected()
         entry.brushes.push_back(std::move(snap));
     }
     m_owner->pushUndoEntry(std::move(entry));
+}
+
+void BrushTool::hollowSelected()
+{
+    if (!m_owner || !BrushManager::Get())
+        return;
+
+    // Copy: the selection is rebuilt below as the walls are added.
+    const std::vector<uint32_t> targets = m_owner->getSelectedBrushes();
+    if (targets.empty())
+        return;
+
+    UndoEntry entry;
+    std::vector<uint32_t> wallIds;      // every surviving wall, for reselection
+    std::vector<uint32_t> createdIds;
+    int declined = 0;
+
+    for (size_t t = 0; t < targets.size(); t++)
+    {
+        const uint32_t id = targets[t];
+        Brush* live = BrushManager::Get()->getBrush(id);
+        if (!live || !live->geometryValid)
+            continue;
+
+        const Brush original = *live;   // the pointer dangles once we addBrush
+        std::vector<Brush> walls = BrushGeometry::hollow(original, hollowThickness);
+        if (walls.empty())
+        {
+            // Too small for this wall thickness.  Take no snapshot and leave the
+            // brush completely untouched, so a mixed selection where only some
+            // brushes fit still does the right thing.
+            declined++;
+            continue;
+        }
+
+        BrushSnapshot snap;
+        snap.id = id;
+        snap.existed = true;
+        snap.data = original;
+        entry.brushes.push_back(std::move(snap));
+
+        BrushManager::Get()->replaceBrush(id, walls[0]);    // walls[0] keeps `id`
+        wallIds.push_back(id);
+        for (size_t w = 1; w < walls.size(); w++)
+        {
+            walls[w].id = 0;
+            walls[w].name.clear();
+            const uint32_t newId = BrushManager::Get()->addBrush(walls[w]);
+            if (newId != 0)
+            {
+                createdIds.push_back(newId);
+                wallIds.push_back(newId);
+            }
+        }
+    }
+
+    if (declined > 0)
+        spdlog::warn("BrushTool: {} brush(es) too small to hollow at {:.3f}",
+                     declined, hollowThickness);
+    if (entry.brushes.empty())
+        return;
+
+    for (size_t i = 0; i < createdIds.size(); i++)
+    {
+        BrushSnapshot snap;
+        snap.id = createdIds[i];
+        snap.existed = false;
+        entry.brushes.push_back(std::move(snap));
+    }
+    m_owner->pushUndoEntry(std::move(entry));
+
+    // Leave the whole shell selected, like commitCreateDrag does for a
+    // staircase — a room is almost always moved and textured as a unit.
+    m_owner->setSelectedBrush(wallIds[0]);
+    for (size_t i = 1; i < wallIds.size(); i++)
+        m_owner->toggleBrushInSelection(wallIds[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1715,7 +1915,9 @@ void BrushTool::commitSculptStroke()
 
 void BrushTool::drawSculptMode()
 {
-    if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+    // Only act while the cursor is over the 3D viewport panel. IsAnyItemHovered() used
+    // to stand in for this, but it no longer separates UI from the 3D view.
+    if (!EditorViewport::acceptsSceneInput())
         return;
 
     auto* rm = RenderManager::Get();

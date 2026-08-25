@@ -8,6 +8,7 @@
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Input/InputMap.h"
+#include "Editor/EditorViewport.h"
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/World/WorldManager.h"
 #include "Engine/Prop/PropManager.h"
@@ -218,7 +219,7 @@ void SceneInteractionManager::update(float dt)
 		// This avoids the bug with a small drawback: don't hold shift and use the transform control at the same time
 		//if (!ImTransformControl::IsOver() && !ImTransformControl::IsUsing()) {
 
-		auto node = RenderManager::Get()->getNodeFromCursorPosition();
+		auto node = RenderManager::Get()->getNodeFromRay(EditorViewport::rayFromMouse(nullptr));
 		if (node)
 		{
 			// Link pick mode consumes the click: write the picked entity's name
@@ -248,9 +249,7 @@ void SceneInteractionManager::update(float dt)
 			if (BrushManager::Get() && BrushManager::Get()->getChunkFromNode(node))
 			{
 				auto* smgr = RenderManager::Get()->sceneManager();
-				line3d<f32> ray = smgr->getSceneCollisionManager()->getRayFromScreenCoordinates(
-					RenderManager::Get()->device()->getCursorControl()->getPosition(),
-					smgr->getActiveCamera());
+				line3d<f32> ray = EditorViewport::rayFromMouse(smgr->getActiveCamera());
 
 				vector3df dir = ray.end - ray.start;
 				const float len = dir.getLength();
@@ -356,9 +355,8 @@ void SceneInteractionManager::draw()
 				break;
 			}
 
-			ImGuiIO& io = ImGui::GetIO();
 			ImTransformControl::SetDrawlist();
-			ImTransformControl::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+			EditorViewport::setGizmoRect();
 			ImTransformControl::Manipulate(
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
@@ -445,11 +443,10 @@ void SceneInteractionManager::draw()
 						break;
 					}
 
-					ImGuiIO& io = ImGui::GetIO();
 
 					ImTransformControl::SetDrawlist();
 
-					ImTransformControl::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+					EditorViewport::setGizmoRect();
 					ImTransformControl::Manipulate(
 						RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 						RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),
@@ -622,10 +619,9 @@ void SceneInteractionManager::draw()
 				break;
 			}
 
-			ImGuiIO& io = ImGui::GetIO();
 
 			ImTransformControl::SetDrawlist();
-			ImTransformControl::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+			EditorViewport::setGizmoRect();
 			ImTransformControl::Manipulate(
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getViewMatrix().pointer(),
 				RenderManager::Get()->sceneManager()->getActiveCamera()->getProjectionMatrix().pointer(),

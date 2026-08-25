@@ -660,6 +660,14 @@ public:
     irr::scene::ISceneNode *getNodeFromCursorPosition(irr::core::vector3df& outHit, irr::scene::ICameraSceneNode *camera = nullptr);
     irr::core::vector3df getPoint3DFromCursorPosition(irr::scene::ICameraSceneNode *camera = nullptr);
 
+    // Ray-explicit overloads. The cursor-based versions above build their ray from
+    // ISceneCollisionManager, which normalises against the driver viewport and assumes
+    // the 3D view covers the window — false in the editor, where the view is a dock
+    // panel. Editor callers build the ray via EditorViewport and pass it here.
+    irr::scene::ISceneNode *getNodeFromRay(const irr::core::line3df& ray);
+    irr::scene::ISceneNode *getNodeFromRay(const irr::core::line3df& ray, irr::core::vector3df& outHit);
+    irr::core::vector3df getPoint3DFromRay(const irr::core::line3df& ray);
+
     irr::scene::ISceneNode* getNodeFromRaycast(irr::core::vector3df start, irr::core::vector3df end);
     irr::scene::ISceneNode* getNodeFromRaycast(irr::core::vector3df start, irr::core::vector3df end, irr::core::vector3df& outHit);
     irr::scene::ISceneNode* getNodeFromRaycast(irr::core::vector3df start, irr::core::vector3df end, irr::core::vector3df& outHit, irr::s32 idBitMask);
@@ -931,6 +939,39 @@ public:
     bool  hasShadowLight()   const   { return m_shadowCount > 0; }
     irr::video::ITexture* getShadowMapRTT()       const { return m_shadowMapRTT; }
 
+    // --- Editor viewport panel ---------------------------------------------
+    // Resolution the 3D scene is actually rendered at: the window in game mode, the
+    // viewport panel in editor mode. Post-process callbacks must size their kernels
+    // off this, NOT off driver()->getScreenSize().
+    irr::core::dimension2du renderSize() const
+    {
+        return (m_renderSize.Width > 0 && m_renderSize.Height > 0)
+            ? m_renderSize
+            : m_driver->getScreenSize();
+    }
+
+    // Enables the render-to-panel path. The editor turns this on once the viewport
+    // window exists; leaving it off keeps the legacy fullscreen behaviour.
+    void useViewportPanel(bool enable) { m_useViewportPanel = enable; }
+
+    // True when dock panels may be torn out into their own OS windows.
+    bool viewportsEnabled() const { return m_viewportsEnabled; }
+
+    // Native handle of the main window (HWND), for the few places that need to convert
+    // between client and desktop coordinates. void* so callers need not include windows.h.
+    void* mainWindowHandle() const { return m_mainHwnd; }
+
+    // Editor pushes the viewport panel size in each frame (during ImGui submission,
+    // which runs before draw()). Kept as a plain setter so RenderManager has no
+    // dependency on editor headers.
+    void setViewportPanelSize(const irr::core::dimension2du& size) { m_requestedRenderSize = size; }
+    bool usingViewportPanel() const    { return m_useViewportPanel; }
+
+    // GL texture name of the viewport colour target, for ImGui::Image. 0 until the
+    // first frame has been copied. Note Irrlicht RTTs are stored bottom-up, so draw
+    // it with uv0=(0,1), uv1=(1,0).
+    unsigned int viewportGLTexture() const;
+
     // Clustered forward lighting — per-frame light/froxel textures replacing the
     // per-draw-call gatherClosestLights path. Null until the constructor runs.
     ClusteredLightManager* clusteredLights() const { return m_clusteredLights; }
@@ -1058,6 +1099,59 @@ private:
     // Used to blit world depth into the backbuffer before LDR effect rendering.
     int   m_sceneFBOId        = -1;
 
+    // -------------------------------------------------------------------------
+    // Editor viewport panel
+    //
+    // In editor mode the 3D view is an ImGui dock panel rather than the whole
+    // window, so the scene renders at PANEL resolution into the bottom-left of the
+    // backbuffer and is copied into m_viewportRTT for the panel to display.
+    // Everything here is inert unless m_useViewportPanel is set and the engine is in
+    // editor mode; the game path still resolves straight to the backbuffer.
+    // -------------------------------------------------------------------------
+    void applyRenderViewport();
+    void copyBackbufferToViewportRTT();
+    void updateRenderSize();
+
+    irr::video::ITexture* m_viewportRTT   = nullptr;
+    bool                  m_useViewportPanel = false;
+
+    // -------------------------------------------------------------------------
+    // Multi-viewport (tear dock panels out into real OS windows)
+    //
+    // Editor + windowed only. Fullscreen is excluded because Irrlicht minimises
+    // the app and drops the display mode on WM_ACTIVATE/WA_INACTIVE, which any
+    // torn-off window would trigger just by being clicked.
+    //
+    // Every platform window shares Irrlicht's ONE HGLRC, made current on each
+    // window's HDC in turn. ImGui 1.92 stores a single GLuint per texture and the
+    // GL3 backend caches its shader/VBO handles, so separate contexts would render
+    // the font atlas and every editor preview black.
+    //
+    // Handles are void* so this header need not pull in windows.h.
+    // -------------------------------------------------------------------------
+    void initMultiViewport();
+    void shutdownMultiViewport();
+    void renderPlatformWindows();
+
+    bool  m_viewportsEnabled = false;
+    void* m_mainHwnd         = nullptr;   // HWND
+    void* m_mainHDC          = nullptr;   // HDC   — Irrlicht's own; never GetDC() it
+    void* m_mainHGLRC        = nullptr;   // HGLRC — the single shared context
+
+    // Render resolution. Tracks the window in game mode and the viewport panel in
+    // editor mode. Deliberately separate from m_configuration.width/height, which
+    // must keep tracking the WINDOW (InputManager derives its mouse-centering point
+    // from it).
+    irr::core::dimension2du m_renderSize = irr::core::dimension2du(0, 0);
+
+    // Size the editor asked for this frame; consumed by updateRenderSize().
+    irr::core::dimension2du m_requestedRenderSize = irr::core::dimension2du(0, 0);
+
+    // Debounce state for the RTT chain. recreatePostProcessRTTs() frees and reallocs
+    // seven textures plus the shared depth renderbuffer, so a splitter drag must not
+    // trigger it every frame.
+    irr::core::dimension2du m_pendingRenderSize = irr::core::dimension2du(0, 0);
+    int                     m_pendingSizeFrames = 0;
     // -------------------------------------------------------------------------
     // Post-process pipeline
     // -------------------------------------------------------------------------

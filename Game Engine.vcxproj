@@ -45,6 +45,7 @@
     <ClCompile Include="Include\angelscript\sdk\add_on\scriptstdstring\scriptstdstring_utils.cpp" />
     <ClCompile Include="Include\freetype\freetype_compile.c" />
     <ClCompile Include="Include\imgui\backends\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="Include\imgui\backends\imgui_impl_win32.cpp" />
     <ClCompile Include="Include\imgui\imgui.cpp" />
     <ClCompile Include="Include\imgui\misc\freetype\imgui_freetype.cpp" />
     <ClCompile Include="Include\imgui\imgui_demo.cpp" />
@@ -79,12 +80,14 @@
     </ClCompile>
     <ClCompile Include="Source\Application.cpp" />
     <ClCompile Include="Source\Editor\EditorCamera.cpp" />
+    <ClCompile Include="Source\Editor\EditorViewport.cpp" />
     <ClCompile Include="Source\Editor\EditorGameState.cpp" />
     <ClCompile Include="Source\Editor\EditorState.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Assets.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Components.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Brush.cpp" />
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_Viewport.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_EntityBuilder.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Hierarchy.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_MenuBar.cpp" />
@@ -281,6 +284,7 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_HeavyRifle.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Crossbow.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Melee.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Minigun.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_None.cpp" />
@@ -321,6 +325,7 @@
     <ClInclude Include="Include\angelscript\sdk\add_on\scriptstdstring\scriptstdstring.h" />
     <ClInclude Include="Include\imgui\backends\imgui_impl_opengl3.h" />
     <ClInclude Include="Include\imgui\backends\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="Include\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="Include\imgui\imconfig.h" />
     <ClInclude Include="Include\imgui\imgui.h" />
     <ClInclude Include="Include\imgui\imgui_internal.h" />
@@ -471,6 +476,7 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_FuelRodCannon.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_GrenadeLauncher.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_HeavyRifle.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Crossbow.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Melee.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Minigun.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_None.h" />
@@ -484,6 +490,7 @@
     <ClInclude Include="Source\resource.h" />
     <ClInclude Include="Source\Application.h" />
     <ClInclude Include="Source\Editor\EditorCamera.h" />
+    <ClInclude Include="Source\Editor\EditorViewport.h" />
     <ClInclude Include="Source\Editor\EditorGameState.h" />
     <ClInclude Include="Source\Editor\EditorState.h" />
     <ClInclude Include="Source\Editor\Interface\EditorInterface.h" />

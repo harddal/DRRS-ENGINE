@@ -119,6 +119,30 @@ std::array<const char*, KEY_KEYCOUNT + 2> KEYBOARD_KEY_STRING =
 	"KEYCOUNT"
 };
 
+namespace
+{
+	// Is any window of THIS PROCESS the foreground window?
+	//
+	// Not device()->isWindowFocused(): that is GetFocus() == the main Irrlicht HWND, so
+	// it goes false the moment a torn-off ImGui panel is clicked, and all key/button
+	// polling below would stop dead while the app is plainly still in use.
+	//
+	// Deliberately a pure focus test. The "don't act on keys while typing" guard is a
+	// separate mechanism — Engine::update() passes !io.WantTextInput into
+	// InputManager::update(), which drives m_canProcessInput — and folding it in here
+	// would also swallow mouse buttons whenever a text field happened to be focused.
+	bool anyAppWindowFocused()
+	{
+		const HWND foreground = ::GetForegroundWindow();
+		if (!foreground)
+			return false;
+
+		DWORD pid = 0;
+		::GetWindowThreadProcessId(foreground, &pid);
+		return pid == ::GetCurrentProcessId();
+	}
+}
+
 InputManager::InputManager() :
 	m_canProcessInput(true), m_blockMouseInput(false), m_wheelDelta(0.f), m_frameWheelDelta(0.f),
 	m_xSensitivity(0.f), m_ySensitivity(0.f),
@@ -173,9 +197,22 @@ void InputManager::update(bool processInput)
 	m_frameWheelDelta = m_wheelDelta;
 	m_wheelDelta = 0.f;
 
-	m_fixedMousePosition = irr::core::vector2df(
-		static_cast<float>(RenderManager::Get()->getConfiguration().width / 2),
-		static_cast<float>(RenderManager::Get()->getConfiguration().height / 2));
+	// centerMouse() feeds this to SetCursorPos, which takes DESKTOP coordinates, but
+	// the configuration holds the window's CLIENT size. Treating one as the other only
+	// happened to work while the window sat at the top-left of the primary monitor;
+	// convert properly so it is right on any monitor and at any window position.
+	{
+		POINT center = {
+			static_cast<LONG>(RenderManager::Get()->getConfiguration().width  / 2),
+			static_cast<LONG>(RenderManager::Get()->getConfiguration().height / 2)
+		};
+
+		if (HWND hwnd = static_cast<HWND>(RenderManager::Get()->mainWindowHandle()))
+			::ClientToScreen(hwnd, &center);
+
+		m_fixedMousePosition = irr::core::vector2df(
+			static_cast<float>(center.x), static_cast<float>(center.y));
+	}
 
 	m_canProcessInput = processInput;
 
@@ -443,7 +480,7 @@ bool InputManager::isKeyPressed(int key, bool ignore_process_flag)
 		break;
 	}
 
-	if (RenderManager::Get()->device()->isWindowFocused())
+	if (anyAppWindowFocused())
 	{
 		switch (keycode)
 		{
@@ -572,7 +609,7 @@ bool InputManager::isMouseButtonPressed(int button, bool ignore_process_flag)
 		return false;
 	}
 
-	if (RenderManager::Get()->device()->isWindowFocused())
+	if (anyAppWindowFocused())
 	{
 		return (m_canProcessInput || ignore_process_flag) ? (GetAsyncKeyState(button_code) & 0x8000) != 0 : false;
 	}
@@ -608,7 +645,11 @@ irr::core::vector2df InputManager::getMousePositionWindow(/*HWND window*/)
 
 void InputManager::setMousePosition(irr::core::vector2df position)
 {
-	SetCursorPos(static_cast<int>(position.X), static_cast<int>(position.Y));
+	// Round, don't truncate: a caller warping to a fractional pixel (e.g. a panel
+	// centre) and then measuring delta against the actual post-warp position needs
+	// SetCursorPos to land as close to that value as an integer allows, or the
+	// truncated remainder reappears identically every frame as a constant bias.
+	SetCursorPos(irr::core::round32(position.X), irr::core::round32(position.Y));
 }
 
 void InputManager::setMousePositionWindow(irr::core::vector2df position/*, HWND relativeTo*/)
