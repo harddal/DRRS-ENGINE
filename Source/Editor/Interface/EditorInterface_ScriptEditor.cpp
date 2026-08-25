@@ -239,6 +239,14 @@ static void saveTabAs(int index)
 
 // ---- draw -------------------------------------------------------------------
 
+// KNOWN BUG (2026-08-25, accepted): typing does nothing while this panel is torn off
+// onto a second monitor. Dock it back into the main window to type.
+//
+// It is NOT the Irrlicht TranslateMessage patch — that whole chain was traced and is
+// sound. The likely cause is TextEditor::handleKeyboardInputs(), which gates every key
+// and character behind ImGui::IsWindowFocused(); for a window in a secondary viewport
+// that depends on Platform_GetWindowFocus polling, not on the message pump.
+// Full diagnosis and the two log lines that would settle it: Include/irrlicht/PATCHES.md #5.
 void EditorInterface::draw_window_script_editor()
 {
     if (!m_windowData.draw_window_script_editor)

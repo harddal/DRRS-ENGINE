@@ -954,7 +954,10 @@ public:
     // window exists; leaving it off keeps the legacy fullscreen behaviour.
     void useViewportPanel(bool enable) { m_useViewportPanel = enable; }
 
-    // True when dock panels may be torn out into their own OS windows.
+    // True when the multi-viewport backends are installed for this session. Whether
+    // panels can actually be torn out right now additionally depends on the runtime
+    // editor mode — beginImGui() maintains ImGuiConfigFlags_ViewportsEnable from it,
+    // because play-in-editor must not spawn platform windows.
     bool viewportsEnabled() const { return m_viewportsEnabled; }
 
     // Native handle of the main window (HWND), for the few places that need to convert

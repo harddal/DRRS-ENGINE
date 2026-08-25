@@ -2008,6 +2008,9 @@ void RenderManager::initMultiViewport()
     // Only now is it safe to advertise the feature. ImGui silently drops this flag
     // during the first NewFrame() if either backend failed to set its viewport
     // capability bit, so a missing tear-off is a backend-flag problem, not a hook one.
+    //
+    // beginImGui() re-evaluates the flag every frame against the runtime editor mode;
+    // this initial set just covers the frames before the first state has resumed.
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     ImGui::GetIO().ConfigDpiScaleViewports = true;
 
@@ -2048,6 +2051,26 @@ void RenderManager::shutdownMultiViewport()
 void RenderManager::beginImGui()
 {
     ImGuiIO& io = ImGui::GetIO();
+    // Multi-viewport follows the RUNTIME mode, not the launch flag: play-in-editor
+    // runs in the same process (still started with -editor) but flips editor mode off,
+    // and the game/debug UI submits unpinned fullscreen windows at (0,0) with no
+    // SetNextWindowViewport. Left enabled, those spawn their own platform windows —
+    // which get cleared to black behind the game window, so the debug overlays either
+    // flash a black rectangle or never appear at all.
+    //
+    // Safe to toggle per frame: WindowSelectViewport moves every window back to the
+    // main viewport when the flag is off, and UpdatePlatformWindows keeps its frame
+    // bookkeeping current before its own early-out, so re-enabling cannot trip
+    // ImGui's "forgot to call UpdatePlatformWindows()" check.
+    if (m_viewportsEnabled)
+    {
+        const bool wantViewports = Engine::Get() && Engine::Get()->isEditorMode();
+        if (wantViewports)
+            io.ConfigFlags |=  ImGuiConfigFlags_ViewportsEnable;
+        else
+            io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
+    }
+
     // Feeds mouse/keyboard/focus, refreshes the monitor list, drives the OS cursor,
     // and sets io.DisplaySize + io.DeltaTime itself (the latter from QPC, which is
     // strictly better than the one-frame-stale value the engine used to supply).

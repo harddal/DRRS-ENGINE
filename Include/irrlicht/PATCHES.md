@@ -95,3 +95,26 @@ handling the comment was protecting is untouched. ImGui receives characters for 
 main window from `IrrImGuiEventReceiver` (forwarding `KeyInput.Char`) and for
 torn-off windows from the backend — the hwnd split is what keeps those from
 double-feeding.
+
+**This patch is necessary but NOT sufficient — known open bug (2026-08-25).** Typing
+into a Script Editor that has been dragged onto a second monitor still does nothing.
+Accepted as a documented limitation for now: dock the panel back into the main window
+to type. Do not assume this patch is the broken link — the whole Win32→ImGui chain was
+traced and every step checks out: `run()` reaches the pump unconditionally
+(`CIrrDeviceWin32.cpp:1177`), platform windows carry no `WS_EX_NOACTIVATE` so they take
+real focus, `ImGui_ImplWin32_WndProcHandler_PlatformWindow` applies no window-identity
+guard, the class is registered `RegisterClassExW` so `WM_CHAR` takes the Unicode path,
+and nothing in `Source/` clears ImGui's input queue.
+
+The likelier culprit is the consumer: `TextEditor::handleKeyboardInputs()`
+(`Source/Editor/Interface/TextEditor/TextEditor.cpp:664`) puts *all* key and character
+handling behind `ImGui::IsWindowFocused()`, which for a window living in a secondary
+viewport depends on `Platform_GetWindowFocus` polling plus
+`io.ConfigViewportsPlatformFocusSetsImGuiFocus` — not on the message pump at all.
+
+To resolve: log once in the backend's `WM_CHAR` case and once on that
+`IsWindowFocused()` result. Whichever is false names the cause. If it is the focus gate,
+fix it at the viewport-focus level — loosening the `IsWindowFocused()` test inside
+`TextEditor` would make the editor swallow keystrokes while unfocused, regressing the
+docked case to fix the torn-off one. And do not "fix" this by translating messages for
+Irrlicht's own window: that re-breaks the deadkey handling described above.
