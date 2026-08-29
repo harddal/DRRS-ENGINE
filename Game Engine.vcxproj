@@ -117,7 +117,6 @@
     <ClCompile Include="Source\Editor\VegetationPainter.cpp" />
     <ClCompile Include="Source\Engine\Debug\DebugState.cpp" />
     <ClCompile Include="Source\Engine\Debug\Interface\DebugInterface.cpp" />
-    <ClCompile Include="Source\Engine\Diagnostics\HeapProbe.cpp" />
     <ClCompile Include="Source\Engine\Engine.cpp" />
     <ClCompile Include="Source\Engine\Input\InputManager.cpp" />
     <ClCompile Include="Source\Engine\Interface\DebugConsole.cpp" />

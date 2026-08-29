@@ -39,9 +39,6 @@
     <ClCompile Include="Source\Engine\Engine.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Engine\Diagnostics\HeapProbe.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Utility\Utility.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
