@@ -6,6 +6,7 @@
 
 #include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Engine.h"
+#include "Engine/Renderer/RenderManager.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/Script/ScriptManager.h"
 #include "Editor/ImGuiLogSink.h"
@@ -271,6 +272,105 @@ void GameConsole::registerBuiltins()
 		[this](const std::vector<std::string>&, const std::string& raw)
 	{
 		runScript(raw);
+	});
+
+	// --- Render-pass bisect ---------------------------------------------------
+	// Turn passes off one at a time to attribute a visual artifact to a pass
+	// without rebuilding. Nothing here persists to the scene descriptor.
+
+	registerCommand("r_pass", "[name] [0|1] toggle a post-process pass; no args lists them",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (args.empty())
+		{
+			for (const auto& pass : rm->postProcessPasses())
+				printLine(pass.enabled ? kColCVar : kColLogDim,
+					"  " + pass.name + " = " + (pass.enabled ? "1" : "0"));
+			return;
+		}
+		if (args.size() < 2)
+		{
+			printLine(kColError, "usage: r_pass <name> <0|1>");
+			return;
+		}
+		bool found = false;
+		for (const auto& pass : rm->postProcessPasses())
+			if (pass.name == args[0]) { found = true; break; }
+		if (!found)
+		{
+			printLine(kColError, "no such pass: " + args[0]);
+			return;
+		}
+		const bool on = (args[1] != "0");
+		rm->setPostProcessPassEnabled(args[0], on);
+		print(args[0] + " = " + (on ? "1" : "0"));
+	});
+
+	registerCommand("r_prepass", "[0|1] toggle the depth/normal pre-pass (SSAO, decals, soft particles)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setPrePassEnabled(args[0] != "0");
+		print(std::string("r_prepass = ") + (rm->isPrePassEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_showprepass", "[0|1] blit the depth/normal pre-pass over the frame",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setShowPrePass(args[0] != "0");
+		print(std::string("r_showprepass = ") + (rm->isShowPrePass() ? "1" : "0"));
+	});
+
+	registerCommand("r_decals", "[0|1] toggle screen-space decal rendering",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setDecalsEnabled(args[0] != "0");
+		print(std::string("r_decals = ") + (rm->isDecalsEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_transparent", "[0|1] toggle the sorted transparent pass",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setTransparentEnabled(args[0] != "0");
+		print(std::string("r_transparent = ") + (rm->isTransparentEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_ssao", "[0|1] toggle SSAO (pre-pass consumption + apply pass)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setSSAOEnabled(args[0] != "0");
+		print(std::string("r_ssao = ") + (rm->isSSAOEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_sky3d", "[0|1] toggle the 3D-skybox miniature pass",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setSkyCamera(rm->skyAnchor(), rm->skyScale(), args[0] != "0");
+		print(std::string("r_sky3d = ") + (rm->isSky3dEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("surfacelookup_stats", "triangle -> surface material lookup counters ('reset' to zero them)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty() && args[0] == "reset")
+		{
+			RenderManager::resetTriangleLookupStats();
+			print("surface lookup stats reset");
+			return;
+		}
+		print(RenderManager::getTriangleLookupStats());
 	});
 
 	registerCommand("brush_test", "run the CSG brush geometry self-tests",

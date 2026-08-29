@@ -24,6 +24,9 @@ void RenderSystem::setMeshComponentData(Entity& entity)
     if (meshComponent.node) {
         if (meshComponent.isViewmodel)
             RenderManager::Get()->unregisterViewmodelNode(meshComponent.node);
+        // This function removes the old node and immediately builds a new one, so
+        // the surface-material cache must not keep a recyclable address.
+        RenderManager::forgetNodeTriangleCache(meshComponent.node);
         meshComponent.node->remove();
     }
     if (meshComponent.selector) {
@@ -720,6 +723,7 @@ void RenderSystem::onEntityRemoved(Entity& entity) {
 		if (mc.node)
 			RenderManager::Get()->unregisterSkyboxNode(mc.node); // no-op if not registered
 
+		RenderManager::forgetNodeTriangleCache(mc.node);
 		mc.node->remove();
         mc.selector->drop();
 	}

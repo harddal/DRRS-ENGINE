@@ -319,6 +319,7 @@ void updateChunkNode(BrushChunk& chunk, const std::vector<const Brush*>& brushes
     {
         if (chunk.node)
         {
+            RenderManager::forgetNodeTriangleCache(chunk.node);
             chunk.node->remove();
             chunk.node = nullptr;
         }

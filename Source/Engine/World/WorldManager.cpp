@@ -304,6 +304,11 @@ void WorldManager::killAllEntities()
 
     if (BrushManager::Get())
         BrushManager::Get()->clearAll();
+
+    // A navmesh belongs to the scene that baked it — otherwise a scene with
+    // no navmesh.nav inherits the previous one and reports a false "Baked"
+    if (NavigationManager::Get())
+        NavigationManager::Get()->destroyNavMesh();
 }
 
 unsigned int WorldManager::spawnEntity(const std::string& file, const std::string& name, bool preserve_transform,

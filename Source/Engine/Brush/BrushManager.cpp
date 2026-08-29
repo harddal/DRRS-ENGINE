@@ -13,6 +13,7 @@
 
 #include "Engine/Brush/BrushCompiler.h"
 #include "Engine/Brush/BrushGeometry.h"
+#include "Engine/Navigation/NavigationManager.h"
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
@@ -228,6 +229,12 @@ void BrushManager::rebuildDirtyChunks()
         {
             // Geometry changed — any baked lightmap is stale
             clearChunkLightmap(chunk);
+
+            // ...and so is any baked navmesh: brush geometry feeds it via
+            // buildNavGeometry() (monsterclip volumes included).  No-ops when
+            // nothing is baked, so scene-load recompiles cost nothing.
+            if (NavigationManager::Get())
+                NavigationManager::Get()->markNavMeshStale();
 
             std::vector<const Brush*> members;
             gatherChunkMembers(chunk, members);
@@ -643,6 +650,10 @@ void BrushManager::destroyChunkResources(BrushChunk& chunk)
     }
     if (chunk.node)
     {
+        // Forget before remove — compileAll() destroys every chunk node and
+        // rebuilds it from identical brush data in one call, so the surface-material
+        // cache must not be left holding a recyclable address.
+        RenderManager::forgetNodeTriangleCache(chunk.node);
         chunk.node->remove();
         chunk.node = nullptr;
     }

@@ -456,6 +456,27 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Shotgun.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_LMG.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Sniper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Launcher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_DualSMG.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_SkullStaff.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pitchfork.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\World\Systems\TweenSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -1287,6 +1308,27 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Shotgun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_LMG.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sniper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Launcher.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_DualSMG.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_SkullStaff.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pitchfork.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\World\Systems\TweenSystem.h">

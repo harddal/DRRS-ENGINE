@@ -5,7 +5,7 @@
             <value0>
                 <name>weapon_shotgun</name>
                 <type>2</type>
-                <isDebug>true</isDebug>
+                <isDebug>false</isDebug>
                 <isSerializable>true</isSerializable>
             </value0>
         </descriptor>
@@ -42,13 +42,11 @@
         </render>
         <mesh>
             <value0>
-                <mesh>content/mesh/player/weapon/shotgun/shotgun.obj</mesh>
+                <mesh>content/mesh/player/weapon/world_model/shotgun.glb</mesh>
                 <isAnimated>false</isAnimated>
                 <castShadows>false</castShadows>
                 <receiveShadows>false</receiveShadows>
-                <textures size="dynamic">
-                    <t0>content/mesh/player/weapon/shotgun/Meshy_AI_Weathered_Six_Shooter_0316202938_texture.png</t0>
-                </textures>
+                <textures size="dynamic"/>
                 <isVisible>true</isVisible>
                 <transparent>false</transparent>
                 <disableZDraw>false</disableZDraw>
@@ -60,11 +58,11 @@
                 <navCookable>false</navCookable>
             </value0>
         </mesh>
-        <script>
+        <behavior>
             <value0>
-                <script>content/script/pickup/weapon_shotgun.asc</script>
-                <data/>
+                <behaviorType>WeaponPickup</behaviorType>
+                <properties>weaponType=3|ammoAmount=8|ammoType=0|bobSpeed=1.500000|spinSpeed=45.000000|pickupRadius=1.000000</properties>
             </value0>
-        </script>
+        </behavior>
     </entity>
 </cereal>

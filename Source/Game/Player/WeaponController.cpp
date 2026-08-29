@@ -36,6 +36,85 @@ void WeaponController::init()
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Shotgun>(m_weapon_shotgun));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_HeavyRifle>(m_weapon_heavyrifle));
 	m_player_weapon.emplace_back(std::make_unique<Weapon_Crossbow>(m_weapon_crossbow));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_LMG>(m_weapon_lmg));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Sniper>(m_weapon_sniper));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Launcher>(m_weapon_launcher));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_DualSMG>(m_weapon_dualsmg));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_SkullStaff>(m_weapon_skullstaff));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Sawnoffs>(m_weapon_sawnoffs));
+	m_player_weapon.emplace_back(std::make_unique<Weapon_Pitchfork>(m_weapon_pitchfork));
+
+	// The player starts with nothing but empty hands. Every weapon above is still
+	// constructed and init()ed — they need their scene nodes and effect pools —
+	// but ownership decides what can be switched to, and that starts at WEAP_NONE
+	// alone. Pickups grant the rest through giveWeapon().
+	//
+	// Sized from m_player_weapon rather than WEAP_COUNT: the enum lists weapons
+	// that were never registered, and indexing this by an unregistered slot would
+	// be a silent out-of-range read.
+	m_owned.assign(m_player_weapon.size(), false);
+	if (!m_owned.empty())
+		m_owned[WEAP_NONE] = true;
+}
+
+bool WeaponController::hasWeapon(PLAYER_WEAPON type) const
+{
+	const auto slot = static_cast<unsigned int>(type);
+	return slot < m_owned.size() && m_owned[slot];
+}
+
+bool WeaponController::giveWeapon(PLAYER_WEAPON type, bool autoEquip)
+{
+	const auto slot = static_cast<unsigned int>(type);
+
+	// Silently ignore a slot that was never registered — a pickup placed in a map
+	// with a stale weaponType should do nothing, not crash or arm something else.
+	if (slot >= m_owned.size())
+	{
+		spdlog::warn("WeaponController::giveWeapon(): weapon {} is not a registered slot", slot);
+		return false;
+	}
+
+	const bool isNew = !m_owned[slot];
+
+	m_owned[slot] = true;
+
+	// Only raise a genuinely new weapon. Walking over a gun you already carry
+	// should not yank the one in your hands away mid-fight.
+	if (isNew && autoEquip)
+		switchWeapon(type);
+
+	return isNew;
+}
+
+void WeaponController::giveAllWeapons()
+{
+	m_owned.assign(m_player_weapon.size(), true);
+}
+
+// Walks in 'step' direction until it finds an owned slot, wrapping at both ends.
+// Bounded by the slot count, so an unowned-everything state cannot spin forever;
+// returning 'from' unchanged is the caller's cue that there is nowhere to go.
+unsigned int WeaponController::nextOwnedSlot(unsigned int from, int step) const
+{
+	const int count = static_cast<int>(m_owned.size());
+	if (count <= 0)
+		return from;
+
+	int slot = static_cast<int>(from);
+
+	for (int i = 0; i < count; ++i)
+	{
+		slot += step;
+
+		if (slot < 0)      slot = count - 1;
+		if (slot >= count) slot = 0;
+
+		if (m_owned[slot])
+			return static_cast<unsigned int>(slot);
+	}
+
+	return from;
 }
 
 void WeaponController::update()
@@ -159,7 +238,9 @@ unsigned int WeaponController::lastWeaponSlot() const
 
 void WeaponController::switchNextWeapon()
 {
-	unsigned int target = (m_current_weapon >= lastWeaponSlot()) ? WEAP_NONE : m_current_weapon + 1;
+	// Skips straight over anything not picked up, so the wheel walks the guns the
+	// player actually has rather than stopping on empty slots.
+	unsigned int target = nextOwnedSlot(m_current_weapon, +1);
 	if (target == m_current_weapon) return;
 
 	m_pendingWeapon = static_cast<int>(target);
@@ -169,7 +250,7 @@ void WeaponController::switchNextWeapon()
 
 void WeaponController::switchPreviousWeapon()
 {
-	unsigned int target = (m_current_weapon == WEAP_NONE) ? lastWeaponSlot() : m_current_weapon - 1;
+	unsigned int target = nextOwnedSlot(m_current_weapon, -1);
 	if (target == m_current_weapon) return;
 
 	m_pendingWeapon = static_cast<int>(target);
@@ -182,6 +263,11 @@ void WeaponController::switchWeapon(PLAYER_WEAPON weapon)
 	// Reject unregistered slots as well as WEAP_COUNT itself
 	if (static_cast<unsigned int>(weapon) >= m_player_weapon.size()
 		|| static_cast<unsigned int>(weapon) == m_current_weapon) return;
+
+	// ...and anything the player has not picked up. This is the single gate:
+	// the number keys, the wheel and the bracket keys all come through here, so
+	// nothing can reach an unowned weapon by another route.
+	if (!hasWeapon(weapon)) return;
 
 	m_pendingWeapon = static_cast<int>(weapon);
 	if (!current_weapon->isUnequipping())

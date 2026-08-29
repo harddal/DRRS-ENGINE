@@ -473,6 +473,7 @@ void Engine::clearScene()
 	// Safety net: any viewmodel/LDR-effect registration still alive here points
 	// at a node deleted with the scene — drop them before the next render pass.
 	RenderManager::Get()->clearEffectNodeRegistrations();
+	RenderManager::clearTriangleTextureCache();
 
 	// Mode-switch safety: never carry bullet time or an active hit-stop across scenes
 	m_timeScale = 1.0f;

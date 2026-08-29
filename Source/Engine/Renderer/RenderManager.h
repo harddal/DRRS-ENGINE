@@ -12,6 +12,7 @@
 #include "Engine/Input/IrrImGuiEventReceiver.h"
 
 #include "Engine/Resource/AnimatedSpriteLoader.h"
+#include "Engine/Resource/MaterialBuilder.h"   // E_MANAGED_MATERIAL
 
 #include <SPK.h>
 #include <SPK_IRR.h>
@@ -447,6 +448,20 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
 };
 
+// Telescopic sight — sharp circular aperture over a heavily blurred surround.
+// Driven by the sniper rifle while its scope is raised; disabled otherwise, so
+// the taps cost nothing when nothing is looking through a scope.
+class ScopeCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    float aperture   = 0.42f; // radius; 1.0 == half the SHORT screen axis
+    float softness   = 0.02f; // feather across the aperture edge
+    float blurRadius = 9.0f;  // tap spread in pixels
+    float vignette   = 0.35f; // brightness of the blurred surround
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
 // Saturation boost + multiplicative color tint + brightness lift (LDR, after tonemap).
 class ColorGradeCallback : public irr::video::IShaderConstantSetCallBack
 {
@@ -674,9 +689,30 @@ public:
 
     float getRaycastLength(irr::core::vector3df startpoint, RaycastResultData& data) const { return hypot(hypot(startpoint.X - data.point.X, startpoint.Y - data.point.Y), startpoint.Z - data.point.Z); }
 
+    // Resolves which mesh buffer of `node` owns `tri` (as returned by
+    // ISceneCollisionManager) and reports its diffuse texture. Nodes queried
+    // repeatedly get an exact hash index built lazily, so this is cheap enough to
+    // call many times per frame; see the implementation comment for why the match
+    // must happen in world space.
     bool getNodeTriangleTextureName(irr::scene::ISceneNode* node, const irr::core::triangle3df& tri, std::string& texname);
+
+    // Allocation-free form for callers that only want the managed material
+    // (footsteps, impact effects). Prefer this on hot paths — it constructs no
+    // std::string and memoises the texture -> material mapping.
+    bool getNodeTriangleMaterial(irr::scene::ISceneNode* node, const irr::core::triangle3df& tri, E_MANAGED_MATERIAL& outMaterial);
+
     std::string getMeshMaterialFromRay(irr::core::vector3df start, irr::core::vector3df end);
     std::string getMeshMaterialFromCameraRay(irr::scene::ICameraSceneNode *camera = nullptr);
+
+    // Triangle-lookup cache maintenance. The cache validates itself against the
+    // live mesh on every lookup; these exist for teardown paths that destroy and
+    // immediately recreate nodes, where an address can be recycled.
+    static void clearTriangleTextureCache();
+    static void forgetNodeTriangleCache(const irr::scene::ISceneNode* node);
+
+    // Diagnostics behind the `surfacelookup_stats` console command.
+    static std::string getTriangleLookupStats();
+    static void        resetTriangleLookupStats();
 
     // Casts a ray and returns the first hit. Automatically skips the player hitbox when the ray
     // originates inside it (weapons/projectiles/shells fired by the player) so they cannot
@@ -867,6 +903,22 @@ public:
         m_sky3dEnabled = enabled;
     }
     bool isSky3dEnabled() const { return m_sky3dEnabled; }
+    const irr::core::vector3df& skyAnchor() const { return m_skyAnchor; }
+    float skyScale() const { return m_skyScale; }
+
+    // --- Render-pass bisect switches (console: r_prepass / r_decals / r_transparent) ---
+    // Debug only. Each skips a whole pass so a visual artifact can be attributed
+    // to it without a rebuild. All default to on.
+    void setPrePassEnabled(bool e)     { m_prePassEnabled = e; }
+    bool isPrePassEnabled() const      { return m_prePassEnabled; }
+    // Blit the raw prepass RTT over the finished frame (rgb = view-space normal,
+    // alpha = linear view depth) so its contents can be inspected directly.
+    void setShowPrePass(bool e)        { m_showPrePass = e; }
+    bool isShowPrePass() const         { return m_showPrePass; }
+    void setDecalsEnabled(bool e)      { m_decalsEnabled = e; }
+    bool isDecalsEnabled() const       { return m_decalsEnabled; }
+    void setTransparentEnabled(bool e) { m_transparentEnabled = e; }
+    bool isTransparentEnabled() const  { return m_transparentEnabled; }
 
 
     // Additive/transparent effect nodes (muzzle flashes, particle systems) that were
@@ -891,6 +943,8 @@ public:
     }
 
     void registerPostProcessPass(PostProcessPass pass) { m_postProcessPasses.push_back(std::move(pass)); }
+    // Read-only view of the chain, for the console's r_pass bisect command.
+    const std::vector<PostProcessPass>& postProcessPasses() const { return m_postProcessPasses; }
     void setPostProcessPassEnabled(const std::string& name, bool enabled)
     {
         for (auto& pass : m_postProcessPasses)
@@ -914,6 +968,7 @@ public:
     TonemapCallback*        tonemapCallback()        const { return m_tonemapCallback; }
     SharpenCallback*        sharpenCallback()        const { return m_sharpenCallback; }
     PixelateCallback*       pixelateCallback()       const { return m_pixelateCallback; }
+    ScopeCallback*          scopeCallback()          const { return m_scopeCallback; }
     ColorGradeCallback*     colorGradeCallback()     const { return m_colorGradeCallback; }
     PosterizeCallback*      posterizeCallback()      const { return m_posterizeCallback; }
     FilmGrainCallback*      filmGrainCallback()      const { return m_filmGrainCallback; }
@@ -922,6 +977,7 @@ public:
     void setTonemapEnabled(bool enabled)     { setPostProcessPassEnabled("tonemap",     enabled); }
     void setSharpenEnabled(bool enabled)     { setPostProcessPassEnabled("sharpen",     enabled); }
     void setPixelateEnabled(bool enabled)    { setPostProcessPassEnabled("pixelate",    enabled); }
+    void setScopeEnabled(bool enabled)       { setPostProcessPassEnabled("scope",       enabled); }
     void setColorGradeEnabled(bool enabled)  { setPostProcessPassEnabled("colorgrade",  enabled); }
     void setPosterizeEnabled(bool enabled)   { setPostProcessPassEnabled("posterize",   enabled); }
     void setFilmGrainEnabled(bool enabled)   { setPostProcessPassEnabled("filmgrain",   enabled); }
@@ -1097,6 +1153,10 @@ private:
     irr::core::vector3df m_skyAnchor;
     float m_skyScale     = 16.0f;
     bool  m_sky3dEnabled = false;
+    bool  m_prePassEnabled     = true;   // r_prepass
+    bool  m_showPrePass        = false;  // r_showprepass
+    bool  m_decalsEnabled      = true;   // r_decals
+    bool  m_transparentEnabled = true;   // r_transparent
 
     // FBO ID of the scene RTT, captured each frame after setRenderTarget(m_sceneRTT).
     // Used to blit world depth into the backbuffer before LDR effect rendering.
@@ -1163,6 +1223,7 @@ private:
     void drawShadowPass();
     void runPostProcessChain();
     void drawFullscreenQuad();
+    void drawPrePassDebugOverlay();
     void measureAndAdaptExposure(irr::f32 dt);
     irr::video::ITexture* m_sceneRTT      = nullptr;
     irr::video::ITexture* m_ppRTT[2]      = { nullptr, nullptr };
@@ -1180,6 +1241,7 @@ private:
     TonemapCallback*             m_tonemapCallback         = nullptr;
     SharpenCallback*             m_sharpenCallback         = nullptr;
     PixelateCallback*            m_pixelateCallback        = nullptr;
+    ScopeCallback*               m_scopeCallback           = nullptr;
     ColorGradeCallback*          m_colorGradeCallback      = nullptr;
     PosterizeCallback*           m_posterizeCallback       = nullptr;
     FilmGrainCallback*           m_filmGrainCallback       = nullptr;

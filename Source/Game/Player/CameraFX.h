@@ -27,6 +27,20 @@ struct CameraFX
 	float fovKick       = 0.0f;   // Current FOV offset (degrees; + = wider punch, - = crunch-in)
 	float fovDecaySpeed = 9.0f;   // Exponential decay rate (multiplier per second)
 
+	// ---- FOV zoom (sustained) ---------------------------------------------
+	// A HELD offset, for aiming down sights. Separate from fovKick because that
+	// one is a transient that decays back to nothing every time — which is
+	// exactly wrong for a scope, where the narrowed view has to stay narrowed
+	// for as long as the player holds the sight up. The two are summed, so a
+	// shot fired while scoped still punches out from the zoomed FOV.
+	//
+	// Held as a target the weapon sets and a current value that chases it, so
+	// the transition is owned here in one place rather than reimplemented by
+	// every weapon that wants a sight.
+	float fovZoom       = 0.0f;   // Current sustained offset (degrees; negative = zoomed in)
+	float fovZoomTarget = 0.0f;   // Where it is heading
+	float fovZoomSpeed  = 12.0f;  // Approach rate (multiplier per second)
+
 	// ---- Landing bob (damped spring) -------------------------------------
 	// Pitch: positive = pitched down. k=200/c=16 → ζ≈0.57, returns in ~270ms
 	// with a small upward overshoot — reads as a soft spring, not a hard jolt.
@@ -77,6 +91,26 @@ struct CameraFX
 	}
 
 	// ------------------------------------------------------------------
+	// Sustained FOV offset for aiming down sights. Negative zooms in.
+	// Call with the desired offset while the sight is up and with 0.0f when
+	// it comes down; the transition is eased in tick(). Setting it every
+	// frame is fine and is the expected usage — it is a target, not an event.
+	// ------------------------------------------------------------------
+	void setFovZoom(float degrees)
+	{
+		fovZoomTarget = degrees;
+	}
+
+	// Snap the zoom to its target with no transition. For teardown paths that
+	// must not leave the camera easing back over the next quarter second —
+	// a weapon switch, a death, a level change.
+	void clearFovZoom()
+	{
+		fovZoomTarget = 0.0f;
+		fovZoom       = 0.0f;
+	}
+
+	// ------------------------------------------------------------------
 	// Call from a weapon on impact to trigger screen shake.
 	// Only upgrades an existing shake if the new one is stronger.
 	// amount   : peak shake magnitude in degrees
@@ -112,6 +146,16 @@ struct CameraFX
 		// --- Decay FOV kick (exponential) -----------------------------------
 		fovKick -= fovKick * fovDecaySpeed * dtSec;
 		if (fabsf(fovKick) < 0.01f) fovKick = 0.0f;
+
+		// --- Ease the sustained zoom toward its target ----------------------
+		// Chases rather than decays: the target is whatever the weapon last
+		// asked for, and it holds there until the weapon asks for something else.
+		{
+			float t = fovZoomSpeed * dtSec;
+			if (t > 1.0f) t = 1.0f;
+			fovZoom += (fovZoomTarget - fovZoom) * t;
+			if (fabsf(fovZoom - fovZoomTarget) < 0.01f) fovZoom = fovZoomTarget;
+		}
 
 		// --- Compute shake offset ------------------------------------------
 		float shakeX = 0.0f;
@@ -161,7 +205,7 @@ struct CameraFX
 		outYawOffset    = recoilYaw;
 		outRollOffset   = shakeZ;
 		outYOffset      = landingDipPos;
-		outFovOffsetDeg = fovKick;
+		outFovOffsetDeg = fovKick + fovZoom;
 	}
 };
 

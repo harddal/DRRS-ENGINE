@@ -28,7 +28,7 @@ protected:
 // ---------------------------------------------------------------------------
 
 NavigationManager::NavigationManager()
-    : m_navMesh(nullptr), m_navQuery(nullptr)
+    : m_navMesh(nullptr), m_navQuery(nullptr), m_navStale(false)
 {
     if (s_Instance)
     {
@@ -343,6 +343,11 @@ void NavigationManager::destroyNavMesh()
 {
     if (m_navQuery) { dtFreeNavMeshQuery(m_navQuery); m_navQuery = nullptr; }
     if (m_navMesh)  { dtFreeNavMesh(m_navMesh);       m_navMesh  = nullptr; }
+
+    // The single clear point for the stale flag: buildNavMesh() and
+    // loadNavMesh() both call us first, so a fresh bake and a scene load
+    // each come out clean without touching them.
+    m_navStale = false;
 }
 
 // ---------------------------------------------------------------------------

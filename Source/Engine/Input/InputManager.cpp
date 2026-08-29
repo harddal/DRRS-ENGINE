@@ -7,6 +7,7 @@
 
 #include <Windows.h>
 #include <spdlog/spdlog.h>
+#include <IMGUI/imgui.h>
 
 #include "Engine/Engine.h"
 
@@ -605,6 +606,17 @@ bool InputManager::isMouseButtonPressed(int button, bool ignore_process_flag)
 	}
 
 	if (m_blockMouseInput && !ignore_process_flag)
+	{
+		return false;
+	}
+
+	// An in-game debug/UI panel (F2 viewmodel tuner, console, stats, inventory) is
+	// under the cursor -> let ImGui have the click, don't fire the weapon. Gamemode
+	// only: in the editor WantCaptureMouse is permanently true under the fullscreen
+	// host window (see Editor/VegetationPainter.cpp), which would kill scene mouse input.
+	if (!ignore_process_flag
+		&& Engine::Get()->isGameMode()
+		&& ImGui::GetIO().WantCaptureMouse)
 	{
 		return false;
 	}

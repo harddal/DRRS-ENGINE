@@ -294,6 +294,13 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_BoltDriver.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Shotgun.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_LMG.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Sniper.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Launcher.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_DualSMG.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_SkullStaff.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pitchfork.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\WeaponEffects.cpp" />
     <ClCompile Include="Source\Game\ProcessGameComponents.cpp" />
     <ClCompile Include="Source\Utility\INIFile.cpp" />
@@ -486,6 +493,13 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_BoltDriver.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_RocketLauncher.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Shotgun.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_LMG.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sniper.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Launcher.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_DualSMG.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_SkullStaff.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pitchfork.h" />
     <ClInclude Include="Source\Game\Player\Weapon\WeaponEffects.h" />
     <ClInclude Include="Source\resource.h" />
     <ClInclude Include="Source\Application.h" />
@@ -823,6 +837,44 @@
       <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
     </Manifest>
   </ItemDefinitionGroup>
+  <!-- ================================================================== -->
+  <!-- Irrlicht staleness guard                                           -->
+  <!--                                                                    -->
+  <!-- This project compiles NO Irrlicht sources. It links the prebuilt   -->
+  <!-- static Irrlicht.lib produced by the SEPARATE solution              -->
+  <!-- Include\irrlicht\source\Irrlicht\Irrlicht9.0.sln, which is not in     -->
+  <!-- GameEngine.sln and has no ProjectReference. Nothing in MSBuild     -->
+  <!-- connects the two, so patching vendored Irrlicht source and         -->
+  <!-- rebuilding only this project silently yields a binary WITHOUT the  -->
+  <!-- change.                                                            -->
+  <!--                                                                    -->
+  <!-- Not hypothetical: a TranslateMessage patch sat committed and       -->
+  <!-- documented for a week without ever being compiled, and the Debug   -->
+  <!-- lib drifted months out of ABI sync with ITexture.h.                -->
+  <!--                                                                    -->
+  <!-- Inputs/Outputs lets MSBuild do the timestamp comparison natively:  -->
+  <!-- the target is SKIPPED whenever the lib is newer than every source, -->
+  <!-- so the Error fires only when a rebuild is genuinely required.      -->
+  <!-- ================================================================== -->
+  <PropertyGroup>
+    <!-- The engine RelWithDebInfo config consumes Irrlicht Release.      -->
+    <!-- Declared once here for the guard; the existing                   -->
+    <!-- AdditionalLibraryDirectories entries keep their literal paths.   -->
+    <IrrConfig Condition="'$(Configuration)' == 'RelWithDebInfo'">Release</IrrConfig>
+    <IrrConfig Condition="'$(Configuration)' == 'Release'">Release</IrrConfig>
+    <IrrConfig Condition="'$(Configuration)' == 'Debug'">Debug</IrrConfig>
+    <IrrlichtLib>$(ProjectDir)Include\irrlicht\source\Irrlicht\$(Platform)\$(IrrConfig)\Irrlicht.lib</IrrlichtLib>
+  </PropertyGroup>
+  <ItemGroup>
+    <IrrlichtSource Include="$(ProjectDir)Include\irrlicht\source\Irrlicht\*.cpp;$(ProjectDir)Include\irrlicht\source\Irrlicht\*.h;$(ProjectDir)Include\irrlicht\include\*.h" />
+  </ItemGroup>
+  <Target Name="VerifyIrrlichtLibIsCurrent" BeforeTargets="ClCompile"
+          Condition="'$(Platform)' == 'x64' And '$(IrrConfig)' != ''"
+          Inputs="@(IrrlichtSource)" Outputs="$(IrrlichtLib)">
+    <Error Condition="!Exists('$(IrrlichtLib)')"
+           Text="Irrlicht.lib is missing: $(IrrlichtLib). Build Irrlicht9.0.sln ($(IrrConfig), x64) first - see Include\irrlicht\PATCHES.md." />
+    <Error Text="Vendored Irrlicht source is NEWER than $(IrrlichtLib), so this build would NOT contain your change. Rebuild it first:   MSBuild &quot;Include\irrlicht\source\Irrlicht\Irrlicht9.0.sln&quot; -t:Build -p:Configuration=$(IrrConfig) -p:Platform=x64   (x64 only: Win32 and x64 share one object directory). See Include\irrlicht\PATCHES.md." />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

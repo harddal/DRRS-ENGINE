@@ -71,6 +71,7 @@ void PropManager::removeProp(uint32_t id)
 
         if (it->node)
         {
+            RenderManager::forgetNodeTriangleCache(it->node);
             it->node->remove();
         }
 
@@ -82,7 +83,11 @@ void PropManager::removeProp(uint32_t id)
 void PropManager::clearAll()
 {
     for (auto& batch : m_vegetationBatches)
-        if (batch.node) batch.node->remove();
+        if (batch.node)
+        {
+            RenderManager::forgetNodeTriangleCache(batch.node);
+            batch.node->remove();
+        }
     m_vegetationBatches.clear();
     m_batchedMode = false;
 
@@ -110,6 +115,7 @@ void PropManager::clearAll()
 
         if (prop.node)
         {
+            RenderManager::forgetNodeTriangleCache(prop.node);
             prop.node->remove();
         }
     }
@@ -338,7 +344,11 @@ void PropManager::update()
 void PropManager::rebuildVegetationBatches()
 {
     for (auto& batch : m_vegetationBatches)
-        if (batch.node) batch.node->remove();
+        if (batch.node)
+        {
+            RenderManager::forgetNodeTriangleCache(batch.node);
+            batch.node->remove();
+        }
     m_vegetationBatches.clear();
 
     std::map<std::string, std::vector<StaticProp*>> groups;

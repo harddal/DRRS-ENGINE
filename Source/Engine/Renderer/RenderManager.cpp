@@ -3,6 +3,8 @@
 #include <chrono>
 #include <fstream>
 #include <algorithm>
+#include <cstring>
+#include <unordered_map>
 
 #include <cereal/archives/xml.hpp>
 #include <IMGUI/imgui.h>
@@ -18,6 +20,8 @@
 #include "Engine/Renderer/DecalManager.h"
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Interface/ImTransformControl.h"
+
+#include <SSkinMeshBuffer.h>
 
 #include <IMGUI/backends/imgui_impl_opengl3.h>
 #include <IMGUI/backends/imgui_impl_win32.h>
@@ -523,6 +527,26 @@ void PixelateCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("uRcpFrame", rcpFrame, 2);
 }
 
+void ScopeCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    int slot = 0;
+    services->setPixelShaderConstant("tScene", &slot, 1);
+
+    auto sz = RenderManager::Get()->renderSize();
+    const float w = static_cast<float>(sz.Width);
+    const float h = static_cast<float>(sz.Height);
+
+    float rcpFrame[2] = { 1.0f / w, 1.0f / h };
+    services->setPixelShaderConstant("uRcpFrame", rcpFrame, 2);
+
+    float aspect = (h > 0.0f) ? (w / h) : 1.0f;
+    services->setPixelShaderConstant("uAspect",     &aspect,     1);
+    services->setPixelShaderConstant("uAperture",   &aperture,   1);
+    services->setPixelShaderConstant("uSoftness",   &softness,   1);
+    services->setPixelShaderConstant("uBlurRadius", &blurRadius, 1);
+    services->setPixelShaderConstant("uVignette",   &vignette,   1);
+}
+
 void ColorGradeCallback::OnSetConstants(IMaterialRendererServices* services, s32)
 {
     int slot = 0;
@@ -777,7 +801,7 @@ void RenderManager::updatePerFrameUBO(bool useClusters)
     d.useClusters = useClusters ? 1.0f : 0.0f;
     // Prepass depth is only valid for the main scene; preview scenes must not
     // let soft particles / decals sample it.
-    d.prepassValid = m_renderingPreview ? 0.0f : 1.0f;
+    d.prepassValid = (m_renderingPreview || !m_prePassEnabled) ? 0.0f : 1.0f;
 
     GLExt::BindBuffer(GL_UNIFORM_BUFFER, m_perFrameUBO);
     GLExt::BufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(d), &d);
@@ -815,6 +839,34 @@ void RenderManager::bindPerFrameTextures()
     glBindTexture(GL_TEXTURE_2D, m_prepassRTT ? m_prepassRTT->getNativeHandle() : 0);
 
     GLExt::ActiveTexture(GL_TEXTURE0);
+}
+
+// Skinned meshes carry a per-buffer rigid transform. CSkinnedMesh promotes any
+// buffer weighted 1:1 to a single joint out of vertex skinning and bakes that
+// joint's matrix into SSkinMeshBuffer::Transformation instead, so the buffer's
+// vertices stay at their bind pose. Irrlicht applies it in
+// CAnimatedMeshSceneNode::render() as `AbsoluteTransformation * mb->Transformation`
+// (see Include/irrlicht/source/Irrlicht/CAnimatedMeshSceneNode.cpp:339).
+//
+// Every pass below draws mesh buffers directly rather than through render(), so
+// each one has to reproduce that multiply. Omitting it leaves rigidly-bound parts
+// — gun bodies, magazines, anything parented to one bone — stamped at their bind
+// pose while the software-skinned parts (hands, arms) land correctly.
+//
+// `animMesh` is the node's IAnimatedMesh (null for non-animated nodes); the cast is
+// only valid when it reports EAMT_SKINNED.
+static irr::core::matrix4 bufferWorldTransform(const irr::core::matrix4& absolute,
+                                               irr::scene::IAnimatedMesh* animMesh,
+                                               irr::scene::IMesh* mesh,
+                                               irr::u32 bufferIndex)
+{
+    if (!animMesh || !mesh ||
+        animMesh->getMeshType() != irr::scene::EAMT_SKINNED ||
+        bufferIndex >= mesh->getMeshBufferCount())
+        return absolute;
+
+    auto* smb = static_cast<irr::scene::SSkinMeshBuffer*>(mesh->getMeshBuffer(bufferIndex));
+    return absolute * smb->Transformation;
 }
 
 void RenderManager::drawShadowPass()
@@ -980,6 +1032,7 @@ void RenderManager::drawSkyboxPass(bool useClusters)
         irr::scene::ISceneNode*   node;
         irr::scene::IMeshBuffer*  buf;
         irr::video::SMaterial     mat;
+        irr::core::matrix4        world;   // absolute * skin-buffer transform
         irr::f32                  dist;
     };
     std::vector<SkyDrawItem> transparentItems;
@@ -993,15 +1046,18 @@ void RenderManager::drawSkyboxPass(bool useClusters)
     auto drawSkyNode = [&](irr::scene::ISceneNode* n)
     {
         n->updateAbsolutePosition();
-        m_driver->setTransform(irr::video::ETS_WORLD, n->getAbsoluteTransformation());
+        const irr::core::matrix4& absolute = n->getAbsoluteTransformation();
+        m_driver->setTransform(irr::video::ETS_WORLD, absolute);
 
-        irr::scene::IMesh* mesh = nullptr;
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
         const auto ntype = n->getType();
         if (ntype == irr::scene::ESNT_ANIMATED_MESH)
         {
             auto* an = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
-            if (an->getMesh())
-                mesh = an->getMesh()->getMesh(an->getFrameNr());
+            animMesh = an->getMesh();
+            if (animMesh)
+                mesh = animMesh->getMesh(an->getFrameNr());
         }
         else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
         {
@@ -1020,14 +1076,17 @@ void RenderManager::drawSkyboxPass(bool useClusters)
             if (isTransparentMat(mtl))
             {
                 SkyDrawItem it;
-                it.node = n;
-                it.buf  = mesh->getMeshBuffer(b);
-                it.mat  = mtl;
-                it.dist = (n->getAbsolutePosition() - skyPos).getLengthSQ();
+                it.node  = n;
+                it.buf   = mesh->getMeshBuffer(b);
+                it.mat   = mtl;
+                it.world = bufferWorldTransform(absolute, animMesh, mesh, b);
+                it.dist  = (n->getAbsolutePosition() - skyPos).getLengthSQ();
                 transparentItems.push_back(it);
             }
             else
             {
+                m_driver->setTransform(irr::video::ETS_WORLD,
+                    bufferWorldTransform(absolute, animMesh, mesh, b));
                 m_driver->setMaterial(mtl);
                 m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
             }
@@ -1060,8 +1119,7 @@ void RenderManager::drawSkyboxPass(bool useClusters)
         [](const SkyDrawItem& a, const SkyDrawItem& b) { return a.dist > b.dist; });
     for (auto& it : transparentItems)
     {
-        it.node->updateAbsolutePosition();
-        m_driver->setTransform(irr::video::ETS_WORLD, it.node->getAbsoluteTransformation());
+        m_driver->setTransform(irr::video::ETS_WORLD, it.world);
         m_driver->setMaterial(it.mat);
         m_driver->drawMeshBuffer(it.buf);
     }
@@ -1079,7 +1137,7 @@ void RenderManager::drawSkyboxPass(bool useClusters)
 
 void RenderManager::drawPrePass()
 {
-    if (m_prepassMat < 0 || !m_prepassRTT)
+    if (m_prepassMat < 0 || !m_prepassRTT || !m_prePassEnabled)
         return;
 
     // Clear to (0,0,0,0): depth channel 0 marks "no geometry" (sky) for SSAO.
@@ -1107,20 +1165,22 @@ void RenderManager::drawPrePass()
         if (node->isDebugObject())
             continue;
 
-        irr::scene::IMesh* mesh = nullptr;
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
         irr::scene::ESCENE_NODE_TYPE ntype = node->getType();
         if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
             mesh = static_cast<irr::scene::IMeshSceneNode*>(node)->getMesh();
         else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
         {
             auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
-            if (animNode->getMesh())
-                mesh = animNode->getMesh()->getMesh(animNode->getFrameNr());
+            animMesh = animNode->getMesh();
+            if (animMesh)
+                mesh = animMesh->getMesh(animNode->getFrameNr());
         }
         if (!mesh)
             continue;
 
-        bool transformSet = false;
+        const irr::core::matrix4& absolute = node->getAbsoluteTransformation();
         for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
         {
             const irr::video::SMaterial& src = node->getMaterial(b);
@@ -1130,11 +1190,12 @@ void RenderManager::drawPrePass()
             if (rnd && rnd->isTransparent())
                 continue;
 
-            if (!transformSet)
-            {
-                m_driver->setTransform(irr::video::ETS_WORLD, node->getAbsoluteTransformation());
-                transformSet = true;
-            }
+            // Per buffer, not once per node: skinned meshes give each buffer its own
+            // transform, and the prepass feeds the soft-particle depth fade, so a
+            // buffer stamped at its bind pose carves a phantom silhouette out of
+            // every particle drawn in front of it.
+            m_driver->setTransform(irr::video::ETS_WORLD,
+                bufferWorldTransform(absolute, animMesh, mesh, b));
 
             irr::video::SMaterial pm;
             pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
@@ -1149,7 +1210,7 @@ void RenderManager::drawPrePass()
 
 void RenderManager::drawPrePassViewmodels()
 {
-    if (m_prepassMat < 0 || !m_prepassRTT || m_viewmodelNodes.empty())
+    if (m_prepassMat < 0 || !m_prepassRTT || m_viewmodelNodes.empty() || !m_prePassEnabled)
         return;
 
     // Keep the opaque prepass colors; reset only depth so viewmodels stamp on
@@ -1162,26 +1223,30 @@ void RenderManager::drawPrePassViewmodels()
         if (!n->isVisible())
             continue;
 
-        irr::scene::IMesh* mesh = nullptr;
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
         const auto ntype = n->getType();
         if (ntype == irr::scene::ESNT_ANIMATED_MESH)
         {
             auto* a = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
-            if (a->getMesh())
-                mesh = a->getMesh()->getMesh(a->getFrameNr());
+            animMesh = a->getMesh();
+            if (animMesh)
+                mesh = animMesh->getMesh(a->getFrameNr());
         }
         else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
             mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
         if (!mesh)
             continue;
 
-        m_driver->setTransform(irr::video::ETS_WORLD, n->getAbsoluteTransformation());
+        const irr::core::matrix4& absolute = n->getAbsoluteTransformation();
         for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
         {
             const irr::video::SMaterial& src = n->getMaterial(b);
             irr::video::IMaterialRenderer* rnd = m_driver->getMaterialRenderer(src.MaterialType);
             if ((rnd && rnd->isTransparent()) || src.Wireframe)
                 continue;
+            m_driver->setTransform(irr::video::ETS_WORLD,
+                bufferWorldTransform(absolute, animMesh, mesh, b));
             irr::video::SMaterial pm;
             pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
             pm.Lighting         = false;
@@ -1252,6 +1317,36 @@ void RenderManager::drawFullscreenQuad()
         irr::video::EVT_STANDARD, irr::scene::EPT_TRIANGLES, irr::video::EIT_16BIT);
 }
 
+
+// Debug: draw m_prepassRTT straight over the finished frame. Reuses the "blit"
+// post-process material so the quad's UV flip (RTTs are stored bottom-up) and
+// the sampler binding are the ones the rest of the chain already uses.
+// rgb = view-space normal, alpha = linear view depth — geometry silhouettes read
+// clearly, so a phantom in this buffer is visible as a phantom on screen.
+void RenderManager::drawPrePassDebugOverlay()
+{
+    if (!m_showPrePass || !m_prepassRTT)
+        return;
+
+    irr::s32 blitMat = -1;
+    for (const auto& pass : m_postProcessPasses)
+        if (pass.name == "blit") { blitMat = pass.materialTypeIndex; break; }
+    if (blitMat < 0)
+        return;
+
+    m_driver->setRenderTarget(nullptr, false, false);
+    applyRenderViewport();
+
+    irr::video::SMaterial mat;
+    mat.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(blitMat);
+    mat.setTexture(0, m_prepassRTT);
+    mat.ZBuffer         = 0;
+    mat.ZWriteEnable    = false;
+    mat.Lighting        = false;
+    mat.BackfaceCulling = false;
+    m_driver->setMaterial(mat);
+    drawFullscreenQuad();
+}
 
 void RenderManager::runPostProcessChain()
 {
@@ -1656,7 +1751,7 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	}
 	RenderManager::Get()->setBloomEnabled(true);
 	RenderManager::Get()->bloomBrightCallback()->threshold = 1.0f; // lower = more glow
-	RenderManager::Get()->bloomCompositeCallback()->strength = 2.0f; // intensity
+	RenderManager::Get()->bloomCompositeCallback()->strength = 0.0f; // intensity
 	RenderManager::Get()->setTonemapEnabled(true);
 	RenderManager::Get()->tonemapCallback()->exposure = 10.0f;  // brighter scene
 	RenderManager::Get()->tonemapCallback()->whitePoint = 11.2f;
@@ -2258,11 +2353,13 @@ void RenderManager::draw(f32 dt)
     if (m_decalManager)
     {
         m_decalManager->update(dt * 0.001f);   // dt is in ms; decal lifetimes are in seconds
-        m_decalManager->render();
+        if (m_decalsEnabled)
+            m_decalManager->render();
     }
 
     // Sorted transparent pass — water, particles, crystal props (now phong_perpixel_transparent).
-    drawTransparentPass();
+    if (m_transparentEnabled)
+        drawTransparentPass();
 
     // Blit world geometry depth from the scene RTT into the backbuffer NOW,
     // before clearZBuffer() wipes it for the viewmodel pass.  The post-process
@@ -2420,15 +2517,19 @@ void RenderManager::draw(f32 dt)
         if (!debugWasVisible[i]) continue;
         auto* n = m_debugNodes[i];
         n->updateAbsolutePosition();
-        m_driver->setTransform(ETS_WORLD, n->getAbsoluteTransformation());
+        const auto& absolute = n->getAbsoluteTransformation();
+        m_driver->setTransform(ETS_WORLD, absolute);
         if (n->getType() == irr::scene::ESNT_ANIMATED_MESH)
         {
             auto* an = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
             if (an->getMesh())
             {
-                auto* mesh = an->getMesh()->getMesh(an->getFrameNr());
+                auto* animMesh = an->getMesh();
+                auto* mesh     = animMesh->getMesh(an->getFrameNr());
                 for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
                 {
+                    m_driver->setTransform(ETS_WORLD,
+                        bufferWorldTransform(absolute, animMesh, mesh, b));
                     m_driver->setMaterial(an->getMaterial(b));
                     m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
                 }
@@ -2457,20 +2558,26 @@ void RenderManager::draw(f32 dt)
                 if (!viewmodelWasVisible[i]) continue;
                 auto* n = m_viewmodelNodes[i];
 
-                irr::scene::IMesh* mesh = nullptr;
+                irr::scene::IMesh*         mesh     = nullptr;
+                irr::scene::IAnimatedMesh* animMesh = nullptr;
                 const auto ntype = n->getType();
                 if (ntype == irr::scene::ESNT_ANIMATED_MESH)
                 {
                     auto* a = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
-                    if (a->getMesh()) mesh = a->getMesh()->getMesh(a->getFrameNr());
+                    animMesh = a->getMesh();
+                    if (animMesh) mesh = animMesh->getMesh(a->getFrameNr());
                 }
                 else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
                     mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
 
                 if (!mesh) continue;
-                m_driver->setTransform(irr::video::ETS_WORLD, n->getAbsoluteTransformation());
+                const auto& absolute = n->getAbsoluteTransformation();
                 for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+                {
+                    m_driver->setTransform(irr::video::ETS_WORLD,
+                        bufferWorldTransform(absolute, animMesh, mesh, b));
                     m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+                }
             }
 
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -2586,6 +2693,8 @@ void RenderManager::draw(f32 dt)
     // so what remains under the UI is black rather than a corner-anchored 3D view.
     // Note this runs even when the panel is hidden — the rest of draw() must not be
     // skipped, as the 3D overlay line lists are consumed and cleared inside it.
+    drawPrePassDebugOverlay();
+
     if (m_useViewportPanel && Engine::Get() && Engine::Get()->isEditorMode())
         copyBackbufferToViewportRTT();
 
@@ -2933,6 +3042,20 @@ void RenderManager::createDefaultShaders()
         registerPostProcessPass(PostProcessPass("pixelate", s.material, m_pixelateCallback, false));
     }
 
+    // Telescopic sight — registered LAST so it operates on the finished image.
+    // Anything after it (sharpen especially) would work against the blur it just
+    // applied. Disabled by default; the sniper turns it on while scoped.
+    {
+        m_scopeCallback = new ScopeCallback();
+        ShaderMaterial s("scope_pp");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",   "main", EVST_VS_2_0,
+            "content/shader/scope.frag",  "main", EPST_PS_2_0,
+            m_scopeCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        registerPostProcessPass(PostProcessPass("scope", s.material, m_scopeCallback, false));
+    }
+
     // Luminance measurement — not a chain pass; rendered to a 1x1 RTT each frame
     // by measureAndAdaptExposure() when auto-exposure is enabled.
     {
@@ -3121,86 +3244,604 @@ ISceneNode* RenderManager::getNodeFromRaycast(vector3df start, vector3df end, ve
     return m_sceneManager->getSceneCollisionManager()->getSceneNodeAndCollisionPointFromRay(ray, outHit, tri, idBitMask);
 }
 
-bool RenderManager::getNodeTriangleTextureName(ISceneNode* node, const triangle3df& tri, std::string& texname)
+// ---------------------------------------------------------------------------
+// Triangle -> mesh buffer resolution (surface material lookup)
+//
+// Callers hand us a world-space triangle straight out of ISceneCollisionManager
+// and want to know which texture is on it. Irrlicht's triangle selectors flatten
+// every mesh buffer into one array and keep no provenance, so the owning buffer
+// has to be recovered by matching geometry.
+//
+// The match is done in WORLD space, forward-transforming candidate vertices —
+// never by inverse-transforming the query. That is not a style choice: the
+// selector builds its triangles from raw mesh-buffer positions and applies
+// node->getAbsoluteTransformation() to them (CTriangleSelector::getTriangles), or
+// copies them verbatim when that matrix is identity (COctreeTriangleSelector,
+// which is the brush-chunk case since chunk nodes sit at the origin). Repeating
+// the same forward transform reproduces the same floats. The inverse round trip
+// the old implementation did is the only source of error in the whole path.
+//
+// Because the floats round-trip exactly, a hash of the triangle's nine raw float
+// bit patterns is a valid exact key. Nodes queried often enough get a sorted
+// hash -> buffer table built once and binary-searched thereafter. Every index hit
+// is verified against the real mesh triangle and falls back to the linear matcher
+// on a miss, so a hash collision or a stray ULP costs speed, never correctness —
+// watch the `surfacelookup_stats` console command if lookups get slow.
+//
+// Note the old implementation also matched *incorrectly*: it set three independent
+// "this position appears somewhere in this buffer" flags, so on a chunk where
+// several material buffers share seam vertices it returned whichever buffer
+// happened to contain all three positions, not the one owning the triangle.
+// ---------------------------------------------------------------------------
+namespace {
+
+// Triangle count below which an index is not worth its memory — the linear
+// matcher already resolves these in a few hundred comparisons.
+constexpr u32 kIndexMinTriangles = 512;
+
+// Queries against one node before its index is built.
+constexpr u32 kIndexEscalateQueries = 24;
+
+// Ceiling on total indexed triangles (~16 bytes each). Least-recently-queried
+// indexes are dropped to make room.
+constexpr size_t kIndexTriangleBudget = 400000;
+
+// Cache entries are small without an index, but a scene churning through nodes
+// shouldn't grow the map without bound.
+constexpr size_t kMaxCacheEntries = 4096;
+
+// Tolerance for the linear matcher. Positions should agree bit-exactly; this only
+// absorbs a stray ULP and is orders of magnitude below any real triangle, so it
+// cannot produce a false match.
+constexpr f32 kTriMatchEpsilon = 0.001f;
+
+// 16 bytes with padding. The triangle index is carried so a hit can be verified
+// with a single triangle fetch — verifying by rescanning the buffer would put the
+// O(n) walk right back on the hot path.
+struct TriHashEntry
 {
-    IMesh* mesh = 0;
+    u64 key;
+    u32 buffer;
+    u32 triangle;
+};
 
-    ESCENE_NODE_TYPE type = node->getType();
-    if (type == ESNT_MESH || type == ESNT_OCTREE) {
-        mesh = dynamic_cast<IMeshSceneNode*>(node)->getMesh();
-    }
-    else
-        if (type == ESNT_ANIMATED_MESH) {
-            mesh = dynamic_cast<IAnimatedMeshSceneNode*>(node)->getMesh()->getMesh(0);
-        }
-        else {
-            return false;
-        }
+struct NodeTriCache
+{
+    // Validation stamp, re-checked on every lookup. setMesh() always allocates the
+    // new mesh before dropping the old one, so a stale IMesh* can never alias a
+    // live one. The transform is part of the stamp because the index is built in
+    // world space — a node that moves invalidates it.
+    IMesh*  mesh            = nullptr;
+    u32     bufferCount     = 0;
+    u32     totalIndexCount = 0;
+    matrix4 absTransform;
 
-    if (!mesh) {
+    std::vector<aabbox3df>    bufferBounds;   // world space, epsilon-expanded
+    std::vector<TriHashEntry> index;          // sorted by key; empty until escalated
+
+    // Temporal memo. Standing on one triangle for many frames is the common case,
+    // so the exact last triangle is tried first; failing that, the buffer it lived
+    // in, since consecutive hits on a node almost always share a material.
+    u32  lastBuffer   = 0xFFFFFFFFu;
+    u32  lastTriangle = 0;
+
+    u32  queryCount  = 0;
+    u32  rebuilds    = 0;
+    u64  lastTick    = 0;
+    bool indexDenied = false;         // too small, or didn't fit the budget
+};
+
+std::unordered_map<const ISceneNode*, NodeTriCache>     g_triCache;
+std::unordered_map<const ITexture*, E_MANAGED_MATERIAL> g_triMaterialCache;
+
+size_t g_indexedTriangles = 0;
+u64    g_triQueryTick     = 0;
+
+struct TriLookupStats
+{
+    u64 calls        = 0;
+    u64 earlyOut     = 0;   // node can never resolve (skinned / not a mesh node)
+    u64 memoHits     = 0;
+    u64 indexHits    = 0;
+    u64 indexMisses  = 0;   // index existed but didn't answer — fell back
+    u64 linearScans  = 0;
+    u64 indexBuilds  = 0;
+    u64 failed       = 0;   // triangle belongs to no buffer
+};
+TriLookupStats g_triStats;
+
+// Order-sensitive FNV-1a over raw float bits. -0.0f is folded onto 0.0f so the two
+// spellings of zero hash alike.
+inline u64 hashFloatBits(u64 h, f32 f)
+{
+    u32 bits;
+    memcpy(&bits, &f, sizeof(bits));
+    if (bits == 0x80000000u)
+        bits = 0u;
+
+    h ^= bits;
+    h *= 0x100000001b3ull;
+    return h;
+}
+
+inline u64 hashTriangle(const triangle3df& t)
+{
+    u64 h = 0xcbf29ce484222325ull;
+    h = hashFloatBits(h, t.pointA.X); h = hashFloatBits(h, t.pointA.Y); h = hashFloatBits(h, t.pointA.Z);
+    h = hashFloatBits(h, t.pointB.X); h = hashFloatBits(h, t.pointB.Y); h = hashFloatBits(h, t.pointB.Z);
+    h = hashFloatBits(h, t.pointC.X); h = hashFloatBits(h, t.pointC.Y); h = hashFloatBits(h, t.pointC.Z);
+    return h;
+}
+
+// Fetches triangle `triIdx` of a mesh buffer, transformed exactly the way the
+// triangle selector transforms it.
+inline bool meshBufferTriangle(const IMeshBuffer* buf, u32 triIdx, const matrix4& m, triangle3df& out)
+{
+    const u32 base = triIdx * 3;
+    if (base + 2 >= buf->getIndexCount())
         return false;
-    }
 
-    vector3df ptA = tri.pointA;
-    vector3df ptB = tri.pointB;
-    vector3df ptC = tri.pointC;
+    const void* raw   = static_cast<const void*>(buf->getIndices());
+    const bool  is32  = (buf->getIndexType() == EIT_32BIT);
 
-    matrix4 matrix = node->getAbsoluteTransformation();
-    matrix4 inverse;
-    vector3df p0, p1, p2;
+    const u32 i0 = is32 ? static_cast<const u32*>(raw)[base + 0] : static_cast<const u16*>(raw)[base + 0];
+    const u32 i1 = is32 ? static_cast<const u32*>(raw)[base + 1] : static_cast<const u16*>(raw)[base + 1];
+    const u32 i2 = is32 ? static_cast<const u32*>(raw)[base + 2] : static_cast<const u16*>(raw)[base + 2];
 
-    if (matrix.getInverse(inverse)) {
-        inverse.transformVect(p0, ptA);
-        inverse.transformVect(p1, ptB);
-        inverse.transformVect(p2, ptC);
-    }
-    else {
-        p0 = ptA; p1 = ptB; p2 = ptC;
-    }
+    const u32 vcount = buf->getVertexCount();
+    if (i0 >= vcount || i1 >= vcount || i2 >= vcount)
+        return false;
 
-    for (u32 i = 0; i < mesh->getMeshBufferCount(); ++i)
+    m.transformVect(out.pointA, buf->getPosition(i0));
+    m.transformVect(out.pointB, buf->getPosition(i1));
+    m.transformVect(out.pointC, buf->getPosition(i2));
+    return true;
+}
+
+inline bool trianglesMatch(const triangle3df& a, const triangle3df& b)
+{
+    // Vertex order is preserved end to end: the selector stores
+    // triangle3df(v[i0], v[i1], v[i2]) and only ever transforms the points in
+    // place, so A/B/C map one to one and no rotation test is needed.
+    return a.pointA.equals(b.pointA, kTriMatchEpsilon)
+        && a.pointB.equals(b.pointB, kTriMatchEpsilon)
+        && a.pointC.equals(b.pointC, kTriMatchEpsilon);
+}
+
+// Walks one buffer's index list looking for `tri`, reporting which triangle matched.
+bool scanBuffer(IMeshBuffer* buf, const matrix4& m, const triangle3df& tri, u32& outTriangle)
+{
+    const u32 triCount = buf->getIndexCount() / 3;
+    triangle3df candidate;
+
+    for (u32 t = 0; t < triCount; ++t)
     {
-        bool p0Found = false;
-        bool p1Found = false;
-        bool p2Found = false;
+        if (!meshBufferTriangle(buf, t, m, candidate))
+            continue;
 
-        IMeshBuffer* buf = mesh->getMeshBuffer(i);
-        for (u32 j = 0; j < buf->getVertexCount(); ++j) {
-            vector3df pos = buf->getPosition(j);
+        // pointA alone rejects almost everything, and equals() is cheap.
+        if (!candidate.pointA.equals(tri.pointA, kTriMatchEpsilon))
+            continue;
 
-            if ((!p0Found) && (pos.equals(p0))) {
-                p0Found = true;
-            }
-
-            if ((!p1Found) && (pos.equals(p1))) {
-                p1Found = true;
-            }
-
-            if ((!p2Found) && (pos.equals(p2))) {
-                p2Found = true;
-            }
+        if (trianglesMatch(candidate, tri))
+        {
+            outTriangle = t;
+            return true;
         }
+    }
+    return false;
+}
 
-        if (p0Found && p1Found && p2Found) {
-            ITexture* tex = buf->getMaterial().getTexture(0);
+// Linear fallback: every buffer whose world bounds contain the hit centroid.
+// `bounds` may be null for deformable meshes, which are never cached.
+bool linearMatch(IMesh* mesh, const matrix4& m, const triangle3df& tri, const vector3df& centroid,
+                 const std::vector<aabbox3df>* bounds, u32& outBuffer, u32& outTriangle)
+{
+    ++g_triStats.linearScans;
 
-			// Return the singular mesh texture if subtextures are not found
-            if (!tex) {
-				tex = node->getMaterial(i).getTexture(0);
-            }
+    const u32 bufferCount = mesh->getMeshBufferCount();
 
-			if (!tex)
-			{
-				return false;
-			}
-			
-            texname = std::string(tex->getName().getPath().c_str());
+    for (u32 b = 0; b < bufferCount; ++b)
+    {
+        if (bounds && b < bounds->size() && !(*bounds)[b].isPointInside(centroid))
+            continue;
 
+        if (scanBuffer(mesh->getMeshBuffer(b), m, tri, outTriangle))
+        {
+            outBuffer = b;
             return true;
         }
     }
 
     return false;
+}
+
+// Drops the least-recently-queried index until `needed` more triangles fit.
+// Returns false when even that isn't enough.
+bool makeIndexRoom(size_t needed, const ISceneNode* keep)
+{
+    if (needed > kIndexTriangleBudget)
+        return false;
+
+    while (g_indexedTriangles + needed > kIndexTriangleBudget)
+    {
+        NodeTriCache* victim = nullptr;
+        u64 oldest = ~0ull;
+
+        for (auto& pair : g_triCache)
+        {
+            if (pair.first == keep || pair.second.index.empty())
+                continue;
+            if (pair.second.lastTick < oldest)
+            {
+                oldest = pair.second.lastTick;
+                victim = &pair.second;
+            }
+        }
+
+        if (!victim)
+            return false;
+
+        g_indexedTriangles -= victim->index.size();
+        victim->index.clear();
+        victim->index.shrink_to_fit();
+        victim->indexDenied = true;
+    }
+
+    return true;
+}
+
+void buildTriangleIndex(const ISceneNode* node, NodeTriCache& cache, IMesh* mesh, const matrix4& m)
+{
+    size_t total = 0;
+    for (u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+        total += mesh->getMeshBuffer(b)->getIndexCount() / 3;
+
+    if (total < kIndexMinTriangles || !makeIndexRoom(total, node))
+    {
+        cache.indexDenied = true;
+        return;
+    }
+
+    cache.index.clear();
+    cache.index.reserve(total);
+
+    triangle3df tri;
+    for (u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+    {
+        IMeshBuffer* buf = mesh->getMeshBuffer(b);
+        const u32 triCount = buf->getIndexCount() / 3;
+
+        for (u32 t = 0; t < triCount; ++t)
+            if (meshBufferTriangle(buf, t, m, tri))
+                cache.index.push_back({ hashTriangle(tri), b, t });
+    }
+
+    std::sort(cache.index.begin(), cache.index.end(),
+        [](const TriHashEntry& a, const TriHashEntry& b) { return a.key < b.key; });
+
+    g_indexedTriangles += cache.index.size();
+    ++g_triStats.indexBuilds;
+}
+
+// Returns the cache entry for `node`, rebuilding it when the stamp no longer
+// matches the live mesh.
+NodeTriCache& acquireCache(const ISceneNode* node, IMesh* mesh, const matrix4& m)
+{
+    if (g_triCache.size() >= kMaxCacheEntries && g_triCache.find(node) == g_triCache.end())
+    {
+        g_triCache.clear();
+        g_indexedTriangles = 0;
+    }
+
+    NodeTriCache& cache = g_triCache[node];
+
+    u32 bufferCount = mesh->getMeshBufferCount();
+    u32 totalIndexCount = 0;
+    for (u32 b = 0; b < bufferCount; ++b)
+        totalIndexCount += mesh->getMeshBuffer(b)->getIndexCount();
+
+    const bool sameMesh = (cache.mesh == mesh)
+                       && (cache.bufferCount == bufferCount)
+                       && (cache.totalIndexCount == totalIndexCount);
+    const bool sameXform = sameMesh
+                        && memcmp(cache.absTransform.pointer(), m.pointer(), sizeof(f32) * 16) == 0;
+
+    if (!sameMesh || !sameXform)
+    {
+        if (!cache.index.empty())
+        {
+            g_indexedTriangles -= cache.index.size();
+            cache.index.clear();
+            cache.index.shrink_to_fit();
+        }
+
+        cache.mesh            = mesh;
+        cache.bufferCount     = bufferCount;
+        cache.totalIndexCount = totalIndexCount;
+        cache.absTransform    = m;
+        cache.lastBuffer      = 0xFFFFFFFFu;
+        cache.queryCount      = 0;
+        cache.indexDenied     = false;
+        ++cache.rebuilds;
+
+        // A node that keeps moving (a mover brush, an elevator) would otherwise
+        // rebuild its world-space index every frame. Give up on indexing it and
+        // let the linear matcher, which stays correct, handle it.
+        if (cache.rebuilds > 8)
+            cache.indexDenied = true;
+
+        cache.bufferBounds.resize(bufferCount);
+        for (u32 b = 0; b < bufferCount; ++b)
+        {
+            aabbox3df box = mesh->getMeshBuffer(b)->getBoundingBox();
+
+            if (box.isEmpty())
+            {
+                // recalculateBoundingBox() was never called on this buffer. Rejecting
+                // against a default (0,0,0) box would silently make every lookup on it
+                // fail, so opt this buffer out of the prefilter instead — the index
+                // walk that follows is still exact, just not skipped.
+                const f32 huge = 1.0e18f;
+                box.MinEdge = vector3df(-huge, -huge, -huge);
+                box.MaxEdge = vector3df( huge,  huge,  huge);
+            }
+            else
+            {
+                m.transformBoxEx(box);
+                box.MinEdge -= vector3df(kTriMatchEpsilon, kTriMatchEpsilon, kTriMatchEpsilon);
+                box.MaxEdge += vector3df(kTriMatchEpsilon, kTriMatchEpsilon, kTriMatchEpsilon);
+            }
+
+            cache.bufferBounds[b] = box;
+        }
+    }
+
+    cache.lastTick = ++g_triQueryTick;
+    return cache;
+}
+
+// Resolves the mesh buffer owning `tri`. False when the node cannot resolve
+// triangles at all, or the triangle does not belong to it.
+bool resolveTriangleBuffer(ISceneNode* node, const triangle3df& tri, IMesh*& outMesh, u32& outBuffer)
+{
+    ++g_triStats.calls;
+
+    if (!node)
+        return false;
+
+    // Every mesh node in this engine is an IAnimatedMeshSceneNode — RenderSystem,
+    // BrushCompiler and PropManager all use addAnimatedMeshSceneNode.
+    IAnimatedMeshSceneNode* animNode = dynamic_cast<IAnimatedMeshSceneNode*>(node);
+    if (!animNode)
+    {
+        ++g_triStats.earlyOut;
+        return false;
+    }
+
+    IAnimatedMesh* animMesh = animNode->getMesh();
+    if (!animMesh)
+    {
+        ++g_triStats.earlyOut;
+        return false;
+    }
+
+    // Skinned meshes are given a bounding-box triangle selector (RenderSystem),
+    // so a raycast against them returns one of 12 synthetic box faces that can
+    // never match a mesh triangle — scanning one is guaranteed waste. Bailing here
+    // also avoids getMesh(0), which forces a CSkinnedMesh to frame 0 as a side
+    // effect just by being called.
+    if (animMesh->getMeshType() == EAMT_SKINNED)
+    {
+        ++g_triStats.earlyOut;
+        return false;
+    }
+
+    // Frame-animated (non-skinned) meshes are matched against the frame the
+    // selector last rebuilt from, and are never cached.
+    const bool deformable = (animMesh->getFrameCount() > 1);
+    IMesh* mesh = animMesh->getMesh(deformable ? static_cast<s32>(animNode->getFrameNr()) : 0);
+    if (!mesh || mesh->getMeshBufferCount() == 0)
+    {
+        ++g_triStats.earlyOut;
+        return false;
+    }
+
+    outMesh = mesh;
+
+    const matrix4&  m        = node->getAbsoluteTransformation();
+    const vector3df centroid = (tri.pointA + tri.pointB + tri.pointC) / 3.0f;
+
+    u32 matchedTriangle = 0;
+
+    if (deformable)
+    {
+        if (linearMatch(mesh, m, tri, centroid, nullptr, outBuffer, matchedTriangle))
+            return true;
+
+        ++g_triStats.failed;
+        return false;
+    }
+
+    NodeTriCache& cache = acquireCache(node, mesh, m);
+    ++cache.queryCount;
+
+    // 1. Temporal memo. The exact triangle first — the player stands on one
+    //    triangle for many consecutive frames, which makes this O(1) — then the
+    //    buffer it lived in, since a floor is one texture is one buffer.
+    if (cache.lastBuffer < cache.bufferCount)
+    {
+        IMeshBuffer* lastBuf = mesh->getMeshBuffer(cache.lastBuffer);
+
+        triangle3df candidate;
+        if (meshBufferTriangle(lastBuf, cache.lastTriangle, m, candidate)
+            && trianglesMatch(candidate, tri))
+        {
+            ++g_triStats.memoHits;
+            outBuffer = cache.lastBuffer;
+            return true;
+        }
+
+        if (cache.bufferBounds[cache.lastBuffer].isPointInside(centroid)
+            && scanBuffer(lastBuf, m, tri, cache.lastTriangle))
+        {
+            ++g_triStats.memoHits;
+            outBuffer = cache.lastBuffer;
+            return true;
+        }
+    }
+
+    // 2. Exact hash index, once this node has proven itself worth indexing.
+    if (cache.index.empty() && !cache.indexDenied && cache.queryCount >= kIndexEscalateQueries)
+        buildTriangleIndex(node, cache, mesh, m);
+
+    if (!cache.index.empty())
+    {
+        const u64 key = hashTriangle(tri);
+
+        auto it = std::lower_bound(cache.index.begin(), cache.index.end(), key,
+            [](const TriHashEntry& e, u64 k) { return e.key < k; });
+
+        // Verify against the real mesh — a hash collision must not answer. One
+        // triangle fetch per candidate, and the run is almost always length 1.
+        triangle3df candidate;
+        for (; it != cache.index.end() && it->key == key; ++it)
+        {
+            if (meshBufferTriangle(mesh->getMeshBuffer(it->buffer), it->triangle, m, candidate)
+                && trianglesMatch(candidate, tri))
+            {
+                ++g_triStats.indexHits;
+                cache.lastBuffer   = it->buffer;
+                cache.lastTriangle = it->triangle;
+                outBuffer = it->buffer;
+                return true;
+            }
+        }
+
+        ++g_triStats.indexMisses;
+    }
+
+    // 3. Linear fallback — always correct, just slower. lastBuffer was already
+    //    tried by the memo above, so there is nothing to prefer here.
+    if (linearMatch(mesh, m, tri, centroid, &cache.bufferBounds, outBuffer, matchedTriangle))
+    {
+        cache.lastBuffer   = outBuffer;
+        cache.lastTriangle = matchedTriangle;
+        return true;
+    }
+
+    ++g_triStats.failed;
+    return false;
+}
+
+// Diffuse texture for a buffer, falling back to the node's own material slot the
+// way the original implementation did (meshes whose buffers carry no texture).
+ITexture* bufferDiffuseTexture(ISceneNode* node, IMesh* mesh, u32 buffer)
+{
+    ITexture* tex = mesh->getMeshBuffer(buffer)->getMaterial().getTexture(0);
+
+    if (!tex && buffer < node->getMaterialCount())
+        tex = node->getMaterial(buffer).getTexture(0);
+
+    return tex;
+}
+
+} // namespace
+
+bool RenderManager::getNodeTriangleTextureName(ISceneNode* node, const triangle3df& tri, std::string& texname)
+{
+    IMesh* mesh   = nullptr;
+    u32    buffer = 0;
+
+    if (!resolveTriangleBuffer(node, tri, mesh, buffer))
+        return false;
+
+    ITexture* tex = bufferDiffuseTexture(node, mesh, buffer);
+    if (!tex)
+        return false;
+
+    texname = std::string(tex->getName().getPath().c_str());
+    return true;
+}
+
+// Allocation-free sibling of getNodeTriangleTextureName for callers that only
+// want the managed material (footsteps, impact effects). Skips the std::string
+// entirely and memoises ITexture* -> material, which also sidesteps the fact that
+// a texture slot can be swapped underneath a node without the mesh changing.
+bool RenderManager::getNodeTriangleMaterial(ISceneNode* node, const triangle3df& tri, E_MANAGED_MATERIAL& outMaterial)
+{
+    outMaterial = MAT_INVALID;
+
+    IMesh* mesh   = nullptr;
+    u32    buffer = 0;
+
+    if (!resolveTriangleBuffer(node, tri, mesh, buffer))
+        return false;
+
+    ITexture* tex = bufferDiffuseTexture(node, mesh, buffer);
+    if (!tex)
+        return false;
+
+    auto it = g_triMaterialCache.find(tex);
+    if (it != g_triMaterialCache.end())
+    {
+        outMaterial = it->second;
+        return true;
+    }
+
+    // The material table is keyed by bare filename, not path.
+    const E_MANAGED_MATERIAL mat = Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
+        Utility::FilenameFromPath(std::string(tex->getName().getPath().c_str())));
+
+    g_triMaterialCache[tex] = mat;
+    outMaterial = mat;
+    return true;
+}
+
+// Scene-teardown safety net, same contract as clearEffectNodeRegistrations().
+// The cache validates itself against the live mesh on every lookup, but
+// BrushManager::compileAll() destroys every chunk node and rebuilds it from
+// identical brush data inside one call, so a recycled node address paired with a
+// recycled mesh address is not impossible. Dropping everything closes that window.
+void RenderManager::clearTriangleTextureCache()
+{
+    g_triCache.clear();
+    g_triMaterialCache.clear();
+    g_indexedTriangles = 0;
+}
+
+void RenderManager::forgetNodeTriangleCache(const ISceneNode* node)
+{
+    auto it = g_triCache.find(node);
+    if (it == g_triCache.end())
+        return;
+
+    g_indexedTriangles -= it->second.index.size();
+    g_triCache.erase(it);
+}
+
+std::string RenderManager::getTriangleLookupStats()
+{
+    const TriLookupStats& s = g_triStats;
+
+    // A high miss/fallback count on an indexed node means the world-space floats
+    // stopped round-tripping exactly — worth investigating rather than ignoring.
+    return "surface lookups: " + std::to_string(s.calls)
+         + "  early-out: "     + std::to_string(s.earlyOut)
+         + "  memo: "          + std::to_string(s.memoHits)
+         + "  index: "         + std::to_string(s.indexHits)
+         + "  index-miss: "    + std::to_string(s.indexMisses)
+         + "  linear: "        + std::to_string(s.linearScans)
+         + "  unresolved: "    + std::to_string(s.failed)
+         + "\ncached nodes: "  + std::to_string(g_triCache.size())
+         + "  indexes built: " + std::to_string(s.indexBuilds)
+         + "  indexed tris: "  + std::to_string(g_indexedTriangles)
+         + " / "               + std::to_string(kIndexTriangleBudget);
+}
+
+void RenderManager::resetTriangleLookupStats()
+{
+    g_triStats = TriLookupStats();
 }
 
 std::string RenderManager::getMeshMaterialFromRay(vector3df start, vector3df end)
@@ -4027,7 +4668,8 @@ void RenderManager::drawTransparentPass()
     // Render each transparent buffer in sorted order
     for (const auto& entry : transparents)
     {
-        irr::scene::IMesh* mesh = nullptr;
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
         irr::scene::ESCENE_NODE_TYPE ntype = entry.node->getType();
 
         if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
@@ -4035,8 +4677,9 @@ void RenderManager::drawTransparentPass()
         else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
         {
             auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(entry.node);
-            if (animNode->getMesh())
-                mesh = animNode->getMesh()->getMesh(animNode->getFrameNr());
+            animMesh = animNode->getMesh();
+            if (animMesh)
+                mesh = animMesh->getMesh(animNode->getFrameNr());
         }
 
         if (!mesh || entry.bufferIndex >= mesh->getMeshBufferCount())
@@ -4044,7 +4687,9 @@ void RenderManager::drawTransparentPass()
 
         irr::scene::IMeshBuffer* buf = mesh->getMeshBuffer(entry.bufferIndex);
 
-        m_driver->setTransform(irr::video::ETS_WORLD, entry.node->getAbsoluteTransformation());
+        m_driver->setTransform(irr::video::ETS_WORLD,
+            bufferWorldTransform(entry.node->getAbsoluteTransformation(),
+                                 animMesh, mesh, entry.bufferIndex));
 
         irr::video::SMaterial mat = entry.node->getMaterial(entry.bufferIndex);
         mat.ZWriteEnable = false;

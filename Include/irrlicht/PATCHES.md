@@ -3,6 +3,63 @@
 Divergences from upstream Irrlicht 1.8.5, kept deliberately small and marked
 with `ENGINE FORK` comments at each site.
 
+---
+
+## READ FIRST — rebuilding Irrlicht after editing anything here
+
+**`Game Engine.vcxproj` compiles ZERO Irrlicht sources.** It statically links
+(`_IRR_STATIC_LIB_`) a prebuilt `Irrlicht.lib` produced by a **separate solution**
+that is not part of `GameEngine.sln` and has no `ProjectReference` pointing at it.
+
+**Editing a file in this directory and rebuilding the engine changes nothing.**
+The patch must be compiled into the archive first:
+
+```
+MSBuild "Include\irrlicht\source\Irrlicht\Irrlicht9.0.sln" -t:Build -p:Configuration=Release -p:Platform=x64
+MSBuild "Include\irrlicht\source\Irrlicht\Irrlicht9.0.sln" -t:Build -p:Configuration=Debug   -p:Platform=x64
+```
+
+Then rebuild the engine normally — MSBuild tracks the `.lib` as a link input and
+relinks even though no symbol changed.
+
+Config mapping (also declared as `$(IrrConfig)` in `Game Engine.vcxproj`):
+
+| Engine configuration | Irrlicht configuration | Links |
+|---|---|---|
+| `RelWithDebInfo\|x64` | `Release\|x64` | `x64\Release\Irrlicht.lib` |
+| `Release\|x64` | `Release\|x64` | `x64\Release\Irrlicht.lib` |
+| `Debug\|x64` | `Debug\|x64` | `x64\Debug\Irrlicht.lib` |
+
+**Pass `-p:Platform=x64` explicitly — it is not optional.** `ObjectFileName` is
+hard-coded to `..\obj\IrrRelease/` and `..\obj\IrrDebug/` instead of `$(IntDir)`,
+so Win32 and x64 share one object directory. Building any Win32 configuration
+poisons it and the next x64 link fails with
+`LNK1112: module machine type 'x86' conflicts with target machine type 'x64'`.
+Also: build **`Release|x64`**, never `Static lib - Release|x64` — that upstream
+configuration writes elsewhere and would leave the engine linking the old lib.
+
+Close Visual Studio first (`source/Irrlicht/.vs/` can hold locks), and do **not**
+open `Irrlicht9.0.sln` in VS2022 — it will offer to retarget the v141 toolset and
+rewrite the project.
+
+### Verifying a patch actually made it into the binary
+
+Timestamps are not proof. Use the import table — pick a Win32 API the patch newly
+calls and check the exe imports it. For patch #5 (`TranslateMessage`):
+
+```
+dumpbin -imports Binaries\Engine.exe | findstr /I TranslateMessage
+```
+
+A hit means the patched code linked. (From Git Bash use `-imports`, not
+`/imports`, which MSYS mangles into a path.)
+
+`Game Engine.vcxproj` also carries a `VerifyIrrlichtLibIsCurrent` target that
+fails the engine build if anything here is newer than the `.lib` being linked.
+It exists because this exact mistake has already been made twice — see #5.
+
+---
+
 ## 1. Skip built-in transparent pass for mesh nodes (2026-07)
 
 **Files:** `source/Irrlicht/CSceneManager.h`, `source/Irrlicht/CSceneManager.cpp`
@@ -96,25 +153,33 @@ main window from `IrrImGuiEventReceiver` (forwarding `KeyInput.Char`) and for
 torn-off windows from the backend — the hwnd split is what keeps those from
 double-feeding.
 
-**This patch is necessary but NOT sufficient — known open bug (2026-08-25).** Typing
-into a Script Editor that has been dragged onto a second monitor still does nothing.
-Accepted as a documented limitation for now: dock the panel back into the main window
-to type. Do not assume this patch is the broken link — the whole Win32→ImGui chain was
-traced and every step checks out: `run()` reaches the pump unconditionally
-(`CIrrDeviceWin32.cpp:1177`), platform windows carry no `WS_EX_NOACTIVATE` so they take
-real focus, `ImGui_ImplWin32_WndProcHandler_PlatformWindow` applies no window-identity
-guard, the class is registered `RegisterClassExW` so `WM_CHAR` takes the Unicode path,
-and nothing in `Source/` clears ImGui's input queue.
+### This patch spent a week doing nothing — read the section at the top of this file
 
-The likelier culprit is the consumer: `TextEditor::handleKeyboardInputs()`
-(`Source/Editor/Interface/TextEditor/TextEditor.cpp:664`) puts *all* key and character
-handling behind `ImGui::IsWindowFocused()`, which for a window living in a secondary
-viewport depends on `Platform_GetWindowFocus` polling plus
-`io.ConfigViewportsPlatformFocusSetsImGuiFocus` — not on the message pump at all.
+Written, committed and documented on 2026-08-25, it had **no effect whatsoever** until
+2026-08-25 17:32, because `Irrlicht.lib` was never rebuilt. The linked archive dated
+from 2026-07-08, seven weeks before the patch. `dumpbin -imports Binaries\Engine.exe`
+showed `DispatchMessageA` and `PeekMessageA` but no `TranslateMessage` — a one-bit proof,
+since `CIrrDeviceWin32.cpp` holds the only compiled call site in this link.
 
-To resolve: log once in the backend's `WM_CHAR` case and once on that
-`IsWindowFocused()` result. Whichever is false names the cause. If it is the focus gate,
-fix it at the viewport-focus level — loosening the `IsWindowFocused()` test inside
-`TextEditor` would make the editor swallow keystrokes while unfocused, regressing the
-docked case to fix the torn-off one. And do not "fix" this by translating messages for
-Irrlicht's own window: that re-breaks the deadkey handling described above.
+An earlier revision of this section claimed the patch was "necessary but not sufficient"
+and blamed `TextEditor::handleKeyboardInputs()`'s `ImGui::IsWindowFocused()` gate. **That
+was wrong** — it reasoned about a binary the patch had never been compiled into, and it
+could not explain plain `ImGui::InputText`/`InputFloat` failing too (those have no focus
+gate). The lesson is to verify what was *built*, not what was *written*.
+
+The same omission left `x64\Debug\Irrlicht.lib` (2026-05-09) older than the
+`virtual u32 getNativeHandle()` added to `include/ITexture.h` by patch #3 on 2026-07-05,
+while `RenderManager.cpp` calls it at 7 sites — a vtable-layout mismatch, i.e. undefined
+behaviour in every Debug build for months. Both libs were rebuilt together.
+
+### Two things that remain true regardless
+
+**Never translate messages for Irrlicht's own `HWnd`.** It is the obvious "fix" if
+characters ever stop arriving, and it re-breaks the dead-key handling the original
+upstream comment protects.
+
+**Dead-key state is shared.** `CIrrDeviceWin32.cpp:805` uses `ToAsciiEx(...)`, which
+shares per-thread/per-HKL dead-key state with `TranslateMessage`. The `hwnd` split means
+only one of the two runs per keystroke and the two windows cannot hold focus at once, so
+this is safe — but a dead key pressed in a torn-off panel leaves pending state that
+carries into the main window. Known and bounded; not worth code to avoid.

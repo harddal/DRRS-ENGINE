@@ -557,26 +557,17 @@ static bool materialHoldsBolt(E_MANAGED_MATERIAL material)
 
 // What the bolt just hit, as a managed material.
 //
-// Uses the triangle the sweep already returned rather than casting a second ray
-// the way PlayerController's footstep code has to — RaycastResultData carries
-// both the node and the tri, so the texture can be resolved directly.
-//
-// getNodeTriangleTextureName() brute-forces the mesh buffers looking for the
-// triangle's verts, which is not cheap on a large brush chunk. That is fine
-// here: it runs once per impact, and the crossbow fires once per recock.
+// Uses the triangle the sweep already returned rather than casting a second ray —
+// RaycastResultData carries both the node and the tri, so the material can be
+// resolved directly.
 static E_MANAGED_MATERIAL surfaceMaterialAt(const RaycastResultData& hit)
 {
 	if (!hit.node)
 		return MAT_INVALID;
 
-	std::string texturePath;
-	if (!RenderManager::Get()->getNodeTriangleTextureName(hit.node, hit.tri, texturePath))
-		return MAT_INVALID;
-
-	// The material table is keyed by bare filename, not path — getMeshMaterialFromRay()
-	// strips it for its callers, and this path has to do the same.
-	return Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
-		Utility::FilenameFromPath(texturePath));
+	E_MANAGED_MATERIAL material = MAT_INVALID;
+	RenderManager::Get()->getNodeTriangleMaterial(hit.node, hit.tri, material);
+	return material;
 }
 
 // Swept-raycast flight, so a fast bolt cannot tunnel through thin geometry

@@ -84,7 +84,7 @@ void EditorInterface::draw_toolbar()
 		gap + sep_w + gap +
 		btnW("Res:") + sp + lm_res_w + gap + btnW("Bias:") + sp + lm_bias_w + sp + btnW("Bake") +
 		gap + sep_w + gap +
-		ImGui::CalcTextSize("NavMesh:").x + sp + ImGui::CalcTextSize("Not baked").x + sp + btnW("Bake NavMesh") +
+		ImGui::CalcTextSize("NavMesh:").x + sp + ImGui::CalcTextSize("Invalidated").x + sp + btnW("Bake NavMesh") +
 		gap + sep_w + gap +
 		btnW("Play");
 
@@ -252,7 +252,13 @@ void EditorInterface::draw_toolbar()
 	ImGui::SameLine(0.0f, gap);
 	ImGui::TextUnformatted("NavMesh:");
 	ImGui::SameLine();
-	if (NavigationManager::Get() && NavigationManager::Get()->isNavMeshBuilt())
+	// Stale is checked first — a stale navmesh is also a built one
+	if (NavigationManager::Get() && NavigationManager::Get()->isNavMeshStale())
+	{
+		ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.2f, 1.0f), "Invalidated");
+		ImGui::SetItemTooltip("Brush geometry changed since the last bake.\nNPCs will path against the old mesh until you rebake.");
+	}
+	else if (NavigationManager::Get() && NavigationManager::Get()->isNavMeshBuilt())
 		ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Baked");
 	else
 		ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Not baked");

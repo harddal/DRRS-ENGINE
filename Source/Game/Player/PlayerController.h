@@ -4,6 +4,8 @@
 
 #include "anax/anax.hpp"
 
+#include "Engine/Resource/MaterialBuilder.h"   // E_MANAGED_MATERIAL
+
 #include "HUDController.h"
 #include "InteractionController.h"
 #include "InventoryController.h"
@@ -49,6 +51,9 @@ public:
 	void savePlayerData(std::string file);
 
 	bool isSwimming() { return m_isSwimming; }
+
+	// Surface the player is standing on, resolved once per grounded frame.
+	E_MANAGED_MATERIAL groundMaterial() const { return m_groundMaterial; }
 	void setIsSwimming(bool swimming = true) { m_isSwimming = swimming; }
 	bool isHeadUnderWater() { return m_isHeadUnderWater; }
 	void setIHeadUnderWater(bool under = true) { m_isHeadUnderWater = under; }
@@ -127,6 +132,16 @@ private:
 	float m_lastAirVelocityY = 0.0f;
 	irr::core::vector3df m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	irr::core::vector3df m_lastSlopeNormal    = irr::core::vector3df(0.0f, 1.0f, 0.0f);
+
+	// Ground surface under the player, resolved by the single downward raycast in
+	// the grounded movement branch. Friction, footsteps, jump sounds and the debug
+	// overlay all read this instead of casting their own identical rays — each of
+	// those rays walks the whole scene graph, so four of them per frame was by far
+	// the most expensive thing about surface-material lookup.
+	//
+	// Refreshed every grounded frame; while airborne it holds the last surface
+	// stood on, which is what the jump sound wants anyway.
+	E_MANAGED_MATERIAL m_groundMaterial = MAT_INVALID;
 
 	// Footstep sound timing
 	int m_lastFootstepTime = 0;                  // Last time a footstep sound played

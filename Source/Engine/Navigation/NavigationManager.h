@@ -65,6 +65,11 @@ public:
 
     bool isNavMeshBuilt() const { return m_navMesh != nullptr; }
 
+    // A built navmesh whose source geometry has changed since the bake.
+    // Meaningless with no navmesh, so the getter folds in the built check.
+    bool isNavMeshStale() const { return m_navMesh != nullptr && m_navStale; }
+    void markNavMeshStale() { if (m_navMesh) m_navStale = true; }
+
     // --- Serialization ---
     // Returns the raw Detour tile bytes for the single tile built by buildNavMesh().
     // Returns an empty vector if no navmesh is built.
@@ -100,4 +105,5 @@ private:
     dtNavMesh*      m_navMesh;
     dtNavMeshQuery* m_navQuery;
     dtQueryFilter   m_filter;
+    bool            m_navStale;  // geometry edited since the last bake/load
 };

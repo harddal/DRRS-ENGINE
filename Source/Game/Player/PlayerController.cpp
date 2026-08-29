@@ -98,13 +98,10 @@ void DisplayPlayerStats()
 
 			ImGui::Spacing();
 
-			auto mat = 
-				RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition() + irr::core::vector3df(0.0f, 0.0f, 0.0f), transform.getPosition() + irr::core::vector3df(0.0f, -3.0f, 0.0f));
-			std::string material =
-				Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(mat));
-
-			ImGui::Text("TEX %s", mat.c_str());
-			ImGui::Text("MAT %s", material.c_str());
+			// Reads the grounded branch's cached result rather than casting its own
+			// ray, so the overlay shows exactly what movement and footsteps are using.
+			ImGui::Text("MAT %s", Engine::Get()->getMaterialBuilder().getMaterialName(
+				g_PlayerController ? g_PlayerController->groundMaterial() : MAT_INVALID).c_str());
 
 
 
@@ -623,33 +620,42 @@ void PlayerController::update(float dt)
 	}
 	else if (g_isOnSurface)
 	{
-		auto surfaceTex = RenderManager::Get()->getMeshMaterialFromRay(
-			transform.getPosition(),
-			transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f));
-		auto surfaceMat = Engine::Get()->getMaterialBuilder().getMaterialFromTexture(surfaceTex);
-		float surfaceFriction = g_materialFriction[static_cast<int>(surfaceMat)];
-
-		m_isSliding = false;
-
-		// Raycast for slope normal on every grounded frame — used both for ice
-		// slide gravity and for stick-to-slope on all surfaces. Cache last valid
-		// result so a missed frame doesn't lose the normal.
+		// ONE downward raycast per grounded frame, feeding both the slope normal
+		// (ice slide gravity + stick-to-slope) and the surface material (friction,
+		// footsteps, jump sound, debug overlay). Each scene raycast walks the whole
+		// graph and triangle-tests every selector it survives, so casting this same
+		// ray four times a frame — which is what this used to do between here,
+		// playFootStepSound, playJumpSound and the stats overlay — dominated the
+		// cost of surface lookup entirely.
+		//
+		// Both the node and the triangle are kept: getNodeTriangleMaterial resolves
+		// the material straight from the hit triangle, the way Weapon_Crossbow does,
+		// instead of casting a second ray to rediscover it.
+		//
+		// Last valid result is cached so a missed frame doesn't lose the normal.
 		{
 			irr::core::triangle3df hitTriangle;
 			irr::core::vector3df   hitPoint;
-			irr::core::line3df     slopeRay(
+			irr::core::line3df     groundRay(
 				transform.getPosition(),
 				transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f));
 
 			auto* collMgr = RenderManager::Get()->sceneManager()->getSceneCollisionManager();
-			if (collMgr->getSceneNodeAndCollisionPointFromRay(slopeRay, hitPoint, hitTriangle))
+			if (auto* hitNode = collMgr->getSceneNodeAndCollisionPointFromRay(groundRay, hitPoint, hitTriangle))
 			{
 				irr::core::vector3df n = hitTriangle.getNormal();
 				n.normalize();
 				if (n.Y < 0.0f) n = -n;
 				m_lastSlopeNormal = n;
+
+				if (!RenderManager::Get()->getNodeTriangleMaterial(hitNode, hitTriangle, m_groundMaterial))
+					m_groundMaterial = MAT_INVALID;
 			}
 		}
+
+		float surfaceFriction = g_materialFriction[static_cast<int>(m_groundMaterial)];
+
+		m_isSliding = false;
 
 		if (surfaceFriction < 3.0f)
 		{
@@ -1032,13 +1038,11 @@ void PlayerController::resume()
 
 void PlayerController::playFootStepSound(anax::Entity& player, int _time, int _delay)
 {
-    auto& transform = player.getComponent<TransformComponent>();
-
     int n = rand() % 4 + 1;
 
-    std::string material =
-        Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
-            RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition() + irr::core::vector3df(0.0f, 0.0f, 0.0f), transform.getPosition() + irr::core::vector3df(0.0f, -2.0f, 0.0f))));
+    // Surface comes from the grounded movement branch's raycast (see m_groundMaterial).
+    // Footsteps only fire while grounded, so it is always current here.
+    std::string material = Engine::Get()->getMaterialBuilder().getMaterialName(m_groundMaterial);
 
 	// Play a default sound if the material is invalid
     if (material == "invalid")
@@ -1057,11 +1061,9 @@ void PlayerController::playFootStepSound(anax::Entity& player, int _time, int _d
 
 void PlayerController::playJumpSound(anax::Entity& player)
 {
-    auto& transform = player.getComponent<TransformComponent>();
-
-    std::string material =
-		Engine::Get()->getMaterialBuilder().getMaterialName(Engine::Get()->getMaterialBuilder().getMaterialFromTexture(
-			RenderManager::Get()->getMeshMaterialFromRay(transform.getPosition(), transform.getPosition() + irr::core::vector3df(0, -2.0, 0))));
+    // The jump frame skips the grounded branch, so m_groundMaterial still holds the
+    // surface being pushed off — which is the one that should make the noise.
+    std::string material = Engine::Get()->getMaterialBuilder().getMaterialName(m_groundMaterial);
 
     if (material == "invalid")
         return;
