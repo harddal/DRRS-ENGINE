@@ -29,7 +29,6 @@
 #error "fastgltf requires C++17"
 #endif
 
-#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <mutex>
@@ -785,33 +784,8 @@ template <typename T> fg::Error fg::Parser::parseAttributes(simdjson::dom::objec
 	// We iterate through the JSON object and write each key/pair value into the
 	// attribute map. The keys are only validated in the validate() method.
 	attributes = FASTGLTF_CONSTRUCT_PMR_RESOURCE(std::remove_reference_t<decltype(attributes)>, resourceAllocator.get(), 0);
-	// PATCHED (engine): defensive guard against a corrupted simdjson object.
-	// A real glTF primitive has only a handful of attributes; simdjson's own
-	// object::size() is masked to 24 bits, so anything large here means the
-	// DOM/tape has been clobbered by memory corruption elsewhere. Reserving on
-	// that garbage count throws std::bad_alloc and takes down the process, so
-	// reject the parse instead and let the caller recover.
-	const std::size_t attributeCount = object.size();
-	if (attributeCount > 128) FASTGLTF_UNLIKELY {
-		std::fprintf(stderr,
-			"fastgltf (patched): bogus attribute count %zu (0x%zX) - corrupted parse, rejecting glTF\n",
-			attributeCount, attributeCount);
-		return Error::InvalidGltf;
-	}
-	attributes.reserve(attributeCount);
-	// The size() check above is necessary but NOT sufficient: on a clobbered tape
-	// size() can report a sane count while iteration runs far past it, and the
-	// emplace_back below then grows the vector until operator new throws
-	// std::bad_alloc (crashing mid-parse instead of failing this mesh). Bound the
-	// loop by the count we already validated and reject if it overruns.
-	std::size_t seen = 0;
+	attributes.reserve(object.size());
 	for (const auto field : object) {
-		if (++seen > attributeCount) FASTGLTF_UNLIKELY {
-			std::fprintf(stderr,
-				"fastgltf (patched): attribute iteration overran reported count %zu - corrupted parse, rejecting glTF\n",
-				attributeCount);
-			return Error::InvalidGltf;
-		}
 		const auto key = field.key;
 
 		std::uint64_t accessorIndex;

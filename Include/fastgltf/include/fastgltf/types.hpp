@@ -29,7 +29,6 @@
 
 #if !defined(FASTGLTF_USE_STD_MODULE) || !FASTGLTF_USE_STD_MODULE
 #include <cassert>
-#include <cstdio>   // temporary: SmallVector::reserve diagnostic
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -865,31 +864,6 @@ namespace fastgltf {
                     _size = _capacity;
                 }
                 return;
-            }
-
-            // DIAGNOSTIC (temporary, Engine): report any absurd reserve request
-            // together with the value clz()/geometric growth turns it into, so
-            // we can tell a garbage count coming FROM simdjson apart from the
-            // growth arithmetic itself producing it. stderr is redirected to
-            // log/fastgltf_stderr.log by HeapProbe::arm.
-            // Key the report on the GROWN value, not the input: the previous
-            // version only fired for a large input and stayed silent while the
-            // growth arithmetic itself produced the absurd size.
-            {
-                const unsigned          clzVal = (unsigned)clz(newCapacity);
-                const int               shift  = std::numeric_limits<decltype(newCapacity)>::digits - (int)clzVal;
-                const std::size_t       grown  = static_cast<std::size_t>(1) << shift;
-                if (grown > (static_cast<std::size_t>(1) << 20)) {
-                    std::fprintf(stderr,
-                        "fastgltf DIAG: reserve(in=%llu / 0x%llX) clz=%u shift=%d -> grown=%llu / 0x%llX  [sizeof(T)=%llu, N=%llu, _size=%llu, _capacity=%llu, onStack=%d]\n",
-                        (unsigned long long)newCapacity, (unsigned long long)newCapacity,
-                        clzVal, shift,
-                        (unsigned long long)grown, (unsigned long long)grown,
-                        (unsigned long long)sizeof(T), (unsigned long long)N,
-                        (unsigned long long)_size, (unsigned long long)_capacity,
-                        (int)isUsingStack());
-                    std::fflush(stderr);
-                }
             }
 
             // We use geometric growth, similarly to std::vector.
