@@ -42,6 +42,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_rounds; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_rounds; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_rounds = (in.slots[0] < magSize() ? in.slots[0] : magSize()); }
+
 	// --- Dual wield toggle ---------------------------------------------------
 	// Off hides the left gun and halves everything it contributed. Safe to call
 	// at any time: it re-applies the part visibility and rescales the magazine

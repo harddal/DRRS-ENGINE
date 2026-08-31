@@ -1,22 +1,157 @@
 #include "GameplaySystem.h"
 
 #include <cmath>
+#include <cstdint>
 #include <unordered_map>
 
 #include <spdlog/spdlog.h>
 
 #include "Engine/Engine.h"
 #include "Engine/Resource/FilePaths.h"
+#include "Engine/Resource/MaterialBuilder.h"
 #include "Engine/World/WorldManager.h"
 #include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Brush/BrushManager.h"
+#include "Engine/Renderer/RenderManager.h"
+#include "Engine/Renderer/DecalManager.h"
+#include "Engine/Renderer/Particle/ParticleManager.h"
+#include "Engine/World/Components/MeshComponent.h"
 #include "Game/Components.h"
 #include "Game/LogicLinks.h"
 #include "Player/PlayerController.h"
 
+#include "Utility/Utility.h"
+
 #include "Game/Item/ItemDatabase.h"
+#include "Game/Gore/GoreManager.h"
+#include "Game/Gore/FractureManager.h"
 
 #include "DialogManager.h"
+
+namespace
+{
+	// --- Non-flesh impact FX -------------------------------------------------
+	// A hit that neither bleeds (GoreManager) nor shatters the prop
+	// (FractureManager) still needs to read on screen. One row per IMPACT_SURFACE
+	// value; FLESH and NONE are handled before the table is ever indexed.
+	//
+	// STUB: only spark.psys and bullet_hole.png exist today, so every row points
+	// at them. Swap the names here once dedicated wood/stone/glass/dirt effects
+	// are authored — nothing else changes.
+	struct SurfaceImpactFx
+	{
+		const char* particle;   // ParticleManager effect key, precached in init()
+		const char* decal;      // decal texture, nullptr to skip
+		float       decalSize;
+	};
+
+	const SurfaceImpactFx k_surfaceImpactFx[IMPACT_SURFACE_COUNT] = {
+		/* IMPACT_AUTO  */ { "spark", "content/texture/fx/bullet_hole.png", 0.18f },
+		/* IMPACT_FLESH */ { nullptr, nullptr,                              0.0f  },
+		/* IMPACT_WOOD  */ { "spark", "content/texture/fx/bullet_hole.png", 0.20f },
+		/* IMPACT_METAL */ { "spark", "content/texture/fx/bullet_hole.png", 0.16f },
+		/* IMPACT_STONE */ { "spark", "content/texture/fx/bullet_hole.png", 0.22f },
+		/* IMPACT_GLASS */ { "spark", "content/texture/fx/bullet_hole.png", 0.18f },
+		/* IMPACT_DIRT  */ { "spark", "content/texture/fx/bullet_hole.png", 0.24f },
+		/* IMPACT_NONE  */ { nullptr, nullptr,                              0.0f  },
+	};
+
+	// Map the texture-name classifier's output onto an impact surface.
+	IMPACT_SURFACE impactSurfaceFromManaged(E_MANAGED_MATERIAL m)
+	{
+		switch (m)
+		{
+		case MAT_WOOD:                return IMPACT_WOOD;
+		case MAT_METAL:               return IMPACT_METAL;
+		case MAT_STONE:               return IMPACT_STONE;
+		case MAT_GLASS:               return IMPACT_GLASS;
+		case MAT_EARTH:
+		case MAT_GRAVEL:
+		case MAT_CARPET:
+		case MAT_WATER:               return IMPACT_DIRT;
+		case MAT_INVALID:
+		default:                      return IMPACT_AUTO;   // generic debris row
+		}
+	}
+
+	// Resolve the effective surface for an entity. 'stored' is the component's
+	// serialized override (IMPACT_SURFACE as int).
+	IMPACT_SURFACE resolveImpactSurface(const anax::Entity& entity, int stored)
+	{
+		if (stored > IMPACT_AUTO && stored < IMPACT_SURFACE_COUNT)
+			return static_cast<IMPACT_SURFACE>(stored);
+
+		// AUTO: the entity's behaviour gets first say (the retired NPCComponent
+		// no longer marks creatures — MeleeZombieBehavior::bloodType() and its
+		// kin do). A behaviour returning IMPACT_AUTO has no opinion.
+		if (entity.hasComponent<BehaviorComponent>())
+		{
+			const auto& bc = entity.getComponent<BehaviorComponent>();
+			if (bc.behavior)
+			{
+				const IMPACT_SURFACE bt = bc.behavior->bloodType();
+				if (bt > IMPACT_AUTO && bt < IMPACT_SURFACE_COUNT)
+					return bt;
+			}
+		}
+
+		// Otherwise classify the first diffuse texture through MaterialBuilder,
+		// the same path Weapon_Crossbow uses to decide stick-vs-shatter.
+		if (entity.hasComponent<MeshComponent>())
+		{
+			const auto& mc = entity.getComponent<MeshComponent>();
+			if (!mc.textures.empty() && !mc.textures[0].empty())
+			{
+				const E_MANAGED_MATERIAL m = Engine::Get()->getMaterialBuilder()
+					.getMaterialFromTexture(Utility::FilenameFromPath(mc.textures[0]));
+
+				return impactSurfaceFromManaged(m);
+			}
+		}
+
+		return IMPACT_AUTO; // generic debris
+	}
+
+	// Spawn the particle + decal for a resolved non-flesh surface. 'lethal'
+	// bumps the scale so a killing blow reads heavier than a graze.
+	void playSurfaceImpact(IMPACT_SURFACE surf, const DamageContext& ctx, bool lethal)
+	{
+		if (surf == IMPACT_FLESH || surf == IMPACT_NONE || !ctx.valid)
+			return;
+
+		const SurfaceImpactFx& fx = k_surfaceImpactFx[surf];
+
+		irr::core::vector3df n = ctx.normal;
+		if (n.getLengthSQ() < 0.0001f)
+			n.set(0.0f, 1.0f, 0.0f);
+		n.normalize();
+
+		const float scale = lethal ? 1.6f : 1.0f;
+
+		if (fx.particle)
+		{
+			if (auto* pm = ParticleManager::Get())
+			{
+				const uint32_t handle = pm->spawn(
+					fx.particle, SPK::Vector3D(ctx.point.X, ctx.point.Y, ctx.point.Z));
+
+				if (handle)
+				{
+					pm->setEmitterDirection(handle, n);
+					if (scale != 1.0f)
+						pm->setScale(handle, scale);
+				}
+			}
+		}
+
+		if (fx.decal)
+		{
+			if (auto* rm = RenderManager::Get())
+				if (rm->decals())
+					rm->decals()->spawn(ctx.point, n, fx.decalSize * scale, fx.decal);
+		}
+	}
+} // namespace
 
 void GameplaySystem::onEntityAdded(anax::Entity& entity)
 {
@@ -43,7 +178,15 @@ void GameplaySystem::onEntityRemoved(anax::Entity& entity)
 
 void GameplaySystem::init()
 {
-	
+	GoreManager::create();
+	GoreManager::Get()->precache();
+
+	FractureManager::create();
+
+	// Non-flesh impact FX (crates, barrels, props). STUB: all surfaces reuse the
+	// weapon spark effect until dedicated debris effects are authored.
+	if (auto* pm = ParticleManager::Get())
+		pm->precache("spark", _asset_psys("spark"));
 }
 
 void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited)
@@ -334,6 +477,14 @@ void GameplaySystem::update()
 
 	updateBrushVolumes();
 
+	// Gore ticks here rather than in WorldManager so it only simulates in game
+	// mode — gibs must not tumble around the editor viewport.
+	if (GoreManager::Get())
+		GoreManager::Get()->update(Engine::Get()->getDeltaTime());
+
+	if (FractureManager::Get())
+		FractureManager::Get()->update(Engine::Get()->getDeltaTime());
+
 	// Stops zones from overwriting each other if there are more than one, only works for player
 	static bool player_in_trigger_zone = false, player_in_water_zone = false;
 
@@ -424,20 +575,13 @@ void GameplaySystem::update()
 		}
 
 // ---- ITEM INTERACTION
-		if (entity.hasComponent<InteractionComponent>() && entity.hasComponent<ItemComponent>())
-		{
-			if (entity.getComponent<InteractionComponent>().interact)
-			{
-				if (g_PlayerController->inventoryController()->pickupItem(
-					entity.getComponent<ItemComponent>().item,
-					entity.getComponent<DescriptorComponent>().id))
-				{
-					WorldManager::Get()->killEntityByID(entity.getComponent<DescriptorComponent>().id);
-
-					continue;
-				}
-			}
-		}
+		// Deliberately gone. Taking an item is PickupBehavior's job now, with
+		// requiresInteract=true selecting press-to-take over walk-over — one
+		// class that knows about proximity, worth-testing, sounds and the
+		// deferred kill, rather than a second hard-coded path here that knew
+		// about none of it. ItemComponent stays as the world-side "what is this"
+		// marker: the HUD aim prompt reads it, and the behavior falls back to it
+		// so an item entity names its item once.
 
 // ---- DIALOG INTERACTION
 		if (entity.hasComponent<InteractionComponent>() && entity.hasComponent<DialogComponent>())
@@ -870,10 +1014,19 @@ void GameplaySystem::update()
 
 void GameplaySystem::destroy()
 {
+	if (GoreManager::Get())
+		GoreManager::Get()->clear();
 
+	GoreManager::destroy();
+
+	if (FractureManager::Get())
+		FractureManager::Get()->clear();
+
+	FractureManager::destroy();
 }
 
-HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type)
+HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type,
+                                        const DamageContext& ctx)
 {
 	auto& entities = getEntities();
 	for (auto i = 0U; i < entities.size(); i++)
@@ -895,11 +1048,94 @@ HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE
 				dcomp.lastReceivedType = type;
 				dcomp.receivedDamage = true;
 
+				// Flesh bleeds; a crate or barrel throws debris instead. Resolved
+				// once here so the corpse and alive branches agree.
+				const IMPACT_SURFACE impactSurf =
+					resolveImpactSurface(entities[i], dcomp.impactSurface);
+				const bool fleshy = (impactSurf == IMPACT_FLESH);
+
 				if (!desc.isAlive || pendingDead)
-					return HIT_RESULT::NONE; // corpse — damage recorded, no feedback
+				{
+					// A fractured prop no longer exists — its entity is already queued
+					// for removal and its shards are in the air. Anything still
+					// landing on it this frame gets no further theatre.
+					if (dcomp.fractured)
+						return HIT_RESULT::NONE;
+
+					// Corpse. Damage is still recorded above — that accumulation is
+					// what lets a body keep climbing the overkill ladder while it is
+					// shot, and cross the gib threshold long after it died.
+					if (fleshy && GoreManager::Get() && !dcomp.gibbed)
+					{
+						const float overkill = dcomp.overkillRatio();
+
+						if (overkill >= GoreManager::Get()->gibRatio)
+						{
+							dcomp.gibbed = true;
+							GoreManager::Get()->gib(entities[i], ctx, overkill);
+						}
+						else
+						{
+							GoreManager::Get()->wound(entities[i], ctx, damage);
+						}
+					}
+					else if (!fleshy)
+					{
+						// A non-fracturing prop that keeps eating fire after it "died"
+						// — pockmark it, don't bleed it.
+						playSurfaceImpact(impactSurf, ctx, false);
+					}
+
+					return HIT_RESULT::NONE; // no hitmarker for a corpse
+				}
 
 				bool willDie = !dcomp.invulnerable && !dcomp.buddha &&
 					(dcomp.threshold - dcomp.damageReceived) <= 0;
+
+				// Fracture wins over the gore ladder: a crate should not bleed.
+				// fracture() returns false when it cannot take this entity apart
+				// (skinned mesh, no node, degenerate bounds), and the gore path
+				// below then runs as normal — a mis-flagged NPC still dies
+				// properly instead of dying silently.
+				if (willDie && dcomp.fractureOnDeath && !dcomp.fractured && FractureManager::Get())
+				{
+					if (FractureManager::Get()->fracture(entities[i], ctx))
+					{
+						dcomp.fractured     = true;
+						dcomp.deathResolved = true;
+
+						return HIT_RESULT::KILL;
+					}
+				}
+
+				if (fleshy && GoreManager::Get())
+				{
+					if (willDie)
+					{
+						const float overkill = dcomp.overkillRatio();
+
+						dcomp.deathResolved = true;
+
+						// TIER_GIB means the body is removed outright, so the behavior
+						// layer must not also play a death animation over the top.
+						if (GoreManager::Get()->kill(entities[i], ctx, overkill) == TIER_GIB)
+							dcomp.gibbed = true;
+					}
+					else
+					{
+						GoreManager::Get()->wound(entities[i], ctx, damage);
+					}
+				}
+				else if (!fleshy)
+				{
+					// Non-flesh and either not flagged to fracture, or fracture()
+					// declined (skinned mesh, no node, degenerate bounds). Either
+					// way: debris, not blood. A killing blow reads heavier.
+					if (willDie)
+						dcomp.deathResolved = true;
+
+					playSurfaceImpact(impactSurf, ctx, willDie);
+				}
 
 				return willDie ? HIT_RESULT::KILL : HIT_RESULT::HIT;
 			}

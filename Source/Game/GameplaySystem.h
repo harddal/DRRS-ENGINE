@@ -20,7 +20,12 @@ public:
     void update();
 	void destroy();
 
-	HIT_RESULT damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type = DAMAGE_TYPE::DEFAULT);
+	// 'ctx' tells GoreManager where the hit landed and which way it was going.
+	// It is optional so the ~25 existing call sites keep compiling, but any
+	// caller that knows should pass it — a default context sprays from the
+	// entity's bounding-box centre, which reads as a canned effect.
+	HIT_RESULT damageEntity(entityid id, unsigned int damage, DAMAGE_TYPE type = DAMAGE_TYPE::DEFAULT,
+	                        const DamageContext& ctx = DamageContext());
 	void healEntity(entityid id, unsigned int heal);
 	void setInvulnerable(entityid id, bool set = true);
 	void setBuddha(entityid id, bool set = true);

@@ -30,6 +30,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_ammo; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_ammo; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_ammo = (in.slots[0] < m_ammoCapacity ? in.slots[0] : m_ammoCapacity); }
+
 private:
 	// --- State ---------------------------------------------------------------
 	// Flags rather than the shotgun's explicit enum: this gun only ever fires,

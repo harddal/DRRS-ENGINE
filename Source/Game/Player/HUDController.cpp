@@ -116,7 +116,7 @@ void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
 								irr::video::SColor(255, 51, 51, 255));*/
 
 							if (target.hasComponent<ItemComponent>()) {
-								auto item = ItemDatabase::GetItemByName(target.getComponent<ItemComponent>().item);
+								const ItemDef& item = ItemDatabase::Get(target.getComponent<ItemComponent>().item);
 								auto value = irr::core::stringw(L"Pickup ");
 								value += irr::core::stringw(item.name.c_str());
 
@@ -330,19 +330,46 @@ void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
 			}
 
 			// --- AMMO ---
-			// if (data.isWeaponEquipped && data.ammoDisplayValue >= 0) {
-			// 	RenderManager::Get()->renderImage2D(
-			// 		m_ammobackground,
-			// 		irr::core::vector2di(RenderManager::Get()->getConfiguration().width - m_ammobackground->getSize().Width, RenderManager::Get()->getConfiguration().height - m_ammobackground->getSize().Height));
+			// Asked of the weapon every frame rather than read from a cached
+			// PlayerData field. The old ammoDisplayValue was the same stale-copy
+			// pattern that already bites health — currentHealth is refreshed from
+			// the component once a frame, and anything written to the copy is
+			// overwritten before it is read. There is no reason to repeat that.
+			if (auto* weapons = g_PlayerController ? g_PlayerController->weaponController() : nullptr)
+			{
+				const int magazine = weapons->currentDisplayAmmo();
 
-			// 	auto value = irr::core::stringw(L"Ammo: ");
-			// 	value += data.ammoDisplayValue;
-			// 	RenderManager::Get()->renderText2D(
-			// 		value,
-			// 		TEXT_DEFAULT_FONT::SMALL,
-			// 		irr::core::rect<irr::s32>(RenderManager::Get()->getConfiguration().width - (m_ammobackground->getSize().Width / 2) + 20 - value.size() * 8, RenderManager::Get()->getConfiguration().height + 30 - m_ammobackground->getSize().Height - 10, 0, 0),
-			// 		irr::video::SColor(255, 255, 255, 255));
-			// }
+				// -1 means this weapon has no ammunition readout at all — melee
+				// and the pitchfork. Nothing is drawn rather than a zero.
+				if (magazine >= 0)
+				{
+					const int reserve = weapons->currentReserveAmmo();
+
+					RenderManager::Get()->renderImage2D(
+						m_ammobackground,
+						irr::core::vector2di(
+							RenderManager::Get()->getConfiguration().width  - m_ammobackground->getSize().Width,
+							RenderManager::Get()->getConfiguration().height - m_ammobackground->getSize().Height));
+
+					auto value = irr::core::stringw(magazine);
+
+					// The staff and the crossbow have no pool behind them, so the
+					// separator is only drawn when there is a second number.
+					if (reserve >= 0)
+					{
+						value += L" / ";
+						value += reserve;
+					}
+
+					RenderManager::Get()->renderText2D(
+						value,
+						TEXT_DEFAULT_FONT::SMALL,
+						irr::core::rect<irr::s32>(
+							RenderManager::Get()->getConfiguration().width  - (m_ammobackground->getSize().Width / 2) + 20 - (int)value.size() * 8,
+							RenderManager::Get()->getConfiguration().height + 30 - m_ammobackground->getSize().Height - 10, 0, 0),
+						irr::video::SColor(255, 255, 255, 255));
+				}
+			}
 		}
 	}
 }

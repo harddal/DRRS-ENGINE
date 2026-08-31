@@ -130,6 +130,7 @@ void ScriptSystem::updateHotReloadWatch()
 					clear(scriptComponent.onPlayerInteractionFunc);
 					clear(scriptComponent.onKillEventFunc);
 					clear(scriptComponent.onUseEventFunc);
+					clear(scriptComponent.canUseEventFunc);
 					clear(scriptComponent.onLogicEventActivate);
 					clear(scriptComponent.onPlayerCollideFunc);
 					clear(scriptComponent.npcUpdateFunc);
@@ -138,6 +139,7 @@ void ScriptSystem::updateHotReloadWatch()
 					scriptComponent.hasInit = scriptComponent.hasUpdate = scriptComponent.hasDestroy = false;
 					scriptComponent.hasOnInteraction = scriptComponent.hasOnKillEventFunc = false;
 					scriptComponent.hasOnUseEventFunc = scriptComponent.hasOnLogicEventActivate = false;
+					scriptComponent.hasCanUseEventFunc = false;
 					scriptComponent.hasOnPlayerCollide = scriptComponent.hasNpcUpdate = false;
 
 					ScriptManager::Get()->removeModule(scriptComponent.module);

@@ -261,6 +261,12 @@ void MeleeZombieBehavior::persist(anax::Entity& entity, float dt)
         m_state  = State::DEAD;
         m_path.clear();
 
+        // A gibbed body is already hidden and queued for removal — playing a
+        // death animation and a death cry over the top would be a corpse
+        // performing for a frame after it stopped existing.
+        if (drc.gibbed)
+            return;
+
         if (entity.hasComponent<MeshComponent>())
             playAnim("die", entity.getComponent<MeshComponent>());
 

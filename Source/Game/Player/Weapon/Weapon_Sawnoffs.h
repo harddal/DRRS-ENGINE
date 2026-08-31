@@ -33,6 +33,26 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return totalShells(); }
+
+	// Two slots, because this is the one weapon in the pack whose barrels are
+	// genuinely independent — a single count could not tell "one in each" from
+	// "both in the right", and the alternation would resume on the wrong gun.
+	void saveMagState(WeaponMagState& out) const override
+	{
+		out.slots[0] = m_shells[GUN_RIGHT];
+		out.slots[1] = m_shells[GUN_LEFT];
+	}
+
+	void loadMagState(const WeaponMagState& in) override
+	{
+		if (in.slots[0] >= 0)
+			m_shells[GUN_RIGHT] = (in.slots[0] < BARREL_COUNT ? in.slots[0] : BARREL_COUNT);
+
+		if (in.slots[1] >= 0)
+			m_shells[GUN_LEFT]  = (in.slots[1] < BARREL_COUNT ? in.slots[1] : BARREL_COUNT);
+	}
+
 private:
 	enum Gun    { GUN_RIGHT = 0, GUN_LEFT = 1, GUN_COUNT = 2 };
 	enum Barrel { BARREL_COUNT = 2 };
@@ -72,6 +92,17 @@ private:
 		irr::core::vector3df slugRest[BARREL_COUNT];
 		bool                 slugRestValid = false;
 		bool                 slugThrown[BARREL_COUNT] = { false, false };
+
+		// Which barrels have actually been fired since the last reload, so only
+		// their cases become brass on the ground.
+		//
+		// The ANIMATION cannot express this: both slugs in a gun move on identical
+		// tracks — lifted together at f38 and flung together from f40 — so a live
+		// round cannot be made to stay in the breech without re-authoring the
+		// clip. What it CAN decide is which of them leaves a casing behind, which
+		// is the half that survives being looked at.
+		bool                 fired[BARREL_COUNT] = { false, false };
+
 	};
 
 	SideFX m_gun[GUN_COUNT];
@@ -149,8 +180,12 @@ private:
 	irr::video::ITexture* m_crosshair = nullptr;
 
 	void enterState(State next);
+
+	// Tops both guns up out of the shared shell pool, right barrel first.
+	void creditShellsFromReserve();
 	void resolveGuns();
 	void updateSlugs();
+	void clearFiredRecord();
 	void ejectSpentCase(int gun, int barrel);
 	void updateReloadSounds(float frame);
 	void fireBarrel(int gun, int barrel);

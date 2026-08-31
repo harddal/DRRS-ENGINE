@@ -161,6 +161,26 @@ int ScriptManager::execute(ScriptComponent script, asIScriptFunction* function, 
     return 0;
 }
 
+bool ScriptManager::executeBool(ScriptComponent script, asIScriptFunction* function, int entid, bool fallback)
+{
+    if (!function)
+        return fallback;
+
+    if (m_executionContext->Prepare(function) < 0)
+        return fallback;
+
+    m_executionContext->SetArgDWord(0, entid);
+
+    if (m_executionContext->Execute() != asEXECUTION_FINISHED)
+    {
+        spdlog::warn("ScriptManager - predicate in module [" + script.module + "] did not complete");
+        return fallback;
+    }
+
+    // AngelScript returns bool in the low byte of the return register.
+    return m_executionContext->GetReturnByte() != 0;
+}
+
 void ScriptManager::MessageCallback(const asSMessageInfo* msg, void* param)
 {
     const char* type = "Script Exception";
@@ -384,6 +404,13 @@ int ScriptManager::compile(ScriptComponent& script)
         {
             script.hasOnUseEventFunc = true;
             script.onUseEventFunc = func;
+        }
+
+        func = m_engine->GetModule(script.module.c_str())->GetFunctionByDecl(_entity_script_can_use_event);
+        if (func)
+        {
+            script.hasCanUseEventFunc = true;
+            script.canUseEventFunc = func;
         }
 
         func = m_engine->GetModule(script.module.c_str())->GetFunctionByDecl(_entity_script_on_logic_event);

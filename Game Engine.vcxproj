@@ -260,11 +260,14 @@
     <ClCompile Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.cpp" />
     <ClCompile Include="Source\Game\Behavior\Classes\TurretBehavior.cpp" />
     <ClCompile Include="Source\Game\Behavior\EntityBehavior.cpp" />
-    <ClCompile Include="Source\Game\Behavior\Classes\WeaponPickupBehavior.cpp" />
+    <ClCompile Include="Source\Game\Behavior\Classes\PickupBehavior.cpp" />
     <ClCompile Include="Source\Game\DialogManager.cpp" />
     <ClCompile Include="Source\Game\EndGameState.cpp" />
     <ClCompile Include="Source\Game\GameManager.cpp" />
     <ClCompile Include="Source\Game\GameplaySystem.cpp" />
+    <ClCompile Include="Source\Game\Gore\GoreManager.cpp" />
+    <ClCompile Include="Source\Game\Gore\FractureManager.cpp" />
+    <ClCompile Include="Source\Game\Gore\FractureGeometry.cpp" />
     <ClCompile Include="Source\Game\LogicLinks.cpp" />
     <ClCompile Include="Source\Game\GameState.cpp" />
     <ClCompile Include="Source\Game\Interface\MainMenuGUI.cpp" />
@@ -276,6 +279,7 @@
     <ClCompile Include="Source\Game\Player\HUDController.cpp" />
     <ClCompile Include="Source\Game\Player\InteractionController.cpp" />
     <ClCompile Include="Source\Game\Player\InventoryController.cpp" />
+    <ClCompile Include="Source\Game\Player\PlayerInventory.cpp" />
     <ClCompile Include="Source\Game\Player\PlayerController.cpp" />
     <ClCompile Include="Source\Game\Player\WeaponController.cpp" />
     <ClCompile Include="Source\Game\Player\WeaponData.cpp" />
@@ -300,6 +304,8 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_SkullStaff.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pitchfork.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_Rifle.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\Weapon_SMG.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\WeaponEffects.cpp" />
     <ClCompile Include="Source\Game\ProcessGameComponents.cpp" />
     <ClCompile Include="Source\Utility\INIFile.cpp" />
@@ -466,7 +472,7 @@
     <ClInclude Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.h" />
     <ClInclude Include="Source\Game\Behavior\Classes\TurretBehavior.h" />
     <ClInclude Include="Source\Game\Behavior\EntityBehavior.h" />
-    <ClInclude Include="Source\Game\Behavior\Classes\WeaponPickupBehavior.h" />
+    <ClInclude Include="Source\Game\Behavior\Classes\PickupBehavior.h" />
     <ClInclude Include="Source\Game\Components\BehaviorComponent.h" />
     <ClInclude Include="Source\Game\Components\DialogComponent.h" />
     <ClInclude Include="Source\Game\Components\ParticleComponent.h" />
@@ -499,6 +505,8 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_SkullStaff.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pitchfork.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_Rifle.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\Weapon_SMG.h" />
     <ClInclude Include="Source\Game\Player\Weapon\WeaponEffects.h" />
     <ClInclude Include="Source\resource.h" />
     <ClInclude Include="Source\Application.h" />
@@ -567,6 +575,9 @@
     <ClInclude Include="Source\Game\EndGameState.h" />
     <ClInclude Include="Source\Game\GameManager.h" />
     <ClInclude Include="Source\Game\GameplaySystem.h" />
+    <ClInclude Include="Source\Game\Gore\GoreManager.h" />
+    <ClInclude Include="Source\Game\Gore\FractureManager.h" />
+    <ClInclude Include="Source\Game\Gore\FractureGeometry.h" />
     <ClInclude Include="Source\Game\LogicLinks.h" />
     <ClInclude Include="Source\Game\GameState.h" />
     <ClInclude Include="Source\Game\Interface\MainMenuGUI.h" />
@@ -577,9 +588,11 @@
     <ClInclude Include="Source\Game\Player\HUDController.h" />
     <ClInclude Include="Source\Game\Player\InteractionController.h" />
     <ClInclude Include="Source\Game\Player\InventoryController.h" />
-    <ClInclude Include="Source\Game\Player\InventoryData.h" />
+    
     <ClInclude Include="Source\Game\Player\PlayerController.h" />
     <ClInclude Include="Source\Game\Player\PlayerData.h" />
+    <ClInclude Include="Source\Game\Player\PlayerSaveState.h" />
+    <ClInclude Include="Source\Game\Player\PlayerInventory.h" />
     <ClInclude Include="Source\Utility\INIFile.h" />
     <ClInclude Include="Source\Utility\Utility.h" />
   </ItemGroup>

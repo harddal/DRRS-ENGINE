@@ -20,6 +20,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_shells; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_shells; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_shells = (in.slots[0] < m_magSize ? in.slots[0] : m_magSize); }
+
 private:
 	// Explicit state machine. A single m_isAnimating flag cannot express the
 	// chains this weapon needs — fire ALWAYS hands off to the pump, and a reload

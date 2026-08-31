@@ -300,10 +300,15 @@ void Weapon_BoltDriver::fire()
 			{
 				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, 25));
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, 25, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
+							raycastResult.ray.getVector())));
 
-				// Sparks fanned off the surface + bullet-hole decal
-				m_effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))

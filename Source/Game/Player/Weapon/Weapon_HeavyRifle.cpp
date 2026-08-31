@@ -32,6 +32,8 @@ void Weapon_HeavyRifle::init()
 	m_descriptor.name = "Player_Weapon_HeavyRifle";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_HEAVYRIFLE;
+
 	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.1550f, 0.1700f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
 	m_viewScaleOffset = irr::core::vector3df(0.01f, 0.01f, 0.01f);
@@ -347,7 +349,7 @@ void Weapon_HeavyRifle::update()
 		if (animEnded)
 		{
 			m_isReloadingAnim = false;
-			m_rounds = m_magSize;
+			m_rounds += drawFromReserve(m_magSize - m_rounds);
 			m_reloadWasEmpty = false;
 			setClipSpeed(1.0f);
 			m_reloadPauseRemaining = 0.0f;
@@ -545,10 +547,15 @@ void Weapon_HeavyRifle::fire()
 			{
 				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, 25));
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, 25, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
+							raycastResult.ray.getVector())));
 
-				// Sparks fanned off the surface + bullet-hole decal
-				m_effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -584,6 +591,15 @@ void Weapon_HeavyRifle::reload()
 
 	if (m_rounds >= m_magSize)
 		return; // full — don't burn the clip for nothing
+
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
 
 	m_mesh.animation_call_back->hasAnimationEnded(); // consume stale flag
 

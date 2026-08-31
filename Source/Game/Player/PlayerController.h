@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PlayerData.h"
+#include "PlayerSaveState.h"
 
 #include "anax/anax.hpp"
 
@@ -47,8 +48,16 @@ public:
 	void setIsWeaponEquipped(bool is = true) { g_PlayerData.isWeaponEquipped = is; }
 
 	PlayerData getPlayerData() { return g_PlayerData; }
-	void loadPlayerData(std::string file);
-	void savePlayerData(std::string file);
+
+	// --- Save sidecar --------------------------------------------------------
+	// Fills 'out' with everything about the player that has no entity to hang
+	// off. Returns false when there is no live player to read, which is what
+	// keeps a save made with no player loaded from writing a sidecar of zeroes.
+	bool capturePlayerState(PlayerSaveState& out) const;
+
+	// The reverse. Refuses a sidecar written by a NEWER build than this one
+	// rather than misreading it.
+	void applyPlayerState(const PlayerSaveState& in);
 
 	bool isSwimming() { return m_isSwimming; }
 
@@ -67,6 +76,10 @@ public:
 	InteractionController *interactionController() { return &m_interactionController; }
 	InventoryController   *inventoryController() { return &m_inventoryController; }
 	WeaponController      *weaponController() { return &m_weaponController; }
+
+	// The camera's FOV with no zoom and no kick applied, captured on the first
+	// update. Anything measuring "how zoomed in are we" compares against this.
+	float baseFov() const { return m_baseFov; }
 
 protected:
 	irr::core::vector3df Accelerate(irr::core::vector3df& accelDir, irr::core::vector3df& prevVelocity, float accelerate, float max_velocity, float dt);
@@ -167,6 +180,8 @@ private:
 	InteractionController m_interactionController;
 	InventoryController   m_inventoryController;
 	WeaponController      m_weaponController;
+
+	float m_baseFov = 0.0f; // captured on first update; see baseFov()
 
 };
 

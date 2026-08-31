@@ -47,6 +47,8 @@ void Weapon_Sawnoffs::init()
 	m_descriptor.name = "Player_Weapon_Sawnoffs";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_SAWNOFFS;
+
 	// sawnoffs_animated.glb carries the same arms rig as the rest of the glTF
 	// pack — identical joint names, identical 'arms' root at (0, 2.945, -17.671).
 	// Held out in both hands with the pair 24 model units apart, so this starts
@@ -95,12 +97,16 @@ void Weapon_Sawnoffs::init()
 	//            meshes reappear seated at f58, barrels shut
 	//            f66-69 and the latch drops f69-71              -> reload
 	//   81-90    both guns swing out 35 units, out of frame     -> unequip
-	//   90-100   the same pose returning to rest                -> a mirror draw,
-	//            unused; see the note on equip below
-	//   101-127  a 1.9-unit sway that starts and ends at rest   -> a real looping
-	//            idle, and the second in the pack after the staff
-	//   128-150  both guns snap out to a rolled pose and ease
-	//            back over 20 frames                            -> equip
+	//   90-100   the same arc returning to rest                 -> equip
+	//   101-127  a 1.9-unit sway that starts and ends at rest   -> an authored
+	//            looping idle, deliberately NOT used: idle is pinned
+	//            to 101 and the hold-steady motion comes from
+	//            enableIdleBreathing() instead, like the rest of the
+	//            pack. Two guns wandering on an authored loop read as
+	//            clutter next to the procedural sway, which never
+	//            repeats and can be dialled down.
+	//   128-150  both guns snap to a rolled pose (-51) in three
+	//            frames and take nineteen to recover            -> melee bash
 	//
 	// THAT THERE ARE TWO FIRE CLIPS IS THE WHOLE WEAPON. dual_smgs.glb animates
 	// both its guns on the same frames, which forced that weapon to alternate in
@@ -110,9 +116,12 @@ void Weapon_Sawnoffs::init()
 	// 'trigger2' and 'trigger2_2' never move in any clip — only one trigger per
 	// gun is animated — so a barrel is chosen in code, not read off the mesh.
 	//
-	// The equip range starts at 130, NOT at the rest hold at 128: f129 is a pure
-	// interpolation between rest and the extreme, so starting there would show
-	// the guns snapping out of frame before they come back in.
+	// 81-100 is ONE authored take holding both transitions, split at its apex
+	// (f90) so unequip plays the first half and equip the second.
+	//
+	// 128-150 was bound as the equip at first and is NOT a draw: it snaps to its
+	// pose in three frames and recovers over nineteen, rolled -51 degrees, and it
+	// lifts the guns rather than lowering them.
 	//
 	// Looping clips MUST be flagged loop=true — a non-looping clip re-armed from
 	// the end callback holds its last frame for one tick every cycle, which is a
@@ -121,10 +130,10 @@ void Weapon_Sawnoffs::init()
 	m_mesh.animationList.emplace_back(sAnimationData("fire_left",  12,  23,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",     24,  80,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip",    81,  90,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("equip",      130, 150, false));
-	m_mesh.animationList.emplace_back(sAnimationData("idle",       101, 127, true));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",      90,  100, false));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",       101, 101, true));
 	// Authored but not bound: the mirror draw described above
-	m_mesh.animationList.emplace_back(sAnimationData("equip_alt",  90,  100, false));
+	m_mesh.animationList.emplace_back(sAnimationData("melee",      128, 150, false));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
 	// the viewmodel must play at 30 to run at its authored speed.
@@ -138,10 +147,10 @@ void Weapon_Sawnoffs::init()
 
 	playAnimation("idle");
 
-	// Light, because unlike most of the pack the idle here is a real 27-frame
-	// loop rather than one pinned frame. This only exists to stop that loop
-	// reading as a loop — the sway itself is already in the animation.
-	enableIdleBreathing(0.7f);
+	// The idle clip is pinned to a single frame, so ALL of the hold-steady motion
+	// comes from here. Middling: a pair held out at arm's length should wander
+	// more than a braced rifle, less than the dual SMGs, which are lighter.
+	enableIdleBreathing(1.1f);
 
 	m_mesh.node->setScale(m_viewScaleOffset);
 
@@ -310,7 +319,7 @@ void Weapon_Sawnoffs::updateSlugs()
 			if (!gun.slug[barrel].bone)
 				continue;
 
-			const irr::core::vector3df pos = gun.slug[barrel].bone->getPosition();
+			const irr::core::vector3df pos = partPosition(gun.slug[barrel]);
 
 			// Seated position, sampled on the first frame of the reload where the
 			// shells are provably still in the breech. Nothing before this moves them.
@@ -334,6 +343,16 @@ void Weapon_Sawnoffs::updateSlugs()
 				if (!gun.slugThrown[barrel])
 				{
 					gun.slugThrown[barrel] = true;
+
+					// ALL FOUR throw a casing, fired or not, because that is what
+					// the animation shows: both slugs in a gun move on identical
+					// tracks and are flung together, so brass appearing for only
+					// some of them contradicts what is on screen.
+					//
+					// gun.fired[] is still tracked and is the switch for the
+					// other behaviour — put `if (gun.fired[barrel])` back around
+					// this call if the clip is ever re-authored to keep live
+					// rounds in the breech.
 					ejectSpentCase(i, barrel);
 				}
 
@@ -403,6 +422,50 @@ void Weapon_Sawnoffs::ejectSpentCase(int gun, int barrel)
 }
 
 // --- State -------------------------------------------------------------------
+
+// Fills both guns from the shared shell reserve, right barrel first.
+//
+// Right-first rather than evenly split because the right gun is the one that
+// fires first in the alternation, so with an odd number of shells left in the
+// pool the player gets the one that is about to be used.
+void Weapon_Sawnoffs::creditShellsFromReserve()
+{
+	// A reload ALWAYS costs a full four, however many were still in the guns.
+	//
+	// That is not a penalty bolted on for its own sake — it is what the animation
+	// already shows. Breaking both actions open dumps everything, live rounds
+	// included, and they land on the floor. Charging only for the empty barrels
+	// would mean the shells visibly thrown away were silently put back.
+	//
+	// The cost of it is a real decision: topping up a three-quarter-full pair
+	// throws a good shell away, so reloading early has a price.
+	const int capacity = GUN_COUNT * BARREL_COUNT;
+
+	const int taken = drawFromReserve(capacity);
+
+	// SET, not add — whatever was loaded went on the floor with the rest.
+	m_shells[GUN_RIGHT] = 0;
+	m_shells[GUN_LEFT]  = 0;
+
+	// One at a time, alternating, so a short draw leaves both hands useful: two
+	// shells become one per gun rather than both in the right, and the
+	// alternating fire still has somewhere to go.
+	for (int i = 0; i < taken; ++i)
+		m_shells[i % GUN_COUNT]++;
+
+	// Fresh shells in every barrel that got one, so nothing is owed a casing
+	// until it is fired again.
+	clearFiredRecord();
+}
+
+// Deliberately NOT called on equip: a gun put away with one barrel spent is
+// still spent when it comes back out, and should still throw that one case.
+void Weapon_Sawnoffs::clearFiredRecord()
+{
+	for (int i = 0; i < GUN_COUNT; ++i)
+		for (int barrel = 0; barrel < BARREL_COUNT; ++barrel)
+			m_gun[i].fired[barrel] = false;
+}
 
 void Weapon_Sawnoffs::enterState(State next)
 {
@@ -503,8 +566,7 @@ void Weapon_Sawnoffs::update()
 		if (!m_ammoCredited && frame >= static_cast<irr::f32>(m_seatFrame))
 		{
 			m_ammoCredited = true;
-			m_shells[GUN_RIGHT] = BARREL_COUNT;
-			m_shells[GUN_LEFT]  = BARREL_COUNT;
+			creditShellsFromReserve();
 		}
 
 		if (animEnded)
@@ -512,8 +574,15 @@ void Weapon_Sawnoffs::update()
 			// The clip runs well past the seat, so reaching the end means the
 			// fresh pairs are certainly in — but credit them here too in case a
 			// frame-rate hitch stepped clean over the displacement window.
-			m_shells[GUN_RIGHT] = BARREL_COUNT;
-			m_shells[GUN_LEFT]  = BARREL_COUNT;
+			//
+			// This used to refill unconditionally, which was harmless while the
+			// shells were free. Drawing from a reserve, it would pay the reload
+			// out twice on every clip that reached both.
+			if (!m_ammoCredited)
+			{
+				m_ammoCredited = true;
+				creditShellsFromReserve();
+			}
 
 			enterState(State::Idle);
 		}
@@ -657,6 +726,7 @@ void Weapon_Sawnoffs::fire()
 	const int barrel = m_shells[gun] - 1;
 
 	m_shells[gun]--;
+	m_gun[gun].fired[barrel] = true;
 
 	// This gun's own clip. The asset kicks one gun at a time, which is what makes
 	// the alternation real rather than a trick of the effects.
@@ -741,9 +811,15 @@ void Weapon_Sawnoffs::fireBarrel(int gun, int barrel)
 			{
 				registerHitFeedback(
 					WorldManager::Get()->gameplaySystem()->damageEntity(
-						hitDescriptor.id, static_cast<unsigned int>(m_damagePerPellet)));
+						hitDescriptor.id, static_cast<unsigned int>(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
+							raycastResult.ray.getVector())));
 
-				side.effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					side.effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -776,6 +852,15 @@ void Weapon_Sawnoffs::reload()
 
 	if (totalShells() >= GUN_COUNT * BARREL_COUNT)
 		return; // nothing to top up
+
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
 
 	if (!m_mesh.node)
 		return;

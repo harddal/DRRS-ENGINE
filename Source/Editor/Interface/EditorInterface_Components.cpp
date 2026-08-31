@@ -15,6 +15,7 @@
 #include "Engine/Script/ScriptManager.h"
 #include "Engine/Renderer/IrrAssimp/IrrAssimpImport.h"
 #include "Game/LogicLinks.h"
+#include "Game/Gore/FractureManager.h"
 #include <tinyxml2.h>
 
 #include <string>
@@ -529,6 +530,56 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Health");
 				ImGui::TableSetColumnIndex(1); ImGui::InputInt("##health", &dam.threshold);
 				ImGui::SetItemTooltip("Total damage this entity can take before it dies.\nAlso used as its starting health (default 100).");
+
+				{
+					static const char* impact_surface_names[IMPACT_SURFACE_COUNT] = {
+						"Auto", "Flesh", "Wood", "Metal", "Stone", "Glass", "Dirt", "None"
+					};
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Impact FX");
+					ImGui::TableSetColumnIndex(1);
+					ImGui::Combo("##impactsurface", &dam.impactSurface, impact_surface_names, IM_ARRAYSIZE(impact_surface_names));
+					ImGui::SetItemTooltip("Particle + decal thrown by a hit that does NOT fracture the prop.\n"
+					                      "Auto: the entity's behavior decides first (a creature behavior\n"
+					                      "bleeds); otherwise it is classified from its first texture name\n"
+					                      "(crate_wood -> Wood, ...). Set explicitly only when Auto guesses\n"
+					                      "wrong. None = silent.");
+				}
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Fracture");
+				ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##fracture", &dam.fractureOnDeath);
+				ImGui::SetItemTooltip("Break into shards on death instead of playing the gore effects.\n"
+				                      "Static meshes only - a skinned mesh falls back to gibs.\n"
+				                      "Shards are visual only: they cannot be shot and do not block the player.");
+
+				if (dam.fractureOnDeath)
+				{
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Shards");
+					ImGui::TableSetColumnIndex(1); ImGui::SliderInt("##fracturecells", &dam.fractureCells, 2, 32);
+					ImGui::SetItemTooltip("Target number of pieces. Clamped to 2-32 at fracture time.");
+
+					const char* fracture_profiles[FRACTURE_PROFILE_COUNT];
+
+					for (int fp = 0; fp < FRACTURE_PROFILE_COUNT; ++fp)
+						fracture_profiles[fp] = fractureProfileName(fp);
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Material");
+					ImGui::TableSetColumnIndex(1);
+					ImGui::Combo("##fractureprofile", &dam.fractureProfile, fracture_profiles, IM_ARRAYSIZE(fracture_profiles));
+					ImGui::SetItemTooltip("How the shards bounce and tumble once they are in the air.");
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Hollow");
+					ImGui::TableSetColumnIndex(1); ImGui::Checkbox("##fracturehollow", &dam.fractureHollow);
+					ImGui::SetItemTooltip("Tick for props modelled as a thin shell with no wall thickness\n"
+					                      "(barrels, pipes, most hollow props).\n"
+					                      "Shell fragments are not capped and render double-sided.\n"
+					                      "Leave off for anything modelled solid - those get the interior material.");
+				}
 				ImGui::EndTable();
 			}
 

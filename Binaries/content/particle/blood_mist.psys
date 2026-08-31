@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    blood_mist — the cloud left where a body used to be. Fired by
+    GoreManager::kill() at TIER_GIB and by burst().
+
+    Spheric emitter (the only kind setEmitterDirection reaches) but with a wide
+    angle, so it reads as omnidirectional while still honouring the override.
+    updateRate is a TIME MULTIPLIER; 0 would freeze it forever.
+-->
+<cereal>
+    <ParticleSystem>
+        <updateRate>1</updateRate>
+        <groups size="2">
+            <!-- cloud: soft, slow, expands as it thins -->
+            <item0>
+                <name>cloud</name>
+                <capacity>18</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>-1.2</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>1.8</friction>
+                <model>
+                    <lifetimeMin>0.6</lifetimeMin>
+                    <lifetimeMax>1.4</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0><item1>GREEN</item1><item2>BLUE</item2>
+                        <item3>ALPHA</item3><item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="2">
+                        <item0>ALPHA</item0><item1>SIZE</item1>
+                    </mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="5">
+                        <item0><name>RED</name><values size="1"><item0>0.32</item0></values></item0>
+                        <item1><name>GREEN</name><values size="1"><item0>0.02</item0></values></item1>
+                        <item2><name>BLUE</name><values size="1"><item0>0.03</item0></values></item2>
+                        <item3>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>0.85</item0><item1>0</item1></values>
+                        </item3>
+                        <item4>
+                            <!-- mutable: start, end -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.4</item0><item1>1.6</item1></values>
+                        </item4>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/blood5.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>1</scaleX><scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>spheric</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.3</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>18</tank>
+                        <flow>-1</flow>
+                        <forceMin>0.4</forceMin>
+                        <forceMax>1.6</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <angleMin>0</angleMin>
+                        <angleMax>3.14</angleMax>
+                    </item0>
+                </emitters>
+            </item0>
+
+            <!-- flecks: fast small debris that outruns the cloud -->
+            <item1>
+                <name>flecks</name>
+                <capacity>24</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>-12</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0.3</friction>
+                <model>
+                    <lifetimeMin>0.4</lifetimeMin>
+                    <lifetimeMax>1.0</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0><item1>GREEN</item1><item2>BLUE</item2>
+                        <item3>ALPHA</item3><item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="1"><item0>ALPHA</item0></mutableFlags>
+                    <randomFlags size="1"><item0>SIZE</item0></randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="5">
+                        <item0><name>RED</name><values size="1"><item0>0.5</item0></values></item0>
+                        <item1><name>GREEN</name><values size="1"><item0>0.03</item0></values></item1>
+                        <item2><name>BLUE</name><values size="1"><item0>0.03</item0></values></item2>
+                        <item3>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>1</item0><item1>0.1</item1></values>
+                        </item3>
+                        <item4>
+                            <!-- random: min, max -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.08</item0><item1>0.22</item1></values>
+                        </item4>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/blood2.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>direction_aligned</orientation>
+                    <atlasW>1</atlasW><atlasH>1</atlasH>
+                    <scaleX>0.6</scaleX><scaleY>1.3</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>spheric</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.15</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>24</tank>
+                        <flow>-1</flow>
+                        <forceMin>3</forceMin>
+                        <forceMax>8</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <angleMin>0</angleMin>
+                        <angleMax>3.14</angleMax>
+                    </item0>
+                </emitters>
+            </item1>
+        </groups>
+    </ParticleSystem>
+</cereal>

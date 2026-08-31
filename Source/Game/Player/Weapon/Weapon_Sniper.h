@@ -36,6 +36,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_rounds; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_rounds; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_rounds = (in.slots[0] < m_magSize ? in.slots[0] : m_magSize); }
+
 private:
 	// Explicit state machine rather than the LMG's flags: fire ALWAYS chains
 	// into the bolt cycle, and that chain is the weapon's defining rule. A set
@@ -70,11 +76,26 @@ private:
 	static const int m_magSize = 5;
 	int m_rounds = m_magSize;
 
+	// Set when a shot empties the magazine. The cycle that follows it throws the
+	// case and finds nothing to feed, so the chamber is left EMPTY and a rack is
+	// owed once a fresh magazine is in — the same debt the shotgun tracks with
+	// m_needsChamberRack. Without it, reloading a rifle run dry would leave it
+	// firing on an empty chamber.
+	bool m_chamberEmpty = false;
+
+	// Whether the running cycle has a spent case to throw. True for the rack that
+	// follows a shot; FALSE for the one that closes an empty reload, which only
+	// chambers a fresh round and has no brass in it.
+	bool m_cycleThrowsCase = true;
+
 	// --- Clip speeds ---------------------------------------------------------
 	// The authored bolt cycle is a deliberate 1.63 s and the mag swap 1.47 s.
 	// The cycle is left close to authored on purpose — it is the weapon's whole
 	// drawback and hurrying it would erase the trade.
 	static constexpr float m_cycleSpeed  = 1.15f; // -> 1.42 s
+	// The draw is 50 frames because it chambers a round on the way up; trimmed so
+	// switching to the rifle is not a two-second commitment.
+	static constexpr float m_equipSpeed  = 1.40f; // -> 1.19 s
 	static constexpr float m_reloadSpeed = 1.35f; // -> 1.09 s
 
 	// --- The chambered round / spent case ------------------------------------
@@ -94,9 +115,17 @@ private:
 	irr::core::vector3df m_roundRest;
 	bool                 m_roundRestValid = false;
 
-	// Model units. The extraction lifts the round 2.0 and the flick throws it 8.0,
-	// against a seated position that is otherwise dead still.
-	static constexpr float m_roundLooseEpsilon = 2.6f;
+	// Model units, and the exact value MATTERS — it decides WHEN the case leaves.
+	//
+	// The extraction walks the round out with the bolt: 0.51, 1.03, 1.54, then
+	// 2.06 on the frame the bolt reaches full rearward travel, where it is held
+	// for eight frames before the flick throws it to 3.62, 5.88, 8.28.
+	//
+	// 1.8 therefore trips on the bolt-back frame — the moment the case is clear of
+	// the chamber and a real rifle lets go of it. The original 2.6 sat above that
+	// plateau and did not trip until the flick had already begun, which read as
+	// the case being handed off late.
+	static constexpr float m_roundLooseEpsilon = 1.8f;
 
 	// --- Scope ---------------------------------------------------------------
 	// 0 = hip, 1 = fully scoped. Everything the sight does is a function of this
@@ -106,7 +135,7 @@ private:
 	bool  m_scopeWanted = false;
 
 	static constexpr float m_scopeBlendSpeed = 9.0f;   // per second
-	static constexpr float m_scopeFovZoom    = -42.0f; // degrees off the base FOV
+	static constexpr float m_scopeFovZoom    = -50.0f; // degrees off the base FOV
 
 	// Past this the model is swapped for the sight. Not 1.0: the swap wants to
 	// happen while the view is still closing, so the sight is already there by
@@ -161,6 +190,12 @@ private:
 	// Frames within the clips, measured off the .glb (see init())
 	static const int m_boltLiftFrame  = 24; // handle rotates up
 	static const int m_boltHomeFrame  = 47; // handle rotates back down
+
+	// The DRAW works the bolt too, and it is the same motion offset by exactly
+	// 104 frames — handle up at 128 against the cycle's 24, back down at 151
+	// against 47. Without these the rifle is brought up and chambered in silence.
+	static const int m_equipBoltLiftFrame = 128;
+	static const int m_equipBoltHomeFrame = 151;
 	static const int m_magOutFrame    = 72; // magazine breaks free
 	static const int m_magInFrame     = 89; // fresh magazine seated — ammo lands HERE
 
@@ -180,11 +215,16 @@ private:
 	irr::video::ITexture* m_crosshair = nullptr;
 
 	void enterState(State next);
-	void updateRound();
+	// throwCase false hides and restores the round without handing a physics
+	// casing off — what the DRAW wants, which works the bolt to chamber a round
+	// but has no spent case to throw.
+	void updateRound(bool throwCase);
 	void ejectSpentCase();
 	void updateScope(float dt);
 	void disableScopePass();
-	void updateCycleSounds(float frame);
+	// Shared by the cycle and the draw, which run the same bolt motion at
+	// different frame offsets — hence the frames as arguments rather than baked in.
+	void updateBoltSounds(float frame, int liftFrame, int homeFrame);
 	void updateReloadSounds(float frame);
 	void drawScopeOverlay();
 

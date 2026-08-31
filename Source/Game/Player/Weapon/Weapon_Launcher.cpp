@@ -41,6 +41,8 @@ void Weapon_Launcher::init()
 	m_descriptor.name = "Player_Weapon_Launcher";
 	m_descriptor.id   = _entity_null_value;
 
+	m_weapon_type     = WEAP_LAUNCHER;
+
 	// grenadelauncher_animated.glb carries the same arms rig as the rest of the
 	// glTF pack — identical joint names, identical 'arms' root at
 	// (0, 2.945, -17.671) — so the other two-handed guns' viewmodel transform is
@@ -87,21 +89,24 @@ void Weapon_Launcher::init()
 	//            comes back down as the fresh round and seats at
 	//            f78, barrel shuts f96-98, latch f97-99            -> reload
 	//   109-120  gun swings away, Z -17, out of frame              -> unequip
-	//   120-135  the same pose returning to rest                   -> a mirror
-	//            draw, unused; see the note on equip below
+	//   120-135  the same arc returning to rest                    -> equip
 	//   136-161  a 2.8-unit dip and return, no rotation at all     -> a gentle
 	//            idle sway, unused: idle is pinned to 136 and the
 	//            hold-steady motion comes from enableIdleBreathing()
-	//   162-180  gun heaved up from off-screen, roll -89 deg       -> equip
+	//   162-180  gun snaps to a rolled pose (-89) in two frames
+	//            and takes sixteen to recover                   -> melee bash
 	//
 	// That the fire clip touches NOTHING but the trigger and the recoil is what
 	// makes this a single-shot break action: the spent case is still in the
 	// breech when the clip ends, and only the reload gets it out. Firing
 	// therefore always chains into "reload" — see enterState().
 	//
-	// Two draws exist because 120-135 is the mirror of the holster (they share
-	// the extreme at f120) while 162-180 is a separate, more dramatic heave up
-	// into frame. The heave is the one bound here.
+	// 109-135 is ONE authored take holding both transitions, split at its apex
+	// (f120) so unequip plays the first half and equip the second.
+	//
+	// 162-180 was bound as the equip at first and is NOT a draw: it reaches its
+	// pose in two frames and recovers over sixteen, rolled -89 degrees. Every
+	// bash in this pack shares that signature.
 	//
 	// Looping clips MUST be flagged loop=true — a non-looping clip re-armed from
 	// the end callback holds its last frame for one tick every cycle, which is a
@@ -109,10 +114,10 @@ void Weapon_Launcher::init()
 	m_mesh.animationList.emplace_back(sAnimationData("fire",    0,   12,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  13,  108, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 109, 120, false));
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   162, 180, false));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   120, 135, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    136, 136, true));
 	// Authored but not bound: the mirror draw and the sway loop described above
-	m_mesh.animationList.emplace_back(sAnimationData("equip_alt", 120, 135, false));
+	m_mesh.animationList.emplace_back(sAnimationData("melee",     162, 180, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle_sway", 136, 161, true));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
@@ -207,7 +212,18 @@ void Weapon_Launcher::init()
 	fx.lightColor        = irr::video::SColorf(1.0f, 0.7f, 0.3f);
 	fx.lightRadius       = 5.0f;
 	fx.tracerPoolSize    = 0;
-	fx.shellMesh         = "content/mesh/prop/shells/shelllarge.obj";
+	// shellsmall.obj — the plain brass case. Two meshes were wrong before it:
+	// shelllarge necks down to 69% of its diameter at the mouth, which reads as a
+	// rifle cartridge, and slug.obj is straight but UV-mapped onto the
+	// shotgun-shell part of the atlas, so it came out plastic-hulled.
+	// shellsmall is straight-walled end to end — full diameter from base to mouth,
+	// the only narrowing being the rim at the head — and textured as brass.
+	//
+	// Its natural size is irrelevant: matchPartScale() derives the scale from
+	// whatever mesh is loaded, rank-matched against the launcher's own 'shell'
+	// part, so the case renders at identical world dimensions whichever is used.
+	// That is what makes swapping these freely safe.
+	fx.shellMesh         = "content/mesh/prop/shells/shellsmall.obj";
 	fx.shellSpeed        = 4.0f;
 	fx.shellPoolSize     = 8;
 	fx.shellBounceSoundBase = "content/sound/prop/shell";
@@ -298,7 +314,7 @@ void Weapon_Launcher::updateShell()
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
 
-	const irr::core::vector3df pos = m_shell.bone->getPosition();
+	const irr::core::vector3df pos = partPosition(m_shell);
 
 	// Seated position, sampled on the first frame of the reload where the case is
 	// provably still in the breech. Nothing before this moves it.
@@ -334,9 +350,19 @@ void Weapon_Launcher::updateShell()
 		// Back within reach of the breech having already thrown the case: this is
 		// the FRESH round coming down, so the warhead comes back with it and the
 		// gun counts as loaded from here.
+		//
+		// m_loaded is its own credit guard — the animEnded path below runs the
+		// same draw, and testing it here is what keeps a reload that reaches both
+		// from taking two grenades out of the pool for one round in the breech.
+		if (!m_loaded)
+			m_loaded = drawFromReserve(1) > 0;
+
 		setMeshPartVisible(m_shell, true);
-		setMeshPartVisible(m_warhead, true);
-		m_loaded = true;
+
+		// The warhead is only shown if a grenade was actually there to take. A
+		// visible warhead reads as 'live round chambered' and the player acts on
+		// it, so an empty pool has to come up as a visibly empty breech.
+		setMeshPartVisible(m_warhead, m_loaded);
 	}
 	else
 	{
@@ -450,7 +476,9 @@ void Weapon_Launcher::update()
 			// The clip runs well past the seat, so reaching the end means the
 			// round has certainly gone in — but credit it here too in case a
 			// frame-rate hitch stepped clean over the displacement window.
-			m_loaded = true;
+			if (!m_loaded)
+				m_loaded = drawFromReserve(1) > 0;
+
 			enterState(State::Idle);
 		}
 		break;
@@ -616,6 +644,15 @@ void Weapon_Launcher::reload()
 	// with the spent case still in the gun.
 	if (m_state != State::Idle || m_loaded)
 		return;
+
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
 
 	enterState(State::Reloading);
 }

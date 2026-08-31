@@ -125,6 +125,27 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return static_cast<int>(m_mana); }
+
+	// Mana rides in 'charge', not in a slot: it is a float, and it is not
+	// ammunition — it regenerates, so it has no pool and nothing drops it. The
+	// selected spell goes in slot 0 so a checkpoint does not silently reset the
+	// player's choice back to the first row of the table.
+	void saveMagState(WeaponMagState& out) const override
+	{
+		out.slots[0] = m_spell;
+		out.charge   = m_mana;
+	}
+
+	void loadMagState(const WeaponMagState& in) override
+	{
+		if (in.slots[0] >= 0 && in.slots[0] < s_spellCount)
+			m_spell = in.slots[0];
+
+		if (in.charge >= 0.0f)
+			m_mana = (in.charge < m_manaMax ? in.charge : m_manaMax);
+	}
+
 	// Spell selection, exposed so a pickup or a console command can drive it
 	// later rather than only the right mouse button.
 	void selectSpell(int index);
@@ -162,6 +183,12 @@ private:
 	// Per-spell cooldowns, so switching spells does not launder one spell's
 	// cooldown into another's. Sized to the table in the .cpp.
 	std::vector<float> m_nextReadyTime;
+
+	// The staff is the one weapon that keeps its authored looping idle rather
+	// than a pinned frame plus procedural sway, so its speed is worth having as a
+	// knob. Two thirds: the take reads as an agitated fidget at 1x, where the
+	// skull should be brooding — 60 frames stretch from 2.0 s to 3.0 s.
+	static constexpr float m_idleSpeed = 0.667f;
 
 	// --- Mana ----------------------------------------------------------------
 	// A pool rather than ammunition: it regenerates, so the staff is never truly

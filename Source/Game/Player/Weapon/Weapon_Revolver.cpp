@@ -44,6 +44,8 @@ void Weapon_Revolver::init()
 	m_descriptor.name = "Player_Weapon_Revolver";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_REVOLVER;
+
 	// revolver_animated.glb carries the same arms rig as knife_animated.glb
 	// (identical joint names, identical 'arms' root at 0,2.945,-17.671), so the
 	// knife's viewmodel transform is the correct starting point. Tune with the
@@ -727,8 +729,11 @@ void Weapon_Revolver::creditSeatedRounds(float frame)
 		if (f < seatFrame)
 			break;
 
+		// One chamber, one round out of the pool. Per-round like the shotgun, so
+		// no credit guard is needed — but m_reloadCredited still advances even
+		// when the pool is empty, or this loop would spin on the same chamber.
 		if (m_cylinder < m_cylinderSize)
-			m_cylinder++;
+			m_cylinder += drawFromReserve(1);
 
 		m_reloadCredited++;
 	}
@@ -896,11 +901,19 @@ void Weapon_Revolver::fire()
 			// Only register collision with static or dynamic entities
 			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
 			{
-				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
+				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback.
+				// The context is what lets GoreManager put blood at the wound and throw
+				// splatter downrange, instead of spraying from the entity's centre.
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
+					WorldManager::Get()->gameplaySystem()->damageEntity(
+						hitDescriptor.id, m_damage, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal, direction)));
 
-				m_effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it — this call used to spark off zombies.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -936,10 +949,26 @@ void Weapon_Revolver::reload()
 	if (missing <= 0)
 		return; // nothing to top up — don't burn seven seconds on a full cylinder
 
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
+
 	if (!m_mesh.node)
 		return;
 
-	m_reloadRounds       = missing;
+	// Only as many as there actually ARE. m_reloadRounds sets the clip's end
+	// frame — one loading swoop per round — so leaving it at 'missing' would show
+	// the player thumbing in rounds they do not have and credit nothing for the
+	// extra swoops. The shotgun gets this for free by looping one clip per shell;
+	// this one computes its range up front, so it has to be clamped here.
+	const int available = reserveRemaining();
+
+	m_reloadRounds       = (missing < available) ? missing : available;
 	m_reloadCredited     = 0;
 	m_insertSoundsPlayed = 0;
 	m_closeSoundPlayed   = false;

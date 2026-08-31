@@ -16,6 +16,10 @@
 #define _entity_script_on_interaction    "void onInteraction(int)"
 #define _entity_script_on_kill_event     "void onKill(int)"
 #define _entity_script_on_use_event      "void onUse(int)"
+// Optional gate in front of onUse. Returning false means "using this now
+// would do nothing" — a medkit at full health — which lets an auto-use item
+// be STORED rather than wasted. A script without it is always usable.
+#define _entity_script_can_use_event     "bool canUse(int)"
 #define _entity_script_on_logic_event    "void onLogicEvent(int)"
 #define _entity_script_on_player_collide "void onPlayerCollide(int)"
 #define _entity_script_npc_update        "void npcUpdate(int)"
@@ -67,6 +71,7 @@ struct ScriptComponent : anax::Component
 		hasOnInteraction = false,
 		hasOnKillEventFunc = false,
         hasOnUseEventFunc = false,
+        hasCanUseEventFunc = false,
         hasOnLogicEventActivate = false,
         hasOnPlayerCollide = false,
         hasNpcUpdate = false;
@@ -80,6 +85,7 @@ struct ScriptComponent : anax::Component
 		*onPlayerInteractionFunc,
         *onKillEventFunc,
         *onUseEventFunc,
+        *canUseEventFunc,
         *onLogicEventActivate,
         *onPlayerCollideFunc,
         *npcUpdateFunc;

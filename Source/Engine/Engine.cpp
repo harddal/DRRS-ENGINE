@@ -4,6 +4,8 @@
 
 #include "Debug/DebugState.h"
 #include "Engine/Renderer/DecalManager.h"
+#include "Game/Gore/GoreManager.h"
+#include "Game/Gore/FractureManager.h"
 #include "Editor/EditorState.h"
 #include "Editor/EditorGameState.h"
 #include "Game/IntroState.h"
@@ -449,6 +451,16 @@ void Engine::clearScene()
 
 	if (RenderManager::Get()->decals())
 		RenderManager::Get()->decals()->clear();
+
+	// Gibs are raw scene nodes owned by no entity, so killAllEntities() below
+	// leaves them hanging in space across a scene load or a mode switch.
+	if (GoreManager::Get())
+		GoreManager::Get()->clearScene();
+
+	// Fracture shards are raw nodes for the same reason, and need retiring for
+	// the same reason.
+	if (FractureManager::Get())
+		FractureManager::Get()->clearScene();
 
 	WorldManager::Get()->killAllEntities();
 

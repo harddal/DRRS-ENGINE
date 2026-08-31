@@ -19,6 +19,16 @@
 
 #include "irrlicht.h"
 
+// Decals compete for one fixed budget. Without a class, a single gib burst —
+// which spends a dozen slots at once, plus more on every bounce — silently
+// evicts every bullet hole in the level. Eviction prefers the oldest decal of
+// the SAME class, so gore and gunfire each keep their own share.
+enum DECAL_CLASS
+{
+    DECAL_GENERIC = 0,   // bullet holes, scorch marks
+    DECAL_BLOOD   = 1
+};
+
 class DecalShaderCallback : public irr::video::IShaderConstantSetCallBack
 {
 public:
@@ -44,7 +54,8 @@ public:
                const irr::core::vector3df& normal,
                float size,
                const std::string& texture,
-               float lifetime = 60.0f);
+               float lifetime = 60.0f,
+               DECAL_CLASS cls = DECAL_GENERIC);
 
     void update(float dt);
     void render();   // call after the post-process chain (tonemapped backbuffer)
@@ -59,9 +70,16 @@ private:
         irr::core::vector3df  dir;       // world-space projection direction (-normal)
         irr::video::ITexture* texture;
         float life, maxLife;
+        DECAL_CLASS cls;
     };
 
-    static constexpr size_t MAX_DECALS   = 64;    // oldest evicted beyond this
+    // Raised from 64 for the gore system. A single gib kill spends roughly 80
+    // between the radial fan, the pool and the gibs' own bounce trails, so this
+    // holds about four of them before blood starts evicting blood.
+    //
+    // Each decal is one draw call (a box, depth test off, sampling the prepass),
+    // so this is the first number to lower if the frame rate dips in a fight.
+    static constexpr size_t MAX_DECALS   = 320;   // oldest of its class evicted beyond this
     static constexpr float  FADE_WINDOW  = 5.0f;  // fade-out seconds at end of life
 
     std::vector<Decal>        m_decals;

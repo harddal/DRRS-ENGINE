@@ -22,6 +22,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_boltLoaded ? 1 : 0; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_boltLoaded ? 1 : 0; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_boltLoaded = in.slots[0] > 0; }
+
 private:
 	// Explicit state machine, same shape as the shotgun's. The chain that matters
 	// here is Firing -> Reloading, and it is NOT optional: the asset has no

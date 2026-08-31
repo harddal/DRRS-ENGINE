@@ -265,13 +265,36 @@ void ParticleManager::setScale(uint32_t handle, float scale)
     SPK::System* sys = it->second.system;
     if (!sys) return;
 
+    if (scale <= 0.0f) return;
+
+    // The renderer, zones and emitters below are SHARED with the base template
+    // and every other live clone (SPARK's Group copy ctor copies the pointers).
+    // So the only safe contract is an absolute scale relative to the authored
+    // .psys — convert the request into the delta needed to get there from
+    // whatever is currently baked in, or repeated spawns compound the multiply
+    // and the effect shrinks to nothing.
+    auto effIt = m_effects.find(it->second.effectName);
+    if (effIt == m_effects.end()) return;
+
+    float& applied = effIt->second.appliedScale;
+    if (applied <= 0.0f) applied = 1.0f;
+
+    const float delta = scale / applied;
+
+    // Already there — nothing to do. Also stops float drift from thousands of
+    // no-op calls on a rapid-fire weapon.
+    if (delta > 0.9999f && delta < 1.0001f)
+        return;
+
+    applied = scale;
+
     for (size_t g = 0; g < sys->getNbGroups(); ++g)
     {
         SPK::Group* group = sys->getGroup(g);
         if (!group) continue;
 
         if (auto* quad = dynamic_cast<SPK::QuadRendererInterface*>(group->getRenderer()))
-            quad->setScale(quad->getScaleX() * scale, quad->getScaleY() * scale);
+            quad->setScale(quad->getScaleX() * delta, quad->getScaleY() * delta);
 
         for (size_t e = 0; e < group->getNbEmitters(); ++e)
         {
@@ -281,19 +304,19 @@ void ParticleManager::setScale(uint32_t handle, float scale)
             if (SPK::Zone* zone = emitter->getZone())
             {
                 if (auto* s = dynamic_cast<SPK::Sphere*>(zone))
-                    s->setRadius(s->getRadius() * scale);
+                    s->setRadius(s->getRadius() * delta);
                 else if (auto* b = dynamic_cast<SPK::AABox*>(zone))
-                    b->setDimension(b->getDimension() * scale);
+                    b->setDimension(b->getDimension() * delta);
                 else if (auto* r = dynamic_cast<SPK::Ring*>(zone))
-                    r->setRadius(r->getMinRadius() * scale, r->getMaxRadius() * scale);
+                    r->setRadius(r->getMinRadius() * delta, r->getMaxRadius() * delta);
                 else if (auto* c = dynamic_cast<SPK::Cylinder*>(zone))
                 {
-                    c->setRadius(c->getRadius() * scale);
-                    c->setLength(c->getLength() * scale);
+                    c->setRadius(c->getRadius() * delta);
+                    c->setLength(c->getLength() * delta);
                 }
             }
 
-            emitter->setForce(emitter->getForceMin() * scale, emitter->getForceMax() * scale);
+            emitter->setForce(emitter->getForceMin() * delta, emitter->getForceMax() * delta);
         }
     }
 }

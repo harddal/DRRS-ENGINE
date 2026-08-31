@@ -26,7 +26,8 @@
 #include "Editor/SceneInteractionManager.h"
 
 #include "Game/Behavior/BehaviorFactory.h"
-#include "Game/Behavior/Classes/WeaponPickupBehavior.h"
+#include "Game/Behavior/Classes/PickupBehavior.h"
+#include "Game/Player/PlayerController.h"
 #include "Game/Behavior/Classes/TurretBehavior.h"
 #include "Game/Behavior/Classes/MeleeZombieBehavior.h"
 
@@ -59,8 +60,13 @@ WorldManager::WorldManager()
 	m_gameWorld.addSystem(m_particleSystem);
 	m_gameWorld.addSystem(m_behaviorSystem);
 
+    // Registered under BOTH names. "WeaponPickup" is what every already-placed
+    // .ent file says, and renaming a behavior must not silently turn placed
+    // pickups into inert props.
+    BehaviorFactory::Get().registerBehavior("Pickup",
+        [] { return std::make_unique<PickupBehavior>(); });
     BehaviorFactory::Get().registerBehavior("WeaponPickup",
-        [] { return std::make_unique<WeaponPickupBehavior>(); });
+        [] { return std::make_unique<PickupBehavior>(); });
     BehaviorFactory::Get().registerBehavior("Turret",
         [] { return std::make_unique<TurretBehavior>(); });
     BehaviorFactory::Get().registerBehavior("MeleeZombie",
@@ -68,14 +74,17 @@ WorldManager::WorldManager()
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());
+    m_gameplaySystem.init();
 
     m_gameWorld.refresh();
 }
 
 WorldManager::~WorldManager()
 {
+    m_gameplaySystem.destroy();
+
     m_gameWorld.removeAllSystems();
-    
+
     s_Instance = nullptr;
 }
 
@@ -388,6 +397,21 @@ void WorldManager::queueSceneSave(const std::string& file)
 	m_pendingSaveFile = file;
 }
 
+bool WorldManager::takePendingPlayerState(PlayerSaveState& out)
+{
+	if (!m_hasPendingPlayerState)
+		return false;
+
+	out = m_pendingPlayerState;
+
+	// One-shot. Cleared here rather than by the caller so two consumers cannot
+	// both apply the same sidecar — and so a load that finds no player.sav
+	// leaves the player exactly as they were rather than resetting them.
+	m_hasPendingPlayerState = false;
+
+	return true;
+}
+
 void WorldManager::importScene(const std::string& file)
 {
 	const bool isZip = file.size() >= 4 &&
@@ -503,6 +527,43 @@ void WorldManager::importScene(const std::string& file)
 		}
 
 		// (CSG brushes were loaded before the entities — see above)
+
+		// Stage the player sidecar if this pak carries one. A map saved from the
+		// editor has none, and its absence is what makes a fresh start of that
+		// map behave exactly as it did before any of this existed.
+		//
+		// STAGED, NOT APPLIED — see hasPendingPlayerState() for why.
+		m_hasPendingPlayerState = false;
+
+		irr::io::IReadFile* saveFile = fs->createAndOpenFile("player.sav");
+		if (saveFile)
+		{
+			std::vector<char> saveBuf(static_cast<size_t>(saveFile->getSize()));
+			saveFile->read(saveBuf.data(), static_cast<irr::u32>(saveBuf.size()));
+			saveFile->drop();
+
+			std::string tmpSave = file.substr(0, file.size() - 4) + "_tmp_player.sav";
+			{
+				std::ofstream ofs(tmpSave, std::ios::binary);
+				ofs.write(saveBuf.data(), static_cast<std::streamsize>(saveBuf.size()));
+			}
+
+			try
+			{
+				std::ifstream ifs(tmpSave);
+				cereal::XMLInputArchive ar(ifs);
+				ar(m_pendingPlayerState);
+
+				m_hasPendingPlayerState = true;
+			}
+			catch (std::exception& ex)
+			{
+				spdlog::warn("WorldManager::importScene: player.sav in '{}' could not be read ({}) — starting fresh",
+				    file, ex.what());
+			}
+
+			std::remove(tmpSave.c_str());
+		}
 
 		// Load baked navmesh if present
 		if (NavigationManager::Get())
@@ -744,13 +805,43 @@ void WorldManager::exportScene(const std::string& file)
 		brushLightmapCount = brushLightmapFiles.size();
 	}
 
+	// 6. The player sidecar — health, reserve ammunition, which weapons are
+	//    carried and what is in each of them.
+	//
+	//    GAME MODE ONLY. An editor map save must never bake the editor's dummy
+	//    player inventory into the level, or every fresh start of that map would
+	//    hand the player whatever happened to be in hand when it was saved.
+	bool wrotePlayerState = false;
+	std::string playerData;
+
+	if (!Engine::Get()->isEditorMode() && g_PlayerController)
+	{
+		PlayerSaveState state;
+
+		if (g_PlayerController->capturePlayerState(state))
+		{
+			std::ostringstream playerStream;
+			{
+				cereal::XMLOutputArchive ar(playerStream);
+				ar(state);
+			}
+			playerData = playerStream.str();
+
+			mz_zip_writer_add_mem(&zip, "player.sav",
+			    playerData.data(), playerData.size(), MZ_DEFAULT_COMPRESSION);
+
+			wrotePlayerState = true;
+		}
+	}
+
 	if (!mz_zip_writer_finalize_archive(&zip))
 		spdlog::error("WorldManager::exportScene: failed to finalise zip '{}'", file);
 
 	mz_zip_writer_end(&zip);
 
-	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), {} brush(es), {} brush lightmap(s), navmesh: {})",
-	    file, lightmapFiles.size(), propCount, brushCount, brushLightmapCount, navBytes.empty() ? "no" : "yes");
+	spdlog::info("WorldManager::exportScene: saved '{}' ({} lightmap(s), {} prop(s), {} brush(es), {} brush lightmap(s), navmesh: {}, player: {})",
+	    file, lightmapFiles.size(), propCount, brushCount, brushLightmapCount,
+	    navBytes.empty() ? "no" : "yes", wrotePlayerState ? "yes" : "no");
 }
 
 bool WorldManager::getCVarExists(const std::string& name)

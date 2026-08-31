@@ -23,6 +23,8 @@ void Weapon_Shotgun::init()
 	m_descriptor.name = "Player_Weapon_Shotgun";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_SHOTGUN;
+
 	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.1350f, 0.0450f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
 	m_viewScaleOffset = irr::core::vector3df(0.01f, 0.01f, 0.01f);
@@ -329,10 +331,15 @@ void Weapon_Shotgun::update()
 	case State::Reloading:
 		if (animEnded)
 		{
+			// One clip, one shell, one shell out of the pool. Nothing to guard
+			// against double-crediting here: each pass through this state thumbs
+			// exactly one shell in, so the draw is naturally per-round.
 			if (m_shells < m_magSize)
-				m_shells++;
+				m_shells += drawFromReserve(1);
 
-			if (m_shells < m_magSize)
+			// Stop when the tube is full OR when the pool has run dry — without
+			// the second test an empty reserve loops the loading clip forever.
+			if (m_shells < m_magSize && reserveRemaining() > 0)
 				enterState(State::Reloading);
 			else
 				enterState(State::ReloadEnd);
@@ -675,12 +682,19 @@ void Weapon_Shotgun::fire()
 		{
 			entityid hitID = raycastResult.node->getID();
 
-			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(hitID, static_cast<unsigned int>(m_damagePerPellet));
+			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(
+				hitID, static_cast<unsigned int>(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
+				DamageContext::fromImpact(raycastResult.point, raycastResult.normal, pelletDir));
 			if (static_cast<int>(r) > static_cast<int>(bestResult))
 				bestResult = r;
 
-			// Smoke-heavy impact fanned off the surface + per-pellet bullet hole
-			m_effects.impact(raycastResult.point, raycastResult.normal);
+			// Smoke-heavy impact fanned off the surface + per-pellet bullet hole.
+			// Skipped when the pellet found something damageable: GoreManager has
+			// already put blood there, and sparking off flesh looks wrong.
+			// (HIT_RESULT rather than a component test because this path resolves
+			// the target by node id and never fetches the entity.)
+			if (r == HIT_RESULT::NONE)
+				m_effects.impact(raycastResult.point, raycastResult.normal);
 		}
 	}
 
@@ -715,6 +729,15 @@ void Weapon_Shotgun::reload()
 
 	if (m_shells >= m_magSize)
 		return; // tube is full — don't burn a clip per shell for nothing
+
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
 
 	// Only the first shell is started here; the Reloading state re-enters itself
 	// once per shell until the tube is full, so the reload costs exactly as long

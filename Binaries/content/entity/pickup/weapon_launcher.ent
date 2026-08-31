@@ -61,7 +61,7 @@
         <behavior>
             <value0>
                 <behaviorType>WeaponPickup</behaviorType>
-                <properties>weaponType=8|ammoAmount=6|ammoType=0|bobSpeed=1.500000|spinSpeed=45.000000|pickupRadius=1.000000</properties>
+                <properties>weaponType=8|ammoAmount=-1|ammoType=-1|bobSpeed=1.500000|spinSpeed=45.000000|pickupRadius=1.000000</properties>
             </value0>
         </behavior>
     </entity>

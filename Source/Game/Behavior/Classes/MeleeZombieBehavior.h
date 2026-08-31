@@ -12,6 +12,10 @@ public:
     void update(anax::Entity& entity, float dt) override;
     void persist(anax::Entity& entity, float dt) override;
 
+    // A zombie bleeds. Everything downstream (GoreManager wound/kill/gib) keys
+    // off this instead of the retired NPCComponent.
+    IMPACT_SURFACE bloodType() const override { return IMPACT_FLESH; }
+
     std::vector<BehaviorProperty> getProperties() override
     {
         return {

@@ -3,9 +3,9 @@
 	<value0>
 		<drawPointLightBounds>false</drawPointLightBounds>
 		<useSnap>true</useSnap>
-		<snapX>1</snapX>
-		<snapY>1</snapY>
-		<snapZ>1</snapZ>
+		<snapX>0.25</snapX>
+		<snapY>0.25</snapY>
+		<snapZ>0.25</snapZ>
 		<snapAngle>5</snapAngle>
 	</value0>
 </cereal>

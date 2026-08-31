@@ -88,7 +88,8 @@ void DecalManager::spawn(const core::vector3df& pos,
                          const core::vector3df& normal,
                          float size,
                          const std::string& texture,
-                         float lifetime)
+                         float lifetime,
+                         DECAL_CLASS cls)
 {
     auto* rm  = RenderManager::Get();
     auto* tex = rm->driver()->getTexture(texture.c_str());
@@ -131,9 +132,23 @@ void DecalManager::spawn(const core::vector3df& pos,
     d.texture = tex;
     d.life    = lifetime;
     d.maxLife = lifetime;
+    d.cls     = cls;
 
     if (m_decals.size() >= MAX_DECALS)
-        m_decals.erase(m_decals.begin());
+    {
+        // Evict the oldest decal of the same class, so a gore burst cannot wipe
+        // out the player's bullet holes (or vice versa). Falls back to the
+        // outright oldest when this class holds nothing yet.
+        auto victim = m_decals.end();
+
+        for (auto it = m_decals.begin(); it != m_decals.end(); ++it)
+        {
+            if (it->cls == cls) { victim = it; break; }
+        }
+
+        m_decals.erase(victim != m_decals.end() ? victim : m_decals.begin());
+    }
+
     m_decals.push_back(d);
 }
 

@@ -217,6 +217,8 @@ void Weapon_SkullStaff::init()
 	m_descriptor.name = "Player_Weapon_SkullStaff";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_SKULLSTAFF;
+
 	// skullstaff_animated.glb carries the same arms rig as the rest of the glTF
 	// pack — identical joint names, identical 'arms' root at (0, 2.945, -17.671).
 	// Held out in one hand, and the staff is 91 model units tall with the skull
@@ -422,7 +424,7 @@ void Weapon_SkullStaff::enterState(State next)
 
 	case State::Idle:
 	default:
-		setClipSpeed(1.0f);
+		setClipSpeed(m_idleSpeed);
 		playAnimation("idle");
 		break;
 	}

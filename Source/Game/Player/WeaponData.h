@@ -31,17 +31,93 @@ enum PLAYER_WEAPON
 	WEAP_SKULLSTAFF,
 	WEAP_SAWNOFFS,
 	WEAP_PITCHFORK,
+	WEAP_RIFLE,
+	WEAP_SMG,
 	WEAP_COUNT
 };
 
+// --- Selection buckets -------------------------------------------------------
+// Half-Life 2 style weapon slots: a number key selects a CATEGORY, and pressing
+// it again cycles the weapons inside it. The pack outgrew one-key-per-weapon at
+// fifteen weapons and ten keys, and category slots are the answer that does not
+// run out again.
+//
+// The value IS the key the player presses, so WEAPCAT_MELEE is bucket 1. Keep
+// them contiguous from 1 and keep WEAPCAT_COUNT last.
+enum WEAPON_CATEGORY
+{
+	WEAPCAT_NONE = 0,  // empty hands; not a bucket, and reached with 0
+	WEAPCAT_MELEE,     // 1  knife, pitchfork
+	WEAPCAT_SIDEARM,   // 2  revolver
+	WEAPCAT_SHOTGUN,   // 3  shotgun, sawn-offs
+	WEAPCAT_AUTOMATIC, // 4  smg, rifle, heavy rifle, dual smgs
+	WEAPCAT_HEAVY,     // 5  lmg, sniper
+	WEAPCAT_EXPLOSIVE, // 6  grenade launcher
+	WEAPCAT_EXOTIC,    // 7  crossbow, skull staff
+	WEAPCAT_COUNT
+};
+
+// Which bucket a weapon sits in. Defined ONCE, here, rather than as a key->weapon
+// table inside the input handler: a table in the input code would be a second
+// place that enumerates weapons, and it would rot exactly the way the console's
+// hardcoded "give <0-12>" usage string did. Adding a weapon means touching this
+// file, which is the same file its ammo type already lives in.
+WEAPON_CATEGORY weaponCategory(PLAYER_WEAPON weapon);
+
+// For the selection HUD. weaponIconPath() returns nullptr when a weapon has no
+// icon, so the HUD can fall back to text rather than drawing a broken texture.
+const char* weaponDisplayName(PLAYER_WEAPON weapon);
+const char* weaponIconPath(PLAYER_WEAPON weapon);
+
+// THE ORDER OF THIS ENUM IS A FILE FORMAT. Pickup .ent files store ammoType as
+// a raw integer, and player.sav stores the reserve array indexed by it, so
+// reordering silently reassigns every placed pickup and every existing save.
+// Append only, and keep AMMO_COUNT last.
 enum AMMO_TYPE
 {
-	AMMO_NONE,
-	AMMO_LIGHT,
-	AMMO_HEAVY,
-	AMMO_ENERGY,
-	AMMO_ROCKET,
+	AMMO_NONE,    // no reserve at all: melee weapons, and pickups granting no ammo
+	AMMO_LIGHT,   // dual SMGs, pistol
+	AMMO_HEAVY,   // heavy rifle, LMG — the belt drains a pool the rifle also needs
+	AMMO_MAGNUM,  // revolver
+	AMMO_SHELL,   // shotgun, sawn-offs
+	AMMO_MATCH,   // sniper
+	AMMO_BOLT,    // crossbow
+	AMMO_GRENADE, // launcher
+	AMMO_ENERGY,  // legacy sci-fi set
+	AMMO_ROCKET,  // legacy sci-fi set
 	AMMO_COUNT
+};
+
+// Sentinel for a pickup's ammoType/ammoAmount properties: "ask the weapon".
+// Deliberately NOT a member of AMMO_TYPE — it is never a valid index into the
+// reserve array. AMMO_NONE keeps its own distinct meaning on a pickup: hand over
+// the weapon and no ammunition whatsoever.
+#define _ammo_auto (-1)
+
+// Which pool a weapon draws from. AMMO_NONE means it never reloads from a
+// reserve — melee, and anything not deliberately given a pool.
+AMMO_TYPE weaponAmmoType(PLAYER_WEAPON weapon);
+
+// Reserve rounds a pickup of this weapon hands over when its ammoAmount is
+// _ammo_auto. Lives here rather than in twelve .ent files so retuning one
+// weapon's generosity is a one-line edit.
+int weaponPickupAmmo(PLAYER_WEAPON weapon);
+
+// Cap on the pool itself. AMMO_NONE reports 0; drawFromReserve() treats that
+// pool as infinite rather than empty, so melee weapons need no special case.
+int ammoReserveMax(AMMO_TYPE type);
+
+// Magazine contents, in a shape general enough to serialize every weapon in the
+// pack without the save code knowing about any of them.
+//
+// Four slots because one int is lossy: the sawn-offs genuinely track two guns
+// independently, and the revolver needs its live/spent chamber split. The charge
+// is separate because mana is a float and is not ammunition — it regenerates, so
+// it has no pool and no pickup, but it still has to survive a checkpoint.
+struct WeaponMagState
+{
+	int   slots[4] = { -1, -1, -1, -1 }; // -1 = slot unused by this weapon
+	float charge   = -1.0f;              // -1 = weapon has no charge resource
 };
 
 struct BurnDecal
@@ -182,7 +258,29 @@ public:
 		irr::video::E_MATERIAL_TYPE material = irr::video::EMT_SOLID; // real material, restored on show
 		irr::scene::IBoneSceneNode* bone     = nullptr;               // transform probe; draws nothing itself
 		bool                        visible  = true;
+
+		// The joint that actually MOVES this part, which is NOT `bone`.
+		//
+		// GltfImport attaches geometry to the joint of the node that carries the
+		// mesh — the leaf, e.g. "bullet_sniper_0" — and that leaf has no animation
+		// channels of its own. Its motion comes entirely from its parent, so
+		// bone->getPosition() is a CONSTANT and any displacement test against it
+		// silently never fires. (bone->getAbsoluteTransformation() is animated and
+		// is fine; it is the LOCAL transform that is dead.)
+		//
+		// animBone is that parent — "bullet" — whose local position is keyed and
+		// therefore actually moves. Use partOffset() rather than reading either
+		// of these directly.
+		irr::scene::ISceneNode*     animBone = nullptr;
 	};
+
+	// How far a part currently sits from wherever it rests, in its own parent's
+	// space — so it measures the PART moving, not the gun being swung around.
+	// Returns zero when the part never resolved.
+	irr::core::vector3df partPosition(const MeshPart& part) const
+	{
+		return part.animBone ? part.animBone->getPosition() : irr::core::vector3df(0.0f, 0.0f, 0.0f);
+	}
 
 	// Matches the first joint whose name starts with jointNamePrefix AND carries
 	// geometry — the prefix form survives a re-export renaming the "_weapon_0"
@@ -242,6 +340,11 @@ public:
 	static void playEquipSound();
 	static void playUnequipSound();
 
+	// Cue for a reload the player asked for and cannot have. Silence reads as a
+	// dropped input, which sends them pressing reload again instead of going to
+	// look for ammunition.
+	static void playEmptyReserveSound();
+
 	// Preloads the two sounds above. Called once by WeaponController alongside the
 	// per-weapon precache() pass, so no single weapon has to own assets they all
 	// share — and so the first draw of the session doesn't hitch on a disk read.
@@ -283,7 +386,42 @@ public:
 	};
 	virtual bool debugBallistics(BallisticTuning&) { return false; }
 
+	// --- Identity ------------------------------------------------------------
+	// Set by each weapon in init(). Everything that maps a weapon to a pool, a
+	// save record or an ownership flag goes through this rather than through the
+	// weapon's index in WeaponController::m_player_weapon — the registration
+	// order there matches this enum today only by coincidence, and one weapon
+	// registered out of order would shift every index under an old save.
+	PLAYER_WEAPON weaponType() const { return m_weapon_type; }
+
+	// Rounds in the gun, for the HUD. -1 means "this weapon has no ammunition
+	// readout" — melee and the pitchfork — and the HUD draws nothing.
+	//
+	// Deliberately its own accessor rather than reading slot 0 of saveMagState():
+	// the staff keeps its SELECTED SPELL in that slot, and a readout wired to the
+	// save shape would have displayed the spell index as a round count.
+	virtual int displayAmmo() const { return -1; }
+
+	// --- Save state ----------------------------------------------------------
+	// Weapons that hold rounds override these; the default pair is a no-op, which
+	// is correct for melee and for anything that has nothing to remember.
+	virtual void saveMagState(WeaponMagState&) const {}
+	virtual void loadMagState(const WeaponMagState&) {}
+
+	// Rounds left in the pool this weapon feeds from. Reported as INT_MAX for
+	// AMMO_NONE so "is there anything to reload with" reads the same everywhere.
+	int reserveRemaining() const;
+
 protected:
+	// Moves up to 'want' rounds out of the shared reserve and into the magazine,
+	// returning what was ACTUALLY moved so a weapon can tell a full reload from a
+	// partial one. The LMG needs that distinction — its belt arc is drawn from
+	// the round count, so a short draw renders a visibly short belt for free.
+	//
+	// Weapons on AMMO_NONE get 'want' back unchanged, which is what keeps melee
+	// out of this entirely.
+	int drawFromReserve(int want);
+
 	// Drives the viewmodel node from the clip named in m_mesh.animationList, so
 	// frame ranges are declared once in init() instead of being repeated (and
 	// drifting) at every call site. Loop mode comes from the clip's own flag.
@@ -292,12 +430,12 @@ protected:
 
 	bool picked_up;
 
-	unsigned int m_current_ammo;
-
 	irr::core::vector3df m_viewPositionOffset, m_viewRotationOffset, m_viewScaleOffset;
 
-	PLAYER_WEAPON m_weapon_type;
-	AMMO_TYPE m_ammo_type;
+	// Every weapon sets this in init(). The old m_current_ammo/m_ammo_type pair
+	// that sat here was written and read by nobody: rounds live in each weapon's
+	// own magazine member, and the pool is looked up with weaponAmmoType().
+	PLAYER_WEAPON m_weapon_type = WEAP_NONE;
 
 	DescriptorComponent m_descriptor;
 	MeshComponent m_mesh;

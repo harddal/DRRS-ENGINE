@@ -18,6 +18,8 @@
 
 #include "Engine/Renderer/RenderManager.h"
 
+#include "Game/Player/PlayerSaveState.h"
+
 struct GlobalCVar
 {
     std::string name, value;
@@ -264,6 +266,26 @@ public:
 	void exportScene(const std::string& file);
 	void queueSceneSave(const std::string& file);
 
+	// --- Staged player state -------------------------------------------------
+	// importScene() only STAGES what it finds in a .pak's player.sav; it never
+	// applies it. The two load paths run in opposite orders and applying directly
+	// loses under both:
+	//
+	//   Boot        GameManager::init() runs loadScene() BEFORE
+	//               PlayerController::init(), and WeaponController::init() clears
+	//               ownership and the ammo pools — anything applied during the
+	//               import is wiped moments later.
+	//   Checkpoint  AS_LoadScene() runs loadScene() and does NOT re-init the
+	//               controller, so a hook on init() never fires at all.
+	//
+	// Staging suits both: PlayerController::update() takes it on the next frame,
+	// whichever way round the load happened, and any load path added later gets
+	// the behaviour without knowing this exists.
+	bool hasPendingPlayerState() const { return m_hasPendingPlayerState; }
+
+	// One-shot: clears the flag, so two consumers cannot both apply it.
+	bool takePendingPlayerState(PlayerSaveState& out);
+
 	SceneDescriptor getCurrentSceneDescriptor() const { return m_currentSceneDescriptor; }
 	void setCurrentSceneDescriptor(SceneDescriptor& desc) { m_currentSceneDescriptor = desc; }
 	
@@ -325,6 +347,9 @@ private:
     std::vector<entityid> m_killedEntityIDQueue;
     std::vector<EntitySpawnDescriptor> m_entitySpawnQueue;
     std::string m_pendingSaveFile;
+
+    PlayerSaveState m_pendingPlayerState;
+    bool            m_hasPendingPlayerState = false;
 
     std::array<bool, _entity_null_value> m_entityIDArray;
 

@@ -60,11 +60,11 @@
                 <navCookable>false</navCookable>
             </value0>
         </mesh>
-        <script>
+        <behavior>
             <value0>
-                <script>content/script/pickup/rocket_pile.asc</script>
-                <data/>
+                <behaviorType>WeaponPickup</behaviorType>
+                <properties>weaponType=0|ammoAmount=5|ammoType=7|bobSpeed=0.000000|spinSpeed=0.000000|pickupRadius=1.000000|pickupSound=content/sound/pickup/shotgun_shell_pile.wav</properties>
             </value0>
-        </script>
+        </behavior>
     </entity>
 </cereal>

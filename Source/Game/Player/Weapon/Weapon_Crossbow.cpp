@@ -33,6 +33,8 @@ void Weapon_Crossbow::init()
 	m_descriptor.name = "Player_Weapon_Crossbow";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_CROSSBOW;
+
 	// Same arms rig as the other glTF weapons, so the same starting transform.
 	// Tune with the viewmodel debug UI (F2), not by guessing here.
 	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.21f, 0.1800f);
@@ -278,12 +280,18 @@ void Weapon_Crossbow::update()
 		// a switch after f75 keeps it — the same "credit as it is seated" rule the
 		// revolver uses per round. Before f75 the crossbow is genuinely empty and
 		// holsters that way.
-		if (frame >= static_cast<irr::f32>(m_boltSeatFrame))
-			m_boltLoaded = true;
+		// m_boltLoaded doubles as the credit guard: both this and the animEnded
+		// path below run the same draw, and testing it is what stops a recock
+		// that reaches both from taking two bolts out of the quiver for one on
+		// the rail. A dry quiver leaves it false, and the gun holsters empty.
+		if (frame >= static_cast<irr::f32>(m_boltSeatFrame) && !m_boltLoaded)
+			m_boltLoaded = drawFromReserve(1) > 0;
 
 		if (animEnded)
 		{
-			m_boltLoaded = true; // clip ran out; covers a frame skipped past f75
+			if (!m_boltLoaded) // clip ran out; covers a frame skipped past f75
+				m_boltLoaded = drawFromReserve(1) > 0;
+
 			enterState(State::Idle);
 		}
 
@@ -651,6 +659,7 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 		irr::core::vector3df hitPoint  = currentPos;
 		irr::core::vector3df hitNormal(0.0f, 1.0f, 0.0f);
 		entityid hitID = _entity_null_value;
+		bool     hitIsFlesh = false;
 
 		if (hit.hit && hit.node)
 		{
@@ -669,6 +678,10 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 					hitPoint  = hit.point;
 					hitNormal = hit.normal;
 					hitID     = hitDescriptor.id;
+
+					// Captured here because hitEntity goes out of scope before the
+					// impact-effect decision below.
+					hitIsFlesh = hitEntity.hasComponent<DamageReceiverComponent>();
 				}
 			}
 			else if (RenderManager::isWorldGeometryNode(hit.node))
@@ -686,8 +699,11 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 			// reason for it not to have hurt.
 			if (hitID != _entity_null_value)
 			{
+				// The bolt's own flight vector is the shot direction here — there is
+				// no camera ray, the projectile has been travelling on its own.
 				registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-					hitID, static_cast<unsigned int>(m_damage)));
+					hitID, static_cast<unsigned int>(m_damage), DAMAGE_TYPE::DEFAULT,
+					DamageContext::fromImpact(hitPoint, hitNormal, it->velocity)));
 			}
 
 			if (materialHoldsBolt(surfaceMaterialAt(hit)))
@@ -718,8 +734,10 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 				continue;
 			}
 
-			// Hard surface — shatter, exactly as before.
-			m_effects.impact(hitPoint, hitNormal);
+			// Hard surface — shatter, exactly as before. Flesh gets no shatter
+			// sparks: GoreManager has already put blood at the wound.
+			if (!hitIsFlesh)
+				m_effects.impact(hitPoint, hitNormal);
 
 			if (it->entity.hasComponent<DescriptorComponent>())
 				WorldManager::Get()->killEntityByID(it->entity.getComponent<DescriptorComponent>().id);
@@ -816,6 +834,17 @@ void Weapon_Crossbow::move()
 
 void Weapon_Crossbow::reload()
 {
-	// Nothing to do. The recock is part of every shot — see the Firing state —
-	// and there is no partial magazine to top up.
+	// Normally nothing to do: the recock is part of every shot — see the Firing
+	// state — and there is no partial magazine to top up.
+	//
+	// The exception is a crossbow whose recock came up dry. It then sits empty
+	// until bolts turn up, and this is the only route back to loaded, because
+	// nothing else will run the recock again.
+	if (m_boltLoaded || m_state != State::Idle)
+		return;
+
+	if (reserveRemaining() <= 0)
+		return;
+
+	enterState(State::Reloading);
 }

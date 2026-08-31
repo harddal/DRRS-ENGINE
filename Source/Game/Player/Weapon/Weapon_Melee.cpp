@@ -48,6 +48,8 @@ void Weapon_Melee::init()
 	m_descriptor.name = "Player_Weapon_Melee";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_MELEE;
+
 	m_viewPositionOffset = irr::core::vector3df(0.1200f, -0.0650f, 0.3100f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(0.01f, 0.01f, 0.01f);

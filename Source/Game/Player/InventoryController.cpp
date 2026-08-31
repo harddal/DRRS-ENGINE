@@ -1,1010 +1,368 @@
 #include "InventoryController.h"
 
-#include "Game/Components.h"
+#include <IMGUI/imgui.h>
+#include <spdlog/spdlog.h>
+
+#include "Engine/Engine.h"
+#include "Engine/Input/InputManager.h"
+#include "Engine/Renderer/RenderManager.h"
+#include "Engine/Script/ScriptManager.h"
 
 #include "Game/Item/ItemDatabase.h"
-#include "Engine/Resource/FilePaths.h"
-#include "PlayerController.h"
-#include <IMGUI/imgui_internal.h>
 
-using namespace ImGui;
+bool g_PlayerInventoryIsDisplaying = false;
+bool g_LockPlayerForInput          = false;
 
-#undef MB_RIGHT
-
-#define _inventory_data g_PlayerData.inventoryData
-
-#define _inventory_y_offset 8
-#define _slot_size_px 64
-#define _slot_spacing 1
-#define _slot_half_px (_slot_size_px / 32)
-#define _slot_spacing_px (_slot_size_px + 1)
-#define _current_gridslot (x + _inventory_data.size.X * y)
-
-#define _slot_position_x (x * _slot_spacing_px + ((RenderManager::Get()->getConfiguration().width / 2)  - _inventory_data.size.X * (_slot_size_px / 2)))
-#define _slot_position_y ((y * _slot_spacing_px) + _inventory_y_offset) 
-#define _slot_position_vec2 irr::core::vector2di(_slot_position_x, _slot_position_y)
-
-#define _mouse_over_slot (mouse_position.X > _slot_position_x - 1 && mouse_position.X < _slot_position_x + 65 && mouse_position.Y > _slot_position_y - 1 && mouse_position.Y < _slot_position_y + 65)
-
-#define _spell_slot_size_x 64
-#define _spell_slot_size_y 64
-#define _spell_slot_1_pos (irr::core::vector2di(((RenderManager::Get()->getConfiguration().width / 2)  - (_spell_slot_size_x)) + 128 - 27 + 0, _inventory_y_offset + (_slot_size_px * 3) + 10))
-#define _spell_slot_2_pos (irr::core::vector2di(((RenderManager::Get()->getConfiguration().width / 2)  - (_spell_slot_size_x)) + 192 - 27 + 1, _inventory_y_offset + (_slot_size_px * 3) + 10))
-#define _spell_slot_3_pos (irr::core::vector2di(((RenderManager::Get()->getConfiguration().width / 2)  - (_spell_slot_size_x)) + 256 - 27 + 2, _inventory_y_offset + (_slot_size_px * 3) + 10))
-#define _spell_slot_4_pos (irr::core::vector2di(((RenderManager::Get()->getConfiguration().width / 2)  - (_spell_slot_size_x)) + 320 - 27 + 3, _inventory_y_offset + (_slot_size_px * 3) + 10))
-
-#define _mouse_over_spell_slot_1 (mouse_position.X > _spell_slot_1_pos.X - 1 && mouse_position.X < _spell_slot_1_pos.X + 65 && mouse_position.Y > _spell_slot_1_pos.Y - 1 && mouse_position.Y < _spell_slot_1_pos.Y + 65)
-#define _mouse_over_spell_slot_2 (mouse_position.X > _spell_slot_2_pos.X - 1 && mouse_position.X < _spell_slot_2_pos.X + 65 && mouse_position.Y > _spell_slot_2_pos.Y - 1 && mouse_position.Y < _spell_slot_2_pos.Y + 65)
-#define _mouse_over_spell_slot_3 (mouse_position.X > _spell_slot_3_pos.X - 1 && mouse_position.X < _spell_slot_3_pos.X + 65 && mouse_position.Y > _spell_slot_3_pos.Y - 1 && mouse_position.Y < _spell_slot_3_pos.Y + 65)
-#define _mouse_over_spell_slot_4 (mouse_position.X > _spell_slot_4_pos.X - 1 && mouse_position.X < _spell_slot_4_pos.X + 65 && mouse_position.Y > _spell_slot_4_pos.Y - 1 && mouse_position.Y < _spell_slot_4_pos.Y + 65)
-
-#define _equip_slot_2h_size_x 256
-#define _equip_slot_2h_size_y 64
-#define _equip_slot_position_2h (irr::core::vector2di((RenderManager::Get()->getConfiguration().width / 2)  - (_equip_slot_2h_size_x) - 32, _inventory_y_offset + (_slot_size_px * 3) + 10))
-
-#define _mouse_over_equip_slot_2h (mouse_position.X > _equip_slot_position_2h.X && mouse_position.X < _equip_slot_position_2h.X + _equip_slot_2h_size_x && mouse_position.Y > _equip_slot_position_2h.Y + (_slot_spacing * 4) && mouse_position.Y < _equip_slot_position_2h.Y + (_slot_spacing * 4) + _equip_slot_2h_size_y)
-
-#define ITEM_NAME_TOOLTIP_OFFSET_Y 20
-
-bool g_PlayerInventoryIsDisplaying, g_LockPlayerForInput;
-
-void SetIMGUI_PlayerInventoryTheme()
+namespace
 {
-    ImGui::PushStyleColor(ImGuiCol_Text,             ImVec4(0.898f, 0.850f, 0.858f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TextDisabled,     ImVec4(0.498f, 0.450f, 0.458f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,         ImVec4(0.1f  , 0.1f  , 0.1f  , 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_MenuBarBg,        ImVec4(0.5f  , 0.5f  , 0.5f  , 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Header,           ImVec4(0.2f  , 0.3f  , 0.6f  , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered,    ImVec4(0.2f  , 0.3f  , 0.6f  , 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive,     ImVec4(0.2f  , 0.3f  , 0.6f  , 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg,          ImVec4(0.5f  , 0.5f  , 0.5f  , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgCollapsed, ImVec4(0.5f  , 0.5f  , 0.5f  , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive,    ImVec4(0.2f  , 0.3f  , 0.6f  , 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Button,           ImVec4(0.1f  , 0.1f  , 0.1f  , 0.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,    ImVec4(0.45f , 0.72f , 0.72f , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive,     ImVec4(0.84f , 0.78f , 0.78f , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_SliderGrab,       ImVec4(0.45f , 0.72f , 0.72f , 0.5f));
-    ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4(0.847f, 0.780f, 0.650f, 1.f));
-    ImGui::PushStyleColor(ImGuiCol_PopupBg,          ImVec4(0.0f  , 0.0f  , 0.0f  , 0.0f));
+	// Icons are square and drawn at a fixed size rather than scaled to the panel:
+	// every item icon in content/texture/ui/item is 64px, and letting them stretch
+	// with the window made the small ones mushy.
+	const float kIconSize    = 64.0f;
+	const float kPanelWidth  = 620.0f;
+	const float kPanelHeight = 420.0f;
+
+	void pushInventoryTheme()
+	{
+		ImGui::PushStyleColor(ImGuiCol_Text,          ImVec4(0.898f, 0.850f, 0.858f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_TextDisabled,  ImVec4(0.498f, 0.450f, 0.458f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_WindowBg,      ImVec4(0.08f,  0.08f,  0.09f,  0.96f));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg,       ImVec4(0.11f,  0.11f,  0.12f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Border,        ImVec4(0.26f,  0.26f,  0.28f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_TitleBg,       ImVec4(0.14f,  0.14f,  0.15f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.20f,  0.30f,  0.60f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Tab,           ImVec4(0.14f,  0.14f,  0.15f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_TabHovered,    ImVec4(0.28f,  0.40f,  0.68f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_TabActive,     ImVec4(0.20f,  0.30f,  0.60f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.18f,  0.18f,  0.20f,  1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.45f,  0.72f,  0.72f,  0.6f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.84f,  0.78f,  0.78f,  0.6f));
+	}
+
+	const int kThemeColorCount = 13;
 }
 
 void InventoryController::init()
 {
-    m_leftHandEquipedItem  = std::string();
-    m_rightHandEquipedItem = std::string();
-    m_twoHandEquipedItem   = std::string();
+	m_displayInventory = false;
+	m_selected         = static_cast<size_t>(-1);
+	m_activeCategory.clear();
 
-    g_LockPlayerForInput = m_displayInventory = m_draggingItem = false;
-    m_display_ui_info = m_display_ui_stats = m_display_ui_misc = m_display_ui_container = false;
-    m_draggedItemPrevSlot = m_currentActivatedItemSlot = ITEM_NULL_ID;
+	g_PlayerInventoryIsDisplaying = false;
+	g_LockPlayerForInput          = false;
 
-    _inventory_data.size = irr::core::vector2di(g_PlayerData.inventoryData.size.X, g_PlayerData.inventoryData.size.Y);
-
-    for (auto y = 0; y < _inventory_data.size.Y; y++) {
-        for (auto x = 0; x < _inventory_data.size.X; x++) {
-            _inventory_data.contents.emplace_back(Item());
-        }
-    }
-
-    m_slotImage   = RenderManager::Get()->driver()->getTexture("content/texture/ui/gridslot.png");
-    m_slotImage1H = RenderManager::Get()->driver()->getTexture("content/texture/ui/gridslot_1h.png");
-    m_slotImage2H = RenderManager::Get()->driver()->getTexture("content/texture/ui/gridslot_2h.png");
-
-    m_leftHandEquipSlot  = Item();
-    m_rightHandEquipSlot = Item();
-    m_twoHandEquipSlot   = Item();
-
-    m_currentClickedItem = Item();
+	// NOT cleared here. init() runs on every editor->game toggle and on every
+	// scene load, and the save sidecar is applied on the frame AFTER the load —
+	// wiping the pouch here would throw away what player.sav had just restored.
+	// A genuinely new game starts with an empty PlayerInventory anyway.
 }
 
-void InventoryController::update(PlayerData &data)
+bool InventoryController::canUseItem(const std::string& id) const
 {
-    static auto tab_pressed = false;
-    if (InputManager::Get()->getKeyPressOnce(KEY_TAB, &tab_pressed, true)) 
-	{
-        m_displayInventory = !m_displayInventory;
+	const ItemDef& def = ItemDatabase::Get(id);
 
-        InputManager::Get()->centerMouse();
-    }
+	// No definition, or no script: nothing can refuse the use. An item with no
+	// onUse at all is still "usable" — that is the right default for a key that
+	// a door script only ever tests with has().
+	if (!def.valid() || !def.scriptComponent.hasCanUseEventFunc)
+		return true;
+
+	return ScriptManager::Get()->executeBool(
+		def.scriptComponent, def.scriptComponent.canUseEventFunc, 0, /*fallback=*/true);
+}
+
+bool InventoryController::isUsable(const std::string& id) const
+{
+	const ItemDef& def = ItemDatabase::Get(id);
+
+	// No hook, no use. Consuming a keycard because someone clicked a button
+	// would be a way to destroy the key to the next door.
+	return def.valid() && def.scriptComponent.hasOnUseEventFunc;
+}
+
+bool InventoryController::useItem(const std::string& id)
+{
+	if (!isUsable(id))
+		return false;
+
+	if (!canUseItem(id))
+		return false;
+
+	const ItemDef& def = ItemDatabase::Get(id);
+
+	ScriptManager::Get()->execute(
+		def.scriptComponent, def.scriptComponent.onUseEventFunc, 0);
+
+	m_inventory.remove(id, 1);
+
+	// The selection is an index into a vector that just shrank. Cleared rather
+	// than clamped: after using the last medkit the player should be looking at
+	// nothing, not at whatever slid into that slot.
+	m_selected = static_cast<size_t>(-1);
+
+	return true;
+}
+
+bool InventoryController::giveItem(const std::string& id, int count, const std::string& data)
+{
+	const ItemDef& def = ItemDatabase::Get(id);
+	if (!def.valid())
+	{
+		spdlog::warn("InventoryController::giveItem(): unknown item '{}'", id);
+		return false;
+	}
+
+	if (count <= 0)
+		return false;
+
+	// Auto-use items are consumed on the spot — but only while the use would
+	// actually achieve something. A medkit walked over at full health falls
+	// through to storage instead of being wasted, which is the rule the old
+	// medkit_small.asc hand-rolled inline before there was anywhere to put it.
+	if (def.autoUse && isUsable(id))
+	{
+		int consumed = 0;
+
+		while (consumed < count && canUseItem(id))
+		{
+			ScriptManager::Get()->execute(
+				def.scriptComponent, def.scriptComponent.onUseEventFunc, 0);
+
+			++consumed;
+		}
+
+		count -= consumed;
+
+		if (count <= 0)
+			return true;
+	}
+
+	return m_inventory.add(id, count, data) > 0;
+}
+
+void InventoryController::update()
+{
+	static bool tabPressed = false;
+	if (InputManager::Get()->getKeyPressOnce(KEY_TAB, &tabPressed, true))
+	{
+		m_displayInventory = !m_displayInventory;
+		InputManager::Get()->centerMouse();
+	}
 
 	ImGui::GetIO().MouseDrawCursor = m_displayInventory;
 	InputManager::Get()->canProcessInput(!m_displayInventory);
 
-    g_PlayerInventoryIsDisplaying = m_displayInventory;
+	g_PlayerInventoryIsDisplaying = m_displayInventory;
 
-	static bool dragged_from_2h_slot = false, write_dropped_item_data = false;
-	static bool dragged_from_spell_slot_1 = false, dragged_from_spell_slot_2 = false, dragged_from_spell_slot_3 = false, dragged_from_spell_slot_4 = false;
-	static entityid dropped_item_id;
-	static std::string dropped_item_data;
+	if (!m_displayInventory)
+		return;
 
-	if (write_dropped_item_data)
-	{
-		auto ent = WorldManager::Get()->managerSystem()->getEntityByID(dropped_item_id);
-
-		if (ent.hasComponent<ItemComponent>())
-		{
-			ent.getComponent<ItemComponent>().data = dropped_item_data;
-		}
-
-		write_dropped_item_data = false;
-		dropped_item_id = _entity_null_value;
-		dropped_item_data = std::string();
-	}
-
-    if (m_displayInventory) 
-	{
-        SetIMGUI_PlayerInventoryTheme();
-
-        // Mouse position local to window
-        const auto mouse_position = irr::core::vector2di(
-            static_cast<int>(ImGui::GetIO().MousePos.x),
-            static_cast<int>(ImGui::GetIO().MousePos.y));
-
-        for (auto y = 0; y < _inventory_data.size.Y; y++) 
-		{
-            for (auto x = 0; x < _inventory_data.size.X; x++) 
-			{
-                if (!m_draggingItem) 
-                {
-                    // Activate items
-                    if (InputManager::Get()->isMouseButtonPressed(MB_RIGHT, true)) 
-					{
-                        if (_mouse_over_slot) 
-						{
-                            if (_inventory_data.contents.at(_current_gridslot).id < ITEM_NULL_ID) 
-							{
-                                if (!_inventory_data.contents.at(_current_gridslot).script.empty()) 
-								{
-                                    m_currentActivatedItemSlot = _current_gridslot;
-                                    m_currentActivatedItem = _inventory_data.contents.at(_current_gridslot);
-
-                                    ScriptManager::Get()->execute(
-                                        _inventory_data.contents.at(_current_gridslot).script_component,
-                                        _inventory_data.contents.at(_current_gridslot).script_component.onUseEventFunc,
-                                        _inventory_data.contents.at(_current_gridslot).id);
-                                }
-                            }
-                        }
-                    }
-
-                    bool cursor_out_of_bounds = false;
-
-                    // Detect item dragging
-                    if (InputManager::Get()->isMouseButtonPressed(MB_LEFT, true)) 
-					{
-                        if (_mouse_over_slot) 
-						{
-                            if (_inventory_data.contents.at(_current_gridslot).id < ITEM_NULL_ID) 
-							{
-                                m_currentClickedItem = m_currentDraggedItem = _inventory_data.contents.at(_current_gridslot);
-                                m_draggedItemPrevSlot = _current_gridslot;
-                                m_draggingItem = true;
-                            }
-                        }
-
-						if (_mouse_over_spell_slot_1)
-						{
-							if (m_spellSlot1Equip.id < ITEM_NULL_ID)
-							{
-								m_currentDraggedItem = m_spellSlot1Equip;
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_draggingItem = true;
-
-								dragged_from_spell_slot_1 = true;
-							}
-						}
-						if (_mouse_over_spell_slot_2)
-						{
-							if (m_spellSlot2Equip.id < ITEM_NULL_ID)
-							{
-								m_currentDraggedItem = m_spellSlot2Equip;
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_draggingItem = true;
-
-								dragged_from_spell_slot_2 = true;
-							}
-						}
-						if (_mouse_over_spell_slot_3)
-						{
-							if (m_spellSlot3Equip.id < ITEM_NULL_ID)
-							{
-								m_currentDraggedItem = m_spellSlot3Equip;
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_draggingItem = true;
-
-								dragged_from_spell_slot_3 = true;
-							}
-						}
-						if (_mouse_over_spell_slot_4)
-						{
-							if (m_spellSlot4Equip.id < ITEM_NULL_ID)
-							{
-								m_currentDraggedItem = m_spellSlot4Equip;
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_draggingItem = true;
-
-								dragged_from_spell_slot_4 = true;
-							}
-						}
-
-                        if (_mouse_over_equip_slot_2h) 
-						{
-                            if (m_twoHandEquipSlot.id < ITEM_NULL_ID) 
-							{
-                                m_currentDraggedItem = m_twoHandEquipSlot;
-                                m_draggedItemPrevSlot = ITEM_NULL_ID;
-                                m_draggingItem = true;
-
-								dragged_from_2h_slot = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // If dragging item
-        if (m_draggingItem) {
-            if (!InputManager::Get()->isMouseButtonPressed(MB_LEFT, true)) 
-			{
-                m_draggingItem = false;
-
-                bool is_mouse_out_of_bounds = true;
-
-                for (auto y = 0; y < _inventory_data.size.Y; y++) 
-				{
-                    for (auto x = 0; x < _inventory_data.size.X; x++) 
-					{
-                        if (_mouse_over_slot) 
-						{
-                            is_mouse_out_of_bounds = false;
-
-                            if (_inventory_data.contents.at(_current_gridslot).id == ITEM_NULL_ID) 
-							{
-                                _inventory_data.contents.at(_current_gridslot) = m_currentDraggedItem;
-
-                                if (m_draggedItemPrevSlot < ITEM_NULL_ID) 
-								{
-                                    _inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-                                }
-
-                                m_draggedItemPrevSlot = ITEM_NULL_ID;
-                                m_currentDraggedItem = Item();
-
-								if (dragged_from_2h_slot)
-								{
-									m_twoHandEquipSlot = Item();
-									dragged_from_2h_slot = false;
-								}
-								if (dragged_from_spell_slot_1)
-								{
-									m_spellSlot1Equip = Item();
-									dragged_from_spell_slot_1 = false;
-								}
-								if (dragged_from_spell_slot_2)
-								{
-									m_spellSlot2Equip = Item();
-									dragged_from_spell_slot_2 = false;
-								}
-								if (dragged_from_spell_slot_3)
-								{
-									m_spellSlot3Equip = Item();
-									dragged_from_spell_slot_3 = false;
-								}
-								if (dragged_from_spell_slot_4)
-								{
-									m_spellSlot4Equip = Item();
-									dragged_from_spell_slot_4 = false;
-								}
-
-                                break;
-                            }
-                        }
-
-						// Equip spell
-						if (_mouse_over_spell_slot_1)
-						{
-							is_mouse_out_of_bounds = false;
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot1Equip.id == ITEM_NULL_ID)
-							{
-								m_spellSlot1Equip = m_currentDraggedItem;
-								m_spellSlot1EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								break;
-							}
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot1Equip.id != ITEM_NULL_ID && !dragged_from_spell_slot_1)
-							{
-								auto unequippedItem = m_spellSlot1Equip;
-								
-								m_spellSlot1Equip = m_currentDraggedItem;
-								m_spellSlot1EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								pickupItem(unequippedItem);
-
-								break;
-							}
-						}
-						
-						if (_mouse_over_spell_slot_2)
-						{
-							is_mouse_out_of_bounds = false;
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot2Equip.id == ITEM_NULL_ID)
-							{
-								m_spellSlot2Equip = m_currentDraggedItem;
-								m_spellSlot2EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								break;
-							}
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot2Equip.id != ITEM_NULL_ID && !dragged_from_spell_slot_2)
-							{
-								auto unequippedItem = m_spellSlot2Equip;
-
-								m_spellSlot2Equip = m_currentDraggedItem;
-								m_spellSlot2EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								pickupItem(unequippedItem);
-
-								break;
-							}
-						}
-
-						if (_mouse_over_spell_slot_3)
-						{
-							is_mouse_out_of_bounds = false;
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot3Equip.id == ITEM_NULL_ID)
-							{
-								m_spellSlot3Equip = m_currentDraggedItem;
-								m_spellSlot3EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								break;
-							}
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot3Equip.id != ITEM_NULL_ID && !dragged_from_spell_slot_3)
-							{
-								auto unequippedItem = m_spellSlot3Equip;
-
-								m_spellSlot3Equip = m_currentDraggedItem;
-								m_spellSlot3EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								pickupItem(unequippedItem);
-
-								break;
-							}
-						}
-
-						if (_mouse_over_spell_slot_4)
-						{
-							is_mouse_out_of_bounds = false;
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot4Equip.id == ITEM_NULL_ID)
-							{
-								m_spellSlot4Equip = m_currentDraggedItem;
-								m_spellSlot4EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								break;
-							}
-
-							if (m_currentDraggedItem.equipSpell && m_spellSlot4Equip.id != ITEM_NULL_ID && !dragged_from_spell_slot_4)
-							{
-								auto unequippedItem = m_spellSlot4Equip;
-
-								m_spellSlot4Equip = m_currentDraggedItem;
-								m_spellSlot4EquippedItem = m_currentDraggedItem.refEntity;
-
-								if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-								{
-									_inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-								}
-
-								m_draggedItemPrevSlot = ITEM_NULL_ID;
-								m_currentDraggedItem = Item();
-
-								pickupItem(unequippedItem);
-
-								break;
-							}
-						}
-
-                        // Equip item
-                        if (_mouse_over_equip_slot_2h) 
-						{
-                            is_mouse_out_of_bounds = false;
-
-                            // Both 1H and 2H for now
-                            if ((m_currentDraggedItem.equip1H || m_currentDraggedItem.equip2H) && m_twoHandEquipSlot.id == ITEM_NULL_ID) 
-							{
-                                this->equipTwoHand(m_currentDraggedItem);
-
-                                data.isWeaponEquipped = true;
-
-                                if (m_draggedItemPrevSlot < ITEM_NULL_ID) 
-								{
-                                    _inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-                                }
-
-                                m_draggedItemPrevSlot = ITEM_NULL_ID;
-                                m_currentDraggedItem = Item();
-
-                                break;
-                            }
-
-                            // If something is already equipped
-                            if ((m_currentDraggedItem.equip1H || m_currentDraggedItem.equip2H) && m_twoHandEquipSlot.id
-	                            != ITEM_NULL_ID && !dragged_from_2h_slot)
-                            {
-	                            auto unequippedItem = this->getItemTwoHand();
-	                            this->unequipTwoHand();
-
-	                            this->equipTwoHand(m_currentDraggedItem);
-
-	                            data.isWeaponEquipped = true;
-
-	                            if (m_draggedItemPrevSlot < ITEM_NULL_ID)
-	                            {
-		                            _inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-	                            }
-
-	                            m_draggedItemPrevSlot = ITEM_NULL_ID;
-	                            m_currentDraggedItem = Item();
-
-	                            pickupItem(unequippedItem);
-
-	                            break;
-                            }
-                        }
-                    }
-                }
-
-                // Drop item
-                if (is_mouse_out_of_bounds) 
-				{
-                    if (!m_currentDraggedItem.entity.empty()) 
-					{
-                        auto &player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-                        if (player.isValid()) 
-						{
-                            auto hit = RenderManager::Get()->raycastWorldPosition(
-                                player.getComponent<CameraComponent>().camera->getAbsolutePosition(),
-                                player.getComponent<CameraComponent>().nearTargetNode->getAbsolutePosition(),
-                                true);
-
-                            if (!hit.hit) 
-							{
-                                auto id = WorldManager::Get()->spawnEntity(_asset_ent(m_currentDraggedItem.entity), "", false,
-                                    player.getComponent<CameraComponent>().nearTargetNode->getAbsolutePosition());
-
-								write_dropped_item_data = true;
-								dropped_item_id = id;
-								dropped_item_data = m_currentDraggedItem.data;
-
-                                if (m_draggedItemPrevSlot < ITEM_NULL_ID) 
-								{
-                                    _inventory_data.contents.at(m_draggedItemPrevSlot) = Item();
-                                }
-                                else if (m_currentDraggedItem.id == m_twoHandEquipSlot.id) 
-								{
-                                    this->unequipTwoHand();
-                                }
-
-                                m_currentDraggedItem = Item();
-
-                                m_draggedItemPrevSlot = ITEM_NULL_ID;
-                            }
-
-							dragged_from_2h_slot = false;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Unequip item
-        if (m_twoHandEquipSlot.id == ITEM_NULL_ID) 
-		{
-            this->unequipTwoHand();
-
-            data.isWeaponEquipped = false;
-        }
-
-        draw(mouse_position);
-
-        // UI
-        SetNextWindowPos(ImVec2((RenderManager::Get()->getConfiguration().width / 2) - 104, RenderManager::Get()->getConfiguration().height - 48));
-        PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        PushStyleColor(ImGuiCol_Button, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
-        Begin("player_ui_selector", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove); {
-
-            static bool info_pressed = false;
-            if (Button(" Info ", ImVec2(64, 32)) && !info_pressed) {
-                m_display_ui_info = !m_display_ui_info;
-
-                info_pressed = true;
-
-                m_display_ui_stats = false;
-                m_display_ui_misc = false;
-            } else {
-                info_pressed = false;
-            }
-
-            SameLine();
-
-            static bool skills_pressed = false;
-            if (Button(" Stat ", ImVec2(64, 32)) && !skills_pressed) {
-                m_display_ui_stats = !m_display_ui_stats;
-
-                skills_pressed = true;
-
-                m_display_ui_info = false;
-                m_display_ui_misc = false;
-            }
-            else {
-                skills_pressed = false;
-            }
-
-            SameLine();
-
-            static bool misc_pressed = false;
-            if (Button(" Misc ", ImVec2(64, 32)) && !misc_pressed) {
-                m_display_ui_misc = !m_display_ui_misc;
-
-                misc_pressed = true;
-
-                m_display_ui_stats = false;
-                m_display_ui_info = false;
-            }
-            else {
-                misc_pressed = false;
-            }
-        }
-        End();
-        PopStyleColor(2);
-
-        if (m_display_ui_info) {
-            SetNextWindowPos(ImVec2(0, 0));
-            SetNextWindowSize(ImVec2(280, 400));
-            Begin("player_ui_info", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove); {
-                if (m_currentClickedItem.name != "null_item") {
-                    Text(m_currentClickedItem.name.c_str());
-                    Spacing();
-                    Text(m_currentClickedItem.desc.c_str());
-                }
-            }
-            End();
-        }
-
-        if (m_display_ui_stats) {
-            SetNextWindowPos(ImVec2(0, 0));
-            SetNextWindowSize(ImVec2(280, 400));
-            Begin("player_ui_stats", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove); {
-
-                Text("Health: %i", data.currentHealth);
-
-                Spacing();
-                Spacing();
-                Spacing();
-
-                static int points = 5, str = 3, end = 5, agl = 3, itl = 6, per = 4;
-                std::string display_bar_str;
-                Text("- Skills -");
-                Spacing();
-                Text("Available Points: %i", points);
-                Spacing();
-                Text("Strength:     %i", str); SameLine(); for (auto i = 0; i < 10; i++) { if (i - str > 0) { display_bar_str += " "; } else { display_bar_str += "="; } } Text(display_bar_str.c_str()); SameLine(); PushID("increment_skill_str"); if (Button("+", ImVec2(16, 16)) && points) { str++; points--; } PopID(); display_bar_str = "";
-                Text("Endurance:    %i", end); SameLine(); for (auto i = 0; i < 10; i++) { if (i - end > 0) { display_bar_str += " "; } else { display_bar_str += "="; } } Text(display_bar_str.c_str()); SameLine(); PushID("increment_skill_end"); if (Button("+", ImVec2(16, 16)) && points) { end++; points--; } PopID(); display_bar_str = "";
-                Text("Agility:      %i", agl); SameLine(); for (auto i = 0; i < 10; i++) { if (i - agl > 0) { display_bar_str += " "; } else { display_bar_str += "="; } } Text(display_bar_str.c_str()); SameLine(); PushID("increment_skill_agl"); if (Button("+", ImVec2(16, 16)) && points) { agl++; points--; } PopID(); display_bar_str = "";
-                Text("Intelligence: %i", itl); SameLine(); for (auto i = 0; i < 10; i++) { if (i - itl > 0) { display_bar_str += " "; } else { display_bar_str += "="; } } Text(display_bar_str.c_str()); SameLine(); PushID("increment_skill_itl"); if (Button("+", ImVec2(16, 16)) && points) { itl++; points--; } PopID(); display_bar_str = "";
-                Text("Perception:   %i", per); SameLine(); for (auto i = 0; i < 10; i++) { if (i - per > 0) { display_bar_str += " "; } else { display_bar_str += "="; } } Text(display_bar_str.c_str()); SameLine(); PushID("increment_skill_per"); if (Button("+", ImVec2(16, 16)) && points) { per++; points--; } PopID(); display_bar_str = "";
-            }
-            End();
-        }
-
-        if (m_display_ui_misc) {
-            SetNextWindowPos(ImVec2(0, 0));
-            SetNextWindowSize(ImVec2(280, 400));
-            Begin("player_ui_misc", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove); {
-                static bool pause;
-                static ImVector<float> values; if (values.empty()) { values.resize(90); memset(values.Data, 0, values.Size * sizeof(float)); }
-                static int values_offset = 0;
-                if (!pause)
-                {
-                    static float refresh_time = GetTime(); // Create dummy data at fixed 60 hz rate for the demo
-                    for (; GetTime() > refresh_time + 1.0f / 60.0f; refresh_time += 1.0f / 60.0f)
-                    {
-                        static float phase = 0.0f;
-                        values[values_offset] = cosf(phase);
-                        values_offset = (values_offset + 1) % values.Size;
-                        phase += 0.10f*values_offset;
-                    }
-                }
-                PlotLines("##Lines", values.Data, values.Size, values_offset, "avg 0.0", -1.0f, 1.0f, ImVec2(0, 80));
-                SameLine(0, GetStyle().ItemInnerSpacing.x);
-                BeginGroup();
-                Text("Lines");
-                Checkbox("pause", &pause);
-                EndGroup();
-            }
-            End();
-        }
-
-        if (m_display_ui_container) {
-            SetNextWindowPos(ImVec2(RenderManager::Get()->getConfiguration().width - 280, 0));
-            SetNextWindowSize(ImVec2(280, 400));
-            Begin("player_ui_container", nullptr, ImGuiWindowFlags_AlwaysAutoResize |
-                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove); {
-            }
-            End();
-        }
-
-        PopStyleColor(16);
-    }
+	pushInventoryTheme();
+	drawPanel();
+	ImGui::PopStyleColor(kThemeColorCount);
 }
 
-void InventoryController::draw(irr::core::vector2di mouse_position)
+void InventoryController::drawPanel()
 {
-    for (auto y = 0; y < _inventory_data.size.Y; y++) {
-        for (auto x = 0; x < _inventory_data.size.X; x++) {
+	const auto screen = RenderManager::Get()->getConfiguration();
 
-            // Grid slots
-            RenderManager::Get()->renderImage2D(m_slotImage, _slot_position_vec2);
+	ImGui::SetNextWindowSize(ImVec2(kPanelWidth, kPanelHeight), ImGuiCond_Always);
+	ImGui::SetNextWindowPos(
+		ImVec2((screen.width - kPanelWidth) * 0.5f, (screen.height - kPanelHeight) * 0.5f),
+		ImGuiCond_Always);
 
-            if (_inventory_data.contents.at(_current_gridslot).id < ITEM_NULL_ID) {
-                // Item icons
-                RenderManager::Get()->renderImage2D(_inventory_data.contents.at(_current_gridslot).iconTexture, _slot_position_vec2);
-            
-                if (_mouse_over_slot && !m_draggingItem) {
-                    // Tooltips
-                    auto tooltip = irr::core::stringw(_inventory_data.contents.at(_current_gridslot).name.c_str());
-                    RenderManager::Get()->renderText2D(
-                        tooltip,
-                        TEXT_DEFAULT_FONT::SMALL,
-                        irr::core::rect<irr::s32>(mouse_position.X, mouse_position.Y + ITEM_NAME_TOOLTIP_OFFSET_Y, 0, 0),
-                        irr::video::SColor(255, 255, 255, 255));
-                }
-            }
-        }
-    }
-
-    // Equip slot
-    {
-        RenderManager::Get()->renderImage2D(m_slotImage2H, _equip_slot_position_2h);
-
-        if (m_twoHandEquipSlot.id < ITEM_NULL_ID) {
-            RenderManager::Get()->renderImage2D(m_twoHandEquipSlot.iconEquipTexture, _equip_slot_position_2h);
-
-            if (m_twoHandEquipSlot.data != "-1") {
-                auto ammo_text = irr::core::stringw(std::to_string(getCurrentWeaponAmmoCount()).c_str());
-                RenderManager::Get()->renderText2D(
-                    ammo_text,
-                    TEXT_DEFAULT_FONT::SMALL,
-                    irr::core::rect<irr::s32>(_equip_slot_position_2h.X, _equip_slot_position_2h.Y, 0, 0),
-                    irr::video::SColor(255, 255, 255, 255));
-            }
-        }
-    }
-
-	// Spell Slots
+	if (!ImGui::Begin("Inventory", nullptr,
+		ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse))
 	{
-		RenderManager::Get()->renderImage2D(m_slotImage, _spell_slot_1_pos);
-		RenderManager::Get()->renderImage2D(m_slotImage, _spell_slot_2_pos);
-		RenderManager::Get()->renderImage2D(m_slotImage, _spell_slot_3_pos);
-		RenderManager::Get()->renderImage2D(m_slotImage, _spell_slot_4_pos);
-
-		if (m_spellSlot1Equip.id < ITEM_NULL_ID)
-		{
-			RenderManager::Get()->renderImage2D(m_spellSlot1Equip.iconEquipTexture, _spell_slot_1_pos);
-		}
-		if (m_spellSlot2Equip.id < ITEM_NULL_ID)
-		{
-			RenderManager::Get()->renderImage2D(m_spellSlot2Equip.iconEquipTexture, _spell_slot_2_pos);
-		}
-		if (m_spellSlot3Equip.id < ITEM_NULL_ID)
-		{
-			RenderManager::Get()->renderImage2D(m_spellSlot3Equip.iconEquipTexture, _spell_slot_3_pos);
-		}
-		if (m_spellSlot4Equip.id < ITEM_NULL_ID)
-		{
-			RenderManager::Get()->renderImage2D(m_spellSlot4Equip.iconEquipTexture, _spell_slot_4_pos);
-		}
-
+		ImGui::End();
+		return;
 	}
 
-    if (m_draggingItem) {
-        RenderManager::Get()->renderImage2D(m_currentDraggedItem.iconTexture, mouse_position + irr::core::vector2di(-32, -32));
-    }
+	const auto categories = ItemDatabase::Categories();
+
+	if (m_activeCategory.empty() && !categories.empty())
+		m_activeCategory = categories.front();
+
+	if (ImGui::BeginTabBar("##inventory_tabs"))
+	{
+		for (auto& category : categories)
+		{
+			// Capitalised for the tab label only — the category string itself
+			// stays lower-case, because it is the value in the .item file.
+			std::string label = category;
+			if (!label.empty())
+				label[0] = static_cast<char>(toupper(label[0]));
+
+			const auto indices = m_inventory.indicesInCategory(category);
+
+			// The count rides in the label so the player can see what is where
+			// without opening every tab.
+			if (!indices.empty())
+				label += " (" + std::to_string(indices.size()) + ")";
+
+			label += "###" + category; // stable id: the visible count must not re-create the tab
+
+			if (!ImGui::BeginTabItem(label.c_str()))
+				continue;
+
+			if (m_activeCategory != category)
+			{
+				// Changing tab drops the selection. Keeping it would leave the
+				// description panel describing an item from the tab you just left.
+				m_activeCategory = category;
+				m_selected       = static_cast<size_t>(-1);
+			}
+
+			ImGui::BeginChild("##grid", ImVec2(kPanelWidth * 0.58f, 0), true);
+
+			if (indices.empty())
+			{
+				ImGui::TextDisabled("Nothing here.");
+			}
+			else
+			{
+				const float avail   = ImGui::GetContentRegionAvail().x;
+				const int   perRow  = (avail > kIconSize) ? static_cast<int>(avail / (kIconSize + 10.0f)) : 1;
+				int         column  = 0;
+
+				for (auto index : indices)
+				{
+					const ItemStack& stack = m_inventory.stacks()[index];
+					const ItemDef&   def   = ItemDatabase::Get(stack.id);
+
+					ImGui::PushID(static_cast<int>(index));
+
+					const bool selected = (m_selected == index);
+					if (selected)
+						ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.30f, 0.60f, 1.0f));
+
+					bool clicked = false;
+
+					if (def.iconTexture)
+					{
+						// 1.92 signature: explicit string id first, ImTextureRef second.
+						// PushID above already scopes it, so a constant id is fine.
+						clicked = ImGui::ImageButton("##icon",
+							ImTextureRef(reinterpret_cast<ImTextureID>(def.iconTexture)),
+							ImVec2(kIconSize, kIconSize));
+					}
+					else
+					{
+						// A missing icon must still be selectable — several items
+						// point at textures that do not exist yet.
+						clicked = ImGui::Button(def.name.c_str(), ImVec2(kIconSize + 8.0f, kIconSize + 8.0f));
+					}
+
+					if (selected)
+						ImGui::PopStyleColor();
+
+					if (clicked)
+						m_selected = index;
+
+					if (ImGui::IsItemHovered())
+						ImGui::SetTooltip("%s", def.name.c_str());
+
+					// Stack count in the corner of the icon
+					if (stack.count > 1)
+					{
+						const ImVec2 min = ImGui::GetItemRectMin();
+						const ImVec2 max = ImGui::GetItemRectMax();
+
+						ImGui::GetWindowDrawList()->AddText(
+							ImVec2(max.x - 18.0f, max.y - 18.0f),
+							IM_COL32(255, 255, 255, 255),
+							("x" + std::to_string(stack.count)).c_str());
+
+						(void)min;
+					}
+
+					ImGui::PopID();
+
+					if (++column < perRow)
+						ImGui::SameLine();
+					else
+						column = 0;
+				}
+			}
+
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			ImGui::BeginChild("##detail", ImVec2(0, 0), true);
+
+			// Re-validated every frame rather than trusted: using the last of a
+			// stack erases it, and a stale index would read the wrong item.
+			if (m_selected < m_inventory.stacks().size())
+			{
+				const ItemStack& stack = m_inventory.stacks()[m_selected];
+				const ItemDef&   def   = ItemDatabase::Get(stack.id);
+
+				ImGui::TextWrapped("%s", def.name.c_str());
+				ImGui::Separator();
+				ImGui::Spacing();
+
+				if (def.desc.empty())
+					ImGui::TextDisabled("No description.");
+				else
+					ImGui::TextWrapped("%s", def.desc.c_str());
+
+				if (stack.count > 1)
+				{
+					ImGui::Spacing();
+					ImGui::TextDisabled("Carrying %d", stack.count);
+				}
+
+				ImGui::Spacing();
+				ImGui::Spacing();
+
+				// Greyed rather than hidden when the use would do nothing, so the
+				// player can see that the option exists and that it is not
+				// available right now.
+				// Three states, not two: no hook at all (no button), a hook that
+				// says not now (greyed, with a reason), and usable.
+				if (!isUsable(stack.id))
+				{
+					// Nothing drawn. A key has no action, and an empty greyed
+					// button would only invite clicking.
+				}
+				else if (!canUseItem(stack.id))
+				{
+					ImGui::BeginDisabled();
+					ImGui::Button("Use", ImVec2(80.0f, 0.0f));
+					ImGui::EndDisabled();
+					ImGui::TextDisabled("Would have no effect.");
+				}
+				else if (ImGui::Button("Use", ImVec2(80.0f, 0.0f)))
+				{
+					// Copied, not referenced: useItem() erases the stack this
+					// string lives in.
+					const std::string id = stack.id;
+					useItem(id);
+				}
+			}
+			else
+			{
+				ImGui::TextDisabled("Select an item.");
+			}
+
+			ImGui::EndChild();
+
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
+	}
+
+	ImGui::End();
 }
 
 void InventoryController::destroy()
 {
-    m_slotImage   = nullptr;
-    m_slotImage2H = nullptr;
-    m_slotImage1H = nullptr;
-}
+	m_displayInventory            = false;
+	g_PlayerInventoryIsDisplaying = false;
 
-bool InventoryController::pickupItem(itemid item, entityid ent)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).id == ITEM_NULL_ID) {
-			_inventory_data.contents.at(i) = ItemDatabase::GetItemByID(item);
-
-            if (ent < ITEM_NULL_ID) {
-                if (WorldManager::Get()->managerSystem()->getEntityByID(ent).hasComponent<ItemComponent>()) {
-                    auto& item_component = WorldManager::Get()->managerSystem()->getEntityByID(ent).getComponent<ItemComponent>();
-
-                    if (!item_component.data.empty()) {
-                        _inventory_data.contents.at(i).data = item_component.data;
-                    }
-                }
-            }
-
-            return true;
-        }
-    }
-
-    return false;
-}
-bool InventoryController::pickupItem(std::string item, entityid ent)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).id == ITEM_NULL_ID) {
-            _inventory_data.contents.at(i) = ItemDatabase::GetItemByName(item);
-
-            if (ent < ITEM_NULL_ID) {
-                if (WorldManager::Get()->managerSystem()->getEntityByID(ent).hasComponent<ItemComponent>()) {
-                    auto& item_component = WorldManager::Get()->managerSystem()->getEntityByID(ent).getComponent<ItemComponent>();
-
-                    if (!item_component.data.empty()) {
-                        _inventory_data.contents.at(i).data = item_component.data;
-                    }
-                }
-            }
-
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InventoryController::pickupItem(const Item& item)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).id == ITEM_NULL_ID) {
-            _inventory_data.contents.at(i) = item;
-
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool InventoryController::dropItem(unsigned int slot)
-{
-   if (slot > _inventory_data.contents.size()) {
-       return false;
-   }
-
-    auto &player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-    if (!player.isValid()) {
-        return false;
-    }
-
-   auto hit = RenderManager::Get()->raycastWorldPosition(
-       player.getComponent<CameraComponent>().camera->getAbsolutePosition(),
-       player.getComponent<CameraComponent>().nearTargetNode->getAbsolutePosition(),
-       true);
-
-   if (!hit.hit) {
-       WorldManager::Get()->spawnEntity(_inventory_data.contents.at(slot).entity, "", false,
-           player.getComponent<CameraComponent>().nearTargetNode->getAbsolutePosition());
-       _inventory_data.contents.at(slot) = Item();
-
-       return true;
-   }
-
-   return false;
-}
-
-bool InventoryController::removeItem(unsigned int slot)
-{
-    if (slot > _inventory_data.contents.size()) {
-        return false;
-    }
-
-    _inventory_data.contents.at(slot) = Item();
-
-    return true;
-}
-
-int InventoryController::getFirstItemSlotOfType(itemid id)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).id == id) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-int InventoryController::getFirstItemSlotOfType(std::string name)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).name == name) {
-            return i;
-        }
-    }
-
-    return -1;
-}
-
-// HACK for warning C4172
-static Item g_item;
-Item& InventoryController::getFirstItemCopyOfType(itemid id)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).id == id) {
-            return _inventory_data.contents.at(i);
-        }
-    }
-
-    return g_item;
-}
-Item& InventoryController::getFirstItemCopyOfType(std::string name)
-{
-    for (auto i = 0U; i < _inventory_data.contents.size(); i++) {
-        if (_inventory_data.contents.at(i).name == name) {
-            return _inventory_data.contents.at(i);
-        }
-    }
-
-    return g_item;
-}
-
-bool InventoryController::equipLeftHand(const Item& item)
-{
-    m_leftHandEquipSlot = item;
-
-    m_leftHandEquipedItem = item.refEntity;
-
-    WorldManager::Get()->spawnEntity(_asset_ent(item.refEntity), item.refEntity);
-
-    return true;
-}
-bool InventoryController::equipRightHand(const Item& item)
-{
-    m_rightHandEquipSlot = item;
-
-    m_rightHandEquipedItem = item.refEntity;
-
-    WorldManager::Get()->spawnEntity(_asset_ent(item.refEntity), item.refEntity);
-
-    return true;
-}
-bool InventoryController::equipTwoHand(const Item& item)
-{
-    m_twoHandEquipSlot = item;
-
-    m_twoHandEquipedItem = item.refEntity;
-
-    WorldManager::Get()->spawnEntity(_asset_ent(item.refEntity), item.refEntity);
-
-    return true;
-}
-
-bool InventoryController::unequipLeftHand()
-{
-    m_leftHandEquipSlot = Item();
-
-    if (!m_leftHandEquipedItem.empty()) {
-        WorldManager::Get()->killEntityByName(m_twoHandEquipedItem);
-        m_leftHandEquipedItem = std::string();
-    }
-
-    return true;
-}
-bool InventoryController::unequipRightHand()
-{
-    m_rightHandEquipSlot = Item();
-
-    if (!m_rightHandEquipedItem.empty()) {
-        WorldManager::Get()->killEntityByName(m_twoHandEquipedItem);
-        m_rightHandEquipedItem = std::string();
-    }
-
-    return true;
-}
-bool InventoryController::unequipTwoHand()
-{
-    m_twoHandEquipSlot = Item();
-
-    if (!m_twoHandEquipedItem.empty()) {
-        WorldManager::Get()->killEntityByName(m_twoHandEquipedItem);
-        m_twoHandEquipedItem = std::string();
-    }
-
-    return true;
-}
-
-int InventoryController::getCurrentWeaponAmmoCount()
-{
-    if (isEquipedTwoHand()) {
-        auto value = getItemTwoHand().data;
-
-        if (getItemTwoHand().data == "-1") {
-            return -1;
-        }
-
-        return atoi(value.c_str());
-    }
-
-    return -1;
-}
-
-void InventoryController::removeCurrentActivatedItem()
-{
-    g_PlayerData.inventoryData.contents.at(m_currentActivatedItemSlot) = Item();
+	ImGui::GetIO().MouseDrawCursor = false;
+	InputManager::Get()->canProcessInput(true);
 }

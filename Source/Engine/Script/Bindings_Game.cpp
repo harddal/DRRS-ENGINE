@@ -181,13 +181,19 @@ static void HealPlayer(int d)
 	WorldManager::Get()->gameplaySystem()->healEntity(WorldManager::Get()->managerSystem()->getIDByName("player"), d);
 }
 
-void player_additemtoinv(int id)
+// ---- Inventory ----
+// String-keyed throughout. The old int-id overloads are gone with the numeric
+// ids themselves: those came from directory iteration order, so a script saying
+// give(4) meant a different item the moment a .item file was added.
+
+static void player_giveitem(std::string item)
 {
-	g_PlayerController->inventoryController()->pickupItem(id);
+	g_PlayerController->inventoryController()->giveItem(item, 1);
 }
-void player_additemtoinvs(std::string item)
+
+static void player_giveitemcount(std::string item, int count)
 {
-	g_PlayerController->inventoryController()->pickupItem(ItemDatabase::GetItemByName(item).id);
+	g_PlayerController->inventoryController()->giveItem(item, count);
 }
 
 bool as_isPlayerMoving()
@@ -195,22 +201,14 @@ bool as_isPlayerMoving()
 	return g_PlayerController->isMoving();
 }
 
-void player_additemtoinvEnt(int id, int entid)
+static void player_removeitem(std::string item)
 {
-	g_PlayerController->inventoryController()->pickupItem(id, entid);
-}
-void player_additemtoinvsEnt(std::string item, int entid)
-{
-	g_PlayerController->inventoryController()->pickupItem(ItemDatabase::GetItemByName(item).id, entid);
+	g_PlayerController->inventoryController()->removeItem(item, 1);
 }
 
-void player_dropiteminv(int id)
+static bool player_useitem(std::string item)
 {
-	g_PlayerController->inventoryController()->dropItem(id);
-}
-void player_removeitemtoinv(int id)
-{
-	g_PlayerController->inventoryController()->removeItem(id);
+	return g_PlayerController->inventoryController()->useItem(item);
 }
 
 int GetPlayerHealth()
@@ -222,18 +220,14 @@ int GetPlayerMaxHealth()
 	return g_PlayerController->getMaxHealth();
 }
 
-void player_removeCurrentActivatedItem()
+static bool player_hasitem(std::string item)
 {
-	g_PlayerController->inventoryController()->removeCurrentActivatedItem();
+	return g_PlayerController->inventoryController()->hasItem(item);
 }
 
-bool player_hasitem(int id)
+static int player_itemcount(std::string item)
 {
-	return g_PlayerController->inventoryController()->getFirstItemCopyOfType(id).id == id;
-}
-bool player_hasitemstr(std::string name)
-{
-	return g_PlayerController->inventoryController()->getFirstItemCopyOfType(name).name == name;
+	return g_PlayerController->inventoryController()->itemCount(item);
 }
 
 bool player_isswimming()
@@ -252,58 +246,6 @@ bool player_isblocking()
 void player_setblocking(bool blocking)
 {
 	g_PlayerController->setIsBlocking(blocking);
-}
-
-std::string player_getItemDataEquipped2H(std::string key)
-{
-	/*if (g_PlayerController->inventoryController()->getItemTwoHand().id < ITEM_NULL_ID) {
-		switch (data_slot) {
-		case 1:
-			return g_PlayerController->inventoryController()->getItemTwoHand().data1;
-		case 2:
-			return g_PlayerController->inventoryController()->getItemTwoHand().data2;
-		case 3:
-			return g_PlayerController->inventoryController()->getItemTwoHand().data3;
-		case 4:
-			return g_PlayerController->inventoryController()->getItemTwoHand().data4;
-		default:
-			return std::string();
-		}
-	}*/
-
-	if (g_PlayerController->inventoryController()->getItemTwoHand().id < ITEM_NULL_ID) 
-	{
-		return g_PlayerController->inventoryController()->getItemTwoHand().data;
-	}
-
-	return std::string();
-}
-
-void player_setItemDataEquipped2H(std::string key, std::string value)
-{
-	/*if (g_PlayerController->inventoryController()->getItemTwoHand().id < ITEM_NULL_ID) {
-		switch (data_slot) {
-		case 1:
-			g_PlayerController->inventoryController()->getItemTwoHand().data1 = value;
-			break;
-		case 2:
-			g_PlayerController->inventoryController()->getItemTwoHand().data2 = value;
-			break;
-		case 3:
-			g_PlayerController->inventoryController()->getItemTwoHand().data3 = value;
-			break;
-		case 4:
-			g_PlayerController->inventoryController()->getItemTwoHand().data4 = value;
-			break;
-		default:
-			break;
-		}
-	}*/
-
-	if (g_PlayerController->inventoryController()->getItemTwoHand().id < ITEM_NULL_ID)
-	{
-		g_PlayerController->inventoryController()->getItemTwoHand().data = value;
-	}
 }
 
 void as_lockplayerforinput(bool lock)
@@ -1472,22 +1414,18 @@ void ScriptBindings::RegisterGame(asIScriptEngine* engine)
 		engine->RegisterGlobalFunction("void damage(int amount)", asFUNCTION(DamagePlayer), asCALL_CDECL);
 		engine->RegisterGlobalFunction("void heal(int amount)", asFUNCTION(HealPlayer), asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("void give(int itemId)", asFUNCTION(player_additemtoinv), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void give(string itemName)", asFUNCTION(player_additemtoinvs), asCALL_CDECL);
+		// Items are addressed by their .item filename stem. Dropping is gone
+		// along with the capacity limit that made it meaningful — without one it
+		// was only a way to lose the key you needed.
+		engine->RegisterGlobalFunction("void give(string item)", asFUNCTION(player_giveitem), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void give(string item, int count)", asFUNCTION(player_giveitemcount), asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("void give(int itemId, int entityId)", asFUNCTION(player_additemtoinvEnt), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void give(string itemName, int entityId)", asFUNCTION(player_additemtoinvsEnt), asCALL_CDECL);
+		engine->RegisterGlobalFunction("void remove(string item)", asFUNCTION(player_removeitem), asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("void drop(int itemId)", asFUNCTION(player_dropiteminv), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void remove(int itemId)", asFUNCTION(player_removeitemtoinv), asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool has(string item)", asFUNCTION(player_hasitem), asCALL_CDECL);
+		engine->RegisterGlobalFunction("int count(string item)", asFUNCTION(player_itemcount), asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("bool has(int itemId)", asFUNCTION(player_hasitem), asCALL_CDECL);
-		engine->RegisterGlobalFunction("bool has(string itemName)", asFUNCTION(player_hasitemstr), asCALL_CDECL);
-
-		engine->RegisterGlobalFunction("void removeActivatedItem()", asFUNCTION(player_removeCurrentActivatedItem), asCALL_CDECL);
-
-		engine->RegisterGlobalFunction("string getEquippedItemData(string key)", asFUNCTION(player_getItemDataEquipped2H), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void setEquippedItemData(string key, string value)", asFUNCTION(player_setItemDataEquipped2H), asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool use(string item)", asFUNCTION(player_useitem), asCALL_CDECL);
 	}
 
 	engine->SetDefaultNamespace("cvar");

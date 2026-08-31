@@ -62,11 +62,23 @@ public:
     // No-op if handle is 0 or not found. Call immediately after spawn() for directional effects.
     void setEmitterDirection(uint32_t handle, const irr::core::vector3df& dir);
 
-    // Scale zone dimensions, renderer quad sizes, and emitter forces of an active instance.
-    // Intended to be called once immediately after spawn(); each call multiplies from current values.
+    // Scale zone dimensions, renderer quad sizes, and emitter forces for an effect.
     // Point-renderer effects are unaffected (no runtime size getter in SPARK).
-    // NOTE: only affects the live clone — scale is lost on burst-style loop=true effects when
-    // the system sleeps and re-clones from the unscaled base. Safe for continuous emitters (fire, smoke).
+    //
+    // IMPORTANT — this is EFFECT-WIDE, not per-instance. SPARK's Group copy
+    // constructor copies the renderer, model and emitter POINTERS, so every
+    // SPK_Copy clone shares them with the base template and with each other.
+    // There is no such thing as scaling one live clone: the newest call wins for
+    // every instance of that effect, and the scale persists on the template.
+    //
+    // 'scale' is therefore ABSOLUTE and measured against the effect as authored
+    // in its .psys — 1.0 restores the file's values, 2.0 is twice them. Passing
+    // the same scale twice is a no-op.
+    //
+    // (This used to multiply from current values, which — because the renderer is
+    // shared — compounded on every single spawn. A wound spraying at 0.5 shrank
+    // the shared blood template to 0.5^n and the effect vanished after a handful
+    // of shots. Explosions scaled by TurretBehavior decayed the same way.)
     void setScale(uint32_t handle, float scale);
 
 private:
@@ -74,6 +86,12 @@ private:
     {
         SPK::SPK_ID baseID    = SPK::NO_ID;
         float       updateRate = 1.0f;
+
+        // Scale currently baked into this effect's shared renderer/zones/emitters,
+        // relative to the authored .psys. Lets setScale() convert an absolute
+        // request into the delta it has to multiply by, so repeated calls cannot
+        // compound. Reset to 1.0 whenever the effect is re-loaded from file.
+        float appliedScale = 1.0f;
     };
 
     struct ActiveInstance

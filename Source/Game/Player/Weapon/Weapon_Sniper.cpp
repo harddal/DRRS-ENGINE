@@ -39,6 +39,8 @@ void Weapon_Sniper::init()
 	m_descriptor.name = "Player_Weapon_Sniper";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_SNIPER;
+
 	// sniper_animated.glb carries the same arms rig as the rest of the pack —
 	// identical joint names, identical 'arms' root at (0, 2.945, -17.671) — so
 	// the other long guns' viewmodel transform is the right starting point. This
@@ -84,24 +86,36 @@ void Weapon_Sniper::init()
 	//            f30-33, holds open, round flicks clear at f41-43,
 	//            bolt closes f41-44, handle down f47-49             -> cycle
 	//   61-104   magazine drops away f70-79 and is replaced by f89  -> reload
-	//   105-114  gun swings away, yaw +68, Z -21.4, out of frame    -> unequip
-	//   115-124  the same pose returning to rest                    -> a mirror
-	//            draw, unused; see the note on equip below
-	//   124-164  a second, identical copy of the bolt cycle         -> unused
+	//   105-164  ONE take holding both transitions. The rifle swings
+	//            away to its apex at f114 (yaw +68, Z -21.4, out of
+	//            frame), comes back up by f127, and then WORKS THE
+	//            BOLT on the way in — handle up f128-132, drawn back
+	//            f134-138, closed f146-148, handle down f152-154 —
+	//            before settling at f164                            -> unequip
+	//            105-114, equip 114-164
 	//   165-185  a 1.4-unit dip and return, no rotation at all      -> a gentle
 	//            idle sway, unused: idle is pinned to 165 and the
 	//            hold-steady motion comes from enableIdleBreathing()
-	//   186-205  gun heaved up from off-screen, roll -89 deg        -> equip
+	//   186-205  gun snaps to a rolled pose (-89) in two frames and
+	//            takes seventeen to recover                     -> melee bash
 	//
 	// That the fire clip touches nothing but the trigger and the recoil is what
 	// makes this a bolt gun rather than a semi-auto: the case is still in the
 	// chamber when the clip ends, and only the cycle takes it out. Firing
 	// therefore ALWAYS chains into "cycle" — see enterState().
 	//
-	// Two draws exist because 115-124 is the mirror of the holster (they share
-	// the extreme at f114) while 186-205 is a separate, far more dramatic heave
-	// up into frame. The heave is the one bound here: nothing requires a draw to
-	// retrace its own holster, and a rifle this size should feel like work.
+	// The equip ENDS AT 164, and getting that wrong is what made the right hand
+	// snap. 105-164 is one clip and the rifle's ROOT is back near its seat by
+	// f122 — but the ARMS are still moving, and f124-154 is a full bolt cycle
+	// that chambers a round as part of the draw. Cutting at 122 dropped the hand
+	// mid-motion into the idle pose.
+	//
+	// The lesson generalises: a clip boundary has to be read from the WHOLE POSE,
+	// not from the weapon root. The root can be home while the hands are not.
+	//
+	// 186-205 was bound as the equip at first and is NOT a draw. The tell is the
+	// timing: it reaches its pose in two frames and recovers over seventeen, with
+	// a -89 degree roll. A draw is symmetric and does not roll the rifle over.
 	//
 	// Looping clips MUST be flagged loop=true — a non-looping clip re-armed from
 	// the end callback holds its last frame for one tick every cycle, which is a
@@ -110,10 +124,10 @@ void Weapon_Sniper::init()
 	m_mesh.animationList.emplace_back(sAnimationData("cycle",   11,  60,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  61,  104, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 105, 114, false));
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   186, 205, false));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   114, 164, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    165, 165, true));
 	// Authored but not bound: the mirror draw and the sway loop described above
-	m_mesh.animationList.emplace_back(sAnimationData("equip_alt", 115, 124, false));
+	m_mesh.animationList.emplace_back(sAnimationData("melee",     186, 205, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle_sway", 165, 185, true));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
@@ -241,8 +255,9 @@ void Weapon_Sniper::enterState(State next)
 	// Working-the-action states run quicker than authored; everything else plays
 	// at 1x. Set here rather than at the call sites so no path can leave the node
 	// stuck at the faster speed.
-	setClipSpeed(next == State::Cycling  ? m_cycleSpeed
+	setClipSpeed(next == State::Cycling   ? m_cycleSpeed
 	           : next == State::Reloading ? m_reloadSpeed
+	           : next == State::Equipping ? m_equipSpeed
 	           : 1.0f);
 
 	// Only the bolt cycle is stabilised — it rolls the gun 22 degrees into the
@@ -273,6 +288,12 @@ void Weapon_Sniper::enterState(State next)
 
 	case State::Equipping:
 		playAnimation("equip");
+		// The draw works the bolt (see the clip table), so the round goes through
+		// the same reuse flick it does during a cycle and needs re-sampling — and
+		// the bolt cues have to be re-armed exactly as they are for a cycle.
+		m_roundRestValid = false;
+		m_boltLiftPlayed = false;
+		m_boltHomePlayed = false;
 		break;
 
 	case State::Unequipping:
@@ -297,7 +318,7 @@ void Weapon_Sniper::enterState(State next)
 // shipped with frame-derived triggers that did not fire where the .glb analysis
 // said they would; the joint always knows where the round actually is, needs no
 // constant kept in step with the asset, and reads the same at any clip speed.
-void Weapon_Sniper::updateRound()
+void Weapon_Sniper::updateRound(bool throwCase)
 {
 	if (!m_round.bone || !m_mesh.node)
 		return;
@@ -308,7 +329,7 @@ void Weapon_Sniper::updateRound()
 	m_mesh.node->updateAbsolutePosition();
 	m_mesh.node->animateJoints();
 
-	const irr::core::vector3df pos = m_round.bone->getPosition();
+	const irr::core::vector3df pos = partPosition(m_round);
 
 	// Seated position, sampled on the first frame of the cycle where the round is
 	// provably still in the breech. Nothing else in the clip table moves it.
@@ -325,7 +346,9 @@ void Weapon_Sniper::updateRound()
 	{
 		// Hand the case off to a physics casing on the exact frame the animated
 		// mesh disappears — same place, same orientation — so there is no seam.
-		if (!m_caseHandedOff)
+		// The draw chambers a round rather than extracting a fired one, so it has
+		// nothing to throw — hiding the mesh is all it needs.
+		if (throwCase && !m_caseHandedOff)
 		{
 			m_caseHandedOff = true;
 			ejectSpentCase();
@@ -583,8 +606,16 @@ void Weapon_Sniper::update()
 		return;
 
 	case State::Equipping:
+		// Same reuse flick as the cycle, minus the brass — and the same bolt
+		// working, so it gets the same two cues at its own frame offsets.
+		updateRound(false);
+		updateBoltSounds(frame, m_equipBoltLiftFrame, m_equipBoltHomeFrame);
+
 		if (animEnded)
+		{
+			m_roundRestValid = false;
 			enterState(State::Idle);
+		}
 		drawScopeOverlay();
 		RenderManager::Get()->renderImage2D(m_crosshair, _weapon_crosshair_center_position);
 		return;
@@ -597,12 +628,14 @@ void Weapon_Sniper::update()
 		break;
 
 	case State::Cycling:
-		updateRound();
-		updateCycleSounds(frame);
+		updateRound(m_cycleThrowsCase);
+		updateBoltSounds(frame, m_boltLiftFrame, m_boltHomeFrame);
 
 		if (animEnded)
 		{
-			m_roundRestValid = false; // re-sampled on the next cycle
+			m_roundRestValid  = false; // re-sampled on the next cycle
+			m_cycleThrowsCase = true;  // back to the normal post-shot rack
+
 			enterState(State::Idle);
 
 			// A shot asked for while the bolt was still open goes off the instant
@@ -626,16 +659,35 @@ void Weapon_Sniper::update()
 		if (!m_ammoCredited && frame >= static_cast<irr::f32>(m_magInFrame))
 		{
 			m_ammoCredited = true;
-			m_rounds = m_magSize;
+			m_rounds += drawFromReserve(m_magSize - m_rounds);
 		}
 
 		if (animEnded)
 		{
+			// BOTH paths draw. Crediting only at the frame trigger would hand out
+			// a free magazine whenever a hitch stepped over it; crediting only at
+			// the end would pay out late. m_ammoCredited is what keeps a reload
+			// that hits both from being paid twice.
 			if (!m_ammoCredited)
 			{
 				m_ammoCredited = true;
-				m_rounds = m_magSize;
+				m_rounds += drawFromReserve(m_magSize - m_rounds);
 			}
+
+			// A magazine loaded into a rifle that was run dry does not chamber
+			// itself. Work the bolt — and throw nothing, because the case from
+			// the last shot went out with the cycle that followed it.
+			if (m_chamberEmpty && m_rounds > 0)
+			{
+				m_chamberEmpty    = false;
+				m_cycleThrowsCase = false;
+				m_roundRestValid  = false;
+
+				enterState(State::Cycling);
+				break;
+			}
+
+			m_chamberEmpty = false;
 
 			enterState(State::Idle);
 		}
@@ -706,6 +758,10 @@ void Weapon_Sniper::equip()
 	m_firedThisPress = true;  // don't fire on a button already held through the switch
 	m_fireAfterCycle = false;
 	m_roundRestValid = false;
+	// A cycle abandoned by a weapon switch must not leave the next one silent;
+	// m_chamberEmpty is NOT cleared here on purpose — a rifle put away empty is
+	// still empty when it comes back out.
+	m_cycleThrowsCase = true;
 	m_scopeBlend     = 0.0f;
 	m_scopeWanted    = false;
 	g_CameraFX.clearFovZoom();
@@ -801,6 +857,12 @@ void Weapon_Sniper::fire()
 
 	m_rounds--;
 
+	// That was the last one: the cycle this chains into will throw the case and
+	// find an empty magazine behind it, leaving nothing chambered. The reload
+	// then owes a rack — see the Reloading state.
+	if (m_rounds <= 0)
+		m_chamberEmpty = true;
+
 	// The fire clip only pulls the trigger and rocks the gun; the case is still in
 	// the chamber when it ends, which is why this ALWAYS chains into the cycle.
 	enterState(State::Firing);
@@ -870,9 +932,15 @@ void Weapon_Sniper::fire()
 			{
 				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
+							raycastResult.ray.getVector())));
 
-				m_effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -908,6 +976,15 @@ void Weapon_Sniper::reload()
 	if (m_rounds >= m_magSize)
 		return; // nothing to top up
 
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
+
 	if (!m_mesh.node)
 		return;
 
@@ -918,13 +995,13 @@ void Weapon_Sniper::reload()
 
 // Each cue fires once, early by its own measured lead, so the transient lands on
 // the visual event instead of trailing it.
-void Weapon_Sniper::updateCycleSounds(float frame)
+void Weapon_Sniper::updateBoltSounds(float frame, int liftFrame, int homeFrame)
 {
 	const int f = static_cast<int>(frame);
 	const int lead = soundLeadFrames(m_boltLeadSec);
 
-	// Handle turns up over f24-27 and the bolt is drawn back
-	if (!m_boltLiftPlayed && f >= m_boltLiftFrame - lead)
+	// Handle turns up and the bolt is drawn back
+	if (!m_boltLiftPlayed && f >= liftFrame - lead)
 	{
 		m_boltLiftPlayed = true;
 
@@ -932,8 +1009,8 @@ void Weapon_Sniper::updateCycleSounds(float frame)
 			"content/sound/weapon/cock_rifle", 0.07f, 2, -1.0f, "sniper_bolt");
 	}
 
-	// Bolt runs home and the handle turns back down over f47-49
-	if (!m_boltHomePlayed && f >= m_boltHomeFrame - lead)
+	// Bolt runs home and the handle turns back down
+	if (!m_boltHomePlayed && f >= homeFrame - lead)
 	{
 		m_boltHomePlayed = true;
 

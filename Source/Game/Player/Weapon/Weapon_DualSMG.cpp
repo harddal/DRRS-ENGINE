@@ -39,6 +39,8 @@ void Weapon_DualSMG::init()
 	m_descriptor.name = "Player_Weapon_DualSMG";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_DUALSMG;
+
 	// dual_smgs.glb carries the same arms rig as the rest of the glTF pack —
 	// identical joint names, identical 'arms' root at (0, 2.945, -17.671). Held
 	// out at arm's length rather than braced, and the pair spans 26 model units
@@ -82,14 +84,23 @@ void Weapon_DualSMG::init()
 	//   8-54     both guns swing out, both magazines break free at
 	//            f18-29, hang clear to f38, and the SAME meshes
 	//            come back seated by f41                           -> reload
-	//   55-76    both guns thrust out ~28 units and return, no
-	//            magazine motion at all                            -> a two-handed
-	//            bash, authored but not bound to input
+	//   55-76    both guns swing DOWN 31 units and back, no
+	//            magazine motion at all                            -> unequip 55-64,
+	//            equip 64-76 — one take holding both transitions,
+	//            split at its apex
 	//   77-102   under 1.4 units of drift, no rotation to speak of -> a gentle
 	//            idle sway, unused: idle is pinned to 77 and the
 	//            hold-steady motion comes from enableIdleBreathing()
-	//   103-109  both guns swing away, right rolled -70 deg        -> unequip
-	//   109-123  the same pose easing back to rest, dead linear    -> equip
+	//   103-123  both guns snap to a rolled pose (-75) in six
+	//            frames and take fourteen to recover               -> melee bash
+	//
+	// BOTH TRANSITION RANGES WERE ORIGINALLY READ THE WRONG WAY ROUND. 55-76 was
+	// taken for a bash and 103-123 was split into a holster and a draw; it is the
+	// other way about. The tell, consistent across this whole weapon pack: a bash
+	// snaps to its pose within a few frames, recovers over three times as long,
+	// and carries a large NEGATIVE roll (-75 here). A holster/draw is symmetric
+	// about its apex and takes the guns DOWN — Y -31.3 at f64 against the bash's
+	// +4.4.
 	//
 	// THE FIRE CLIP IS THE CONSTRAINT ON THIS WEAPON. It pulls both triggers and
 	// cycles both bolts on the same frames, so there is no per-side clip to play
@@ -103,11 +114,11 @@ void Weapon_DualSMG::init()
 	// visible hitch.
 	m_mesh.animationList.emplace_back(sAnimationData("fire",    0,   7,   false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  8,   54,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("unequip", 103, 109, false));
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   109, 123, false));
+	m_mesh.animationList.emplace_back(sAnimationData("unequip", 55,  64,  false));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   64,  76,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    77,  77,  true));
-	// Authored but not bound: the two-handed bash and the sway loop above
-	m_mesh.animationList.emplace_back(sAnimationData("melee",     55, 76,  false));
+	// Authored but not bound: the bash and the sway loop above
+	m_mesh.animationList.emplace_back(sAnimationData("melee",     103, 123, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle_sway", 77, 102, true));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
@@ -213,7 +224,13 @@ void Weapon_DualSMG::init()
 		// ejector, not from a port, so shellEjectJoint/shellEjectOffset stay unset
 		// and ejectShell() is never called. Same approach as the rest of the pack.
 		fx.shellMesh         = "content/mesh/prop/shells/shellsmall.obj";
-		fx.shellPoolSize     = 32;      // two guns at this rate fill a pool fast
+		// Sized off the SHELL LIFETIME, not off the magazine — that is the trap.
+		// A 30-round magazine empties in 3 s but a casing lives for 10 s, so brass
+		// from the previous magazine is still lying about when the next one
+		// starts. Across a dump-reload-dump cycle roughly 80 casings per gun are
+		// alive at once; a pool of 32 covered exactly one magazine and then ran
+		// dry halfway through the second.
+		fx.shellPoolSize     = 96;
 		fx.impactParticle    = "spark";
 		fx.impactDecalSize   = 0.12f;
 
@@ -353,7 +370,7 @@ void Weapon_DualSMG::updateMagazines()
 		if (!gun.mag.bone)
 			continue;
 
-		const irr::core::vector3df pos = gun.mag.bone->getPosition();
+		const irr::core::vector3df pos = partPosition(gun.mag);
 
 		// Seated position, sampled on the first frame of the reload where the
 		// magazine is provably still in the well. Nothing before this moves it.
@@ -424,11 +441,15 @@ void Weapon_DualSMG::ejectSpentCase(int gun)
 	flip.setRotationDegrees(irr::core::vector3df(0.0f, 180.0f, 0.0f));
 	const irr::core::matrix4 oriented = world * flip;
 
+	// Sized off the gun's OWN round, not off m_viewScaleOffset. That was the bug:
+	// shellsmall.obj is already authored in world units at 4 cm long, so scaling
+	// it by the viewmodel's 0.01 produced a 0.4 mm casing — ejecting perfectly and
+	// far too small to see. Rank-matched per axis, as everywhere else in the pack.
 	side.effects.spawnShellAt(
 		port,
 		oriented.getRotationDegrees(),
 		velocity,
-		m_viewScaleOffset);
+		matchPartScale(side.round, side.effects.shellMeshExtent()));
 }
 
 // --- Frame loop --------------------------------------------------------------
@@ -477,13 +498,16 @@ void Weapon_DualSMG::update()
 		if (!m_ammoCredited && frame >= static_cast<irr::f32>(m_magInFrame))
 		{
 			m_ammoCredited = true;
-			m_rounds = magSize();
+			m_rounds += drawFromReserve(magSize() - m_rounds);
 		}
 
 		if (animEnded)
 		{
 			if (!m_ammoCredited)
-				m_rounds = magSize();
+			{
+				m_ammoCredited = true;
+				m_rounds += drawFromReserve(magSize() - m_rounds);
+			}
 
 			endReload();
 			playAnimation("idle");
@@ -780,9 +804,15 @@ void Weapon_DualSMG::fireOneGun(int gun, const irr::core::vector3df& forward,
 			{
 				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
+							raycastResult.ray.getVector())));
 
-				side.effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					side.effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -810,6 +840,15 @@ void Weapon_DualSMG::reload()
 	if (m_rounds >= magSize())
 		return; // nothing to top up
 
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
+
 	if (!m_mesh.node)
 		return;
 
@@ -830,7 +869,7 @@ void Weapon_DualSMG::reload()
 
 		if (m_gun[i].mag.bone)
 		{
-			m_gun[i].magRest      = m_gun[i].mag.bone->getPosition();
+			m_gun[i].magRest      = partPosition(m_gun[i].mag);
 			m_gun[i].magRestValid = true;
 		}
 	}

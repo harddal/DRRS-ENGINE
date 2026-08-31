@@ -21,6 +21,12 @@ public:
     // TODO: Change the ScriptComponent parameter to accept a module name string instead
     int execute(ScriptComponent script, asIScriptFunction* function, int entid = 0xFFFF);
 
+    // For a script function declared to return bool, e.g. canUse. execute()
+    // above always returns 0 and discards the value, so a predicate hook needs
+    // its own path. 'fallback' is returned when the call does not complete, so
+    // a broken script fails OPEN rather than making an item permanently unusable.
+    bool executeBool(ScriptComponent script, asIScriptFunction* function, int entid = 0xFFFF, bool fallback = true);
+
     int compile(std::string filename, std::string module);
     int compile(ScriptComponent& script);
 

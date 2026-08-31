@@ -39,6 +39,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_loaded ? 1 : 0; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_loaded ? 1 : 0; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_loaded = in.slots[0] > 0; }
+
 private:
 	// Explicit state machine, like the shotgun's and the sniper's: fire ALWAYS
 	// owes the break-open cycle, and a set of independent booleans cannot express

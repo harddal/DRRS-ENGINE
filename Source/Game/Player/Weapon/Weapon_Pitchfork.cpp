@@ -60,6 +60,8 @@ void Weapon_Pitchfork::init()
 	m_descriptor.name = "Player_Weapon_Pitchfork";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_PITCHFORK;
+
 	// pitchfork_animated.glb carries the same arms rig as the rest of the glTF
 	// pack — identical joint names, identical 'arms' root at (0, 2.945, -17.671).
 	// The haft is 118 model units long and the grip sits near its middle, so this
@@ -104,8 +106,12 @@ void Weapon_Pitchfork::init()
 	//   68-88    tips travel 107 units through a (-40, 21, -63)
 	//            rotation — swung across, not thrust             -> sweep
 	//   89-115   under 5.6 units of drift, starts and ends at
-	//            rest                                            -> a real looping
-	//            idle, the third in the pack
+	//            rest                                            -> an authored
+	//            looping idle, deliberately NOT used: idle is
+	//            pinned to 89 and the hold-steady motion comes
+	//            from enableIdleBreathing() instead, as everywhere
+	//            else. A long haft swinging on an authored loop is
+	//            a lot of screen movement to hold behind a crosshair.
 	//
 	// THERE IS NO DRAW AND NO HOLSTER IN THIS ASSET. Every other rest-to-rest
 	// range is an attack. That is why this class does not override
@@ -122,7 +128,7 @@ void Weapon_Pitchfork::init()
 	m_mesh.animationList.emplace_back(sAnimationData("stab2", 21, 46,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("stab3", 47, 67,  false));
 	m_mesh.animationList.emplace_back(sAnimationData("sweep", 68, 88,  false));
-	m_mesh.animationList.emplace_back(sAnimationData("idle",  89, 114, true));
+	m_mesh.animationList.emplace_back(sAnimationData("idle",  89, 89,  true));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
 	// the viewmodel must play at 30 to run at its authored speed.
@@ -136,11 +142,11 @@ void Weapon_Pitchfork::init()
 
 	playAnimation("idle");
 
-	// Light: the idle here is a real 26-frame loop rather than one pinned frame,
-	// so this only exists to stop that loop reading as a loop. Wider than the
-	// staff's all the same — this thing is heavy and held out at the end of a
-	// long haft, and it should wander.
-	enableIdleBreathing(0.95f);
+	// The idle clip is pinned to a single frame, so ALL of the hold-steady motion
+	// comes from here. Held one-handed at the end of a long haft, so it wanders
+	// more than a braced weapon — but the tines are far from the grip and a
+	// little rotation moves them a long way, which is why this is not higher.
+	enableIdleBreathing(1.0f);
 
 	m_mesh.node->setScale(m_viewScaleOffset);
 
@@ -218,8 +224,8 @@ void Weapon_Pitchfork::update()
 		return;
 	}
 
-	// Re-loop the idle when it runs out. The clip is flagged looping, so this is
-	// only a safety net for a clip that ended some other way.
+	// Re-loop the idle if it ever ends. Pinned to one looping frame, so this
+	// should never fire — it only catches a clip that ended some other way.
 	if (animEnded)
 		idle();
 

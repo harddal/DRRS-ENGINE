@@ -1,6 +1,6 @@
 #pragma once
 
-#include "InventoryData.h"
+#include "WeaponData.h"
 
 #define _cct_impulse_scale 50
 #define _cct_transform_scale 0.5f
@@ -11,18 +11,17 @@ struct PlayerData
 {
     bool isWeaponEquipped = false;
 
-    int
-		currentHealth    =  0,
-		ammoDisplayValue = -1;
-
-    InventoryData inventoryData;
+	// Refreshed from the player's DamageReceiverComponent at the top of every
+	// PlayerController::update(). A COPY — write to the component, never here.
+	//
+	// The ammoDisplayValue that sat alongside this was the same pattern without
+	// the refresh, and the HUD now asks the weapon directly instead.
+    int currentHealth = 0;
 
 	PlayerData& operator=(PlayerData data)
 	{
 		std::swap(isWeaponEquipped, data.isWeaponEquipped);
 		std::swap(currentHealth, data.currentHealth);
-		std::swap(ammoDisplayValue, data.ammoDisplayValue);
-		std::swap(inventoryData, data.inventoryData);
 
 		return *this;
 	}

@@ -3,6 +3,8 @@
 #include <vector>
 #include <anax/Entity.hpp>
 
+#include "Game/Components/ImpactSurface.h"
+
 enum class BehaviorPropType { INT, FLOAT, BOOL, STRING, VECTOR3 };
 
 struct BehaviorProperty
@@ -26,4 +28,11 @@ public:
     virtual void onLogicSignal(anax::Entity& entity)     {}
 
     virtual std::vector<BehaviorProperty> getProperties() { return {}; }
+
+    // What this entity is made of, for impact FX when a hit neither bleeds nor
+    // shatters it. Consulted only when the DamageReceiverComponent is left on
+    // IMPACT_AUTO. A living-creature behaviour returns IMPACT_FLESH; a metal
+    // turret could return IMPACT_METAL. IMPACT_AUTO (the default) means "no
+    // opinion — fall through to texture classification".
+    virtual IMPACT_SURFACE bloodType() const { return IMPACT_AUTO; }
 };

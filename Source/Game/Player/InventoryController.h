@@ -1,138 +1,86 @@
 #pragma once
 
-#include "PlayerData.h"
-#include "InventoryData.h"
+#include <string>
 
+#include "PlayerInventory.h"
+
+// ---------------------------------------------------------------------------
+// InventoryController — the pouch panel, and the use path.
+//
+// Replaces a 9x3 drag-and-drop grid with 1H / 2H / spell equip slots. Those
+// slots were for a game that no longer runs: WeaponController owns weapons
+// outright and the skull staff owns spells. The grid itself was never a grid
+// either — sizex/sizey were parsed out of every .item file and never read, and
+// ITEM_SLOT_FILLED_ID was never referenced, so it was 27 single-cell slots
+// drawn in a rectangle.
+//
+// What replaces it: one panel, tabs built from the categories present in the
+// item database, an icon per stack, and a description with a Use button.
+// ---------------------------------------------------------------------------
 class InventoryController
 {
 public:
-    InventoryController() = default;
+	InventoryController() = default;
 
-    void init();
-    void update(PlayerData &data);
-    void destroy();
+	void init();
+	void update();
+	void destroy();
 
-    void draw(irr::core::vector2di mouse_position);
+	bool isInventoryDisplaying() const { return m_displayInventory; }
 
-    bool isInventoryDisplaying() { return m_displayInventory; }
+	PlayerInventory&       inventory()       { return m_inventory; }
+	const PlayerInventory& inventory() const { return m_inventory; }
 
-    // Returns false if no space to pickup item
-    bool pickupItem(itemid item, entityid ent = ITEM_NULL_ID);
-    bool pickupItem(std::string item, entityid ent = ITEM_NULL_ID);
-    bool pickupItem(const Item& item);
+	// --- Acquisition ---------------------------------------------------------
+	// The single entry point for gaining an item, from a pickup or a script.
+	//
+	// Honours ItemDef::autoUse: an item flagged for it is consumed on the spot
+	// rather than stored — but only if the use SUCCEEDS. A medkit walked over at
+	// full health reports that it would do nothing and is stored instead, which
+	// is the rule medkit_small.asc already hand-rolled for itself.
+	//
+	// Returns true if the item was taken at all (used or stored).
+	bool giveItem(const std::string& id, int count = 1, const std::string& data = std::string());
 
-    // Returns false if given invalid/empty slot
-    bool dropItem(unsigned int slot);
-    bool removeItem(unsigned int slot);
+	// Runs the item's onUse script hook and consumes one on success.
+	//
+	// An item with NO onUse hook cannot be used at all — it is not "trivially
+	// used". A keycard has no script, and consuming one because the player
+	// clicked a button would let them destroy the key to the next door.
+	// Returns false when there is no hook, or when canUse reports the use would
+	// do nothing.
+	bool useItem(const std::string& id);
 
-    // Returns -1 if no item found
-    int getFirstItemSlotOfType(itemid id);
-    int getFirstItemSlotOfType(std::string name);
+	// Whether a Use button should exist for this item at all. False for anything
+	// with no onUse hook — keys, and inert upgrade tokens read by other scripts.
+	bool isUsable(const std::string& id) const;
 
-    // Returns an item with ITEM_ID_NULL if no item found
-    Item& getFirstItemCopyOfType(itemid id);
-    Item& getFirstItemCopyOfType(std::string name);
+	// Convenience for scripts. Both resolve through PlayerInventory.
+	bool hasItem(const std::string& id) const  { return m_inventory.has(id); }
+	int  itemCount(const std::string& id) const { return m_inventory.count(id); }
 
-    // Equiping
-    bool equipLeftHand (const Item& item);
-    bool equipRightHand(const Item& item);
-    bool equipTwoHand  (const Item& item);
-
-    bool unequipLeftHand ();
-    bool unequipRightHand();
-    bool unequipTwoHand  ();
-
-    bool isEquipedLeftHand()  { return !m_leftHandEquipedItem.empty(); }
-    bool isEquipedRightHand() { return !m_rightHandEquipedItem.empty(); }
-    bool isEquipedTwoHand()   { return !m_twoHandEquipedItem.empty(); }
-
-	bool isEquippedSpell(unsigned int slot)
-	{
-		switch (slot)
-		{
-		case 1:
-			return m_spellSlot1Equip.id < ITEM_NULL_ID ? true : false;
-		case 2:
-			return m_spellSlot2Equip.id < ITEM_NULL_ID ? true : false;
-		case 3:
-			return m_spellSlot3Equip.id < ITEM_NULL_ID ? true : false;
-		case 4:
-			return m_spellSlot4Equip.id < ITEM_NULL_ID ? true : false;
-		default:
-			return false;
-			break;
-		}
-	}
-
-	Item getEquippedSpell(unsigned int slot)
-	{
-		switch (slot)
-		{
-		case 1:
-			return m_spellSlot1Equip;
-		case 2:
-			return m_spellSlot2Equip;
-		case 3:
-			return m_spellSlot3Equip;
-		case 4:
-			return m_spellSlot4Equip;
-		default:
-			return Item();
-			break;
-		}
-	}
-
-    Item& getItemRightHand() { return m_leftHandEquipSlot; }
-    Item& getItemLeftHand () { return m_rightHandEquipSlot; }
-    Item& getItemTwoHand  () { return m_twoHandEquipSlot; }
-
-    Item getItemRightHandCopy() { return m_leftHandEquipSlot; }
-    Item getItemLeftHandCopy () { return m_rightHandEquipSlot; }
-    Item getItemTwoHandCopy  () { return m_twoHandEquipSlot; }
-
-    // Returns -1 if weapon doesn't use ammo, or no weapon is equipped
-    int getCurrentWeaponAmmoCount();
-
-    void removeCurrentActivatedItem();
+	bool removeItem(const std::string& id, int count = 1) { return m_inventory.remove(id, count) > 0; }
 
 private:
-    bool 
-        m_displayInventory, 
-        m_draggingItem;
+	PlayerInventory m_inventory;
 
-    bool
-        m_display_ui_info,
-        m_display_ui_stats,
-        m_display_ui_misc,
-        m_display_ui_container;
+	bool m_displayInventory = false;
 
-    unsigned int m_draggedItemPrevSlot, m_currentActivatedItemSlot;
+	// Index into PlayerInventory::stacks(), or SIZE_MAX for nothing selected.
+	// Re-validated every frame: using the last of a stack erases it, and a stale
+	// index would then read the wrong item or run off the end.
+	size_t m_selected = static_cast<size_t>(-1);
 
-    irr::video::ITexture 
-        *m_slotImage, 
-        *m_slotImage2H, 
-        *m_slotImage1H;
+	// Which tab is open, by category string rather than by index — the tab set
+	// is rebuilt from the database each frame, and an index would silently point
+	// at a different category if the set ever changed.
+	std::string m_activeCategory;
 
-    Item
-        m_currentActivatedItem,
-        m_currentClickedItem,
-        m_currentDraggedItem,
-        m_leftHandEquipSlot,
-        m_rightHandEquipSlot,
-        m_twoHandEquipSlot,
-		m_spellSlot1Equip,
-		m_spellSlot2Equip,
-		m_spellSlot3Equip,
-		m_spellSlot4Equip;
+	void drawPanel();
 
-    std::string
-        m_leftHandEquipedItem,
-        m_rightHandEquipedItem,
-        m_twoHandEquipedItem,
-		m_spellSlot1EquippedItem,
-		m_spellSlot2EquippedItem, 
-		m_spellSlot3EquippedItem, 
-		m_spellSlot4EquippedItem;
+	// The "would this do anything?" gate. Calls the item's canUse hook if it has
+	// one; items without the hook are always usable.
+	bool canUseItem(const std::string& id) const;
 };
 
 extern bool g_PlayerInventoryIsDisplaying, g_LockPlayerForInput;

@@ -60,11 +60,11 @@
                 <navCookable>false</navCookable>
             </value0>
         </mesh>
-        <script>
-            <value0>
-                <script>content/script/pickup/weapon_plasma_rifle.asc</script>
-                <data/>
-            </value0>
-        </script>
+        <behavior>
+        	<value0>
+        		<behaviorType>Pickup</behaviorType>
+        		<properties>weaponType=0|ammoAmount=0|ammoType=0|healthAmount=0|itemId=|itemCount=1|bobSpeed=1.500000|spinSpeed=45.000000|pickupRadius=1.000000|requiresInteract=0|pickupSound=</properties>
+        	</value0>
+        </behavior>
     </entity>
 </cereal>

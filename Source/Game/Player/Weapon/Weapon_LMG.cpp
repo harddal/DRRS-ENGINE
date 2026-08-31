@@ -51,6 +51,8 @@ void Weapon_LMG::init()
 	m_descriptor.name = "Player_Weapon_LMG";
 	m_descriptor.id = _entity_null_value;
 
+	m_weapon_type = WEAP_LMG;
+
 	// lmg_animated.glb carries the same arms rig as every other weapon in this
 	// pack — identical joint names, identical 'arms' root at (0, 2.945, -17.671)
 	// — so the shotgun's viewmodel transform is the right starting point for
@@ -96,29 +98,30 @@ void Weapon_LMG::init()
 	//   10-180   'loader' back f21-24, 'lid_2' opens 100 deg f49-51,
 	//            'mag' off f65-78 and home f92, cover shuts f126-8,
 	//            latch closes f162-5                               -> reload
-	//   181-191  gun swings down and right, yaw +58, out of frame  -> unequip
-	//   192-204  the same pose returning to rest                   -> a second draw,
-	//            unused; see the note on equip below
+	//   181-191  gun swings down and right, yaw +58, DROPPING to
+	//            Y -13.1, out of frame                             -> unequip
+	//   192-204  the same arc returning to rest                    -> equip
 	//   205-233  a 0.9-unit dip and return, no rotation at all     -> a gentle
 	//            idle sway, unused: idle is pinned to 205 and the
 	//            hold-steady motion comes from enableIdleBreathing()
-	//   234-252  gun heaved up from off-screen right, roll -74.8   -> equip
+	//   234-252  gun snaps to a rolled pose (-74.8) in TWO frames
+	//            and takes sixteen to recover                    -> melee bash
 	//   253-423  the belt change again, with the gun dipped much
 	//            lower through the swap                            -> unused
 	//
-	// Two draws exist because 192-204 is the mirror of the holster (they share
-	// the extreme at f191/192, the way the revolver's share f240) while 234-252
-	// is a separate, far more dramatic heave up into frame. The heave is the one
-	// bound here: it sells the weight of the gun, which is the whole character of
-	// this weapon, and nothing requires a draw to retrace its own holster.
+	// 181-204 is ONE authored take holding both transitions: out to the extreme at
+	// f191/192, then back. It is split at that apex, so unequip plays the first
+	// half and equip the second.
+	//
+	// 234-252 was bound as the equip at first and is NOT a draw. Every bash in
+	// this pack has the same signature and it is easy to mistake: the pose is
+	// reached within two or three frames and then recovered over fifteen or more,
+	// with a large NEGATIVE roll. A holster or draw is symmetric and takes the
+	// weapon DOWN — Y -13.1 here against the bash's +3.5.
 	//
 	// 253-423 is the same belt change re-timed, and it drops the whole gun to
 	// Y -12.4 during the swap — far enough that the receiver leaves the bottom of
 	// the screen. 10-180 is the tamer take and is the one used.
-	//
-	// The equip range starts at 236, NOT at the rest hold at 234: f235 is a pure
-	// interpolation between the rest pose and the extreme, so starting there
-	// would show the gun snapping out of frame before it comes back in.
 	//
 	// Looping clips MUST be flagged loop=true — a non-looping clip re-armed from
 	// the end callback holds its last frame for one tick every cycle, which is a
@@ -126,10 +129,10 @@ void Weapon_LMG::init()
 	m_mesh.animationList.emplace_back(sAnimationData("fire",    0,   9,   false));
 	m_mesh.animationList.emplace_back(sAnimationData("reload",  10,  180, false));
 	m_mesh.animationList.emplace_back(sAnimationData("unequip", 181, 191, false));
-	m_mesh.animationList.emplace_back(sAnimationData("equip",   236, 252, false));
+	m_mesh.animationList.emplace_back(sAnimationData("equip",   192, 204, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle",    205, 205, true));
 	// Authored but not bound: the mirror draw and the sway loop described above
-	m_mesh.animationList.emplace_back(sAnimationData("equip_alt", 192, 204, false));
+	m_mesh.animationList.emplace_back(sAnimationData("melee",     234, 252, false));
 	m_mesh.animationList.emplace_back(sAnimationData("idle_sway", 205, 233, true));
 
 	// Both glTF backends normalise keyframe times to 30 fps Irrlicht frames, so
@@ -244,7 +247,12 @@ void Weapon_LMG::init()
 	fx.tracerWidth       = 0.12f;
 	fx.tracerPoolSize    = 24;
 	fx.shellMesh         = "content/mesh/prop/shells/shellmedium.obj";
-	fx.shellPoolSize     = 48;
+	// A 100-round belt at 600 rpm takes ten seconds to empty, which is EXACTLY
+	// the casing lifetime — so a full belt has every one of its cases still on
+	// the ground when the last round goes. 48 covered under half a belt; this
+	// covers a whole one with a little headroom. Same lifetime-not-magazine
+	// reasoning as the dual SMGs.
+	fx.shellPoolSize     = 112;
 	fx.impactParticle    = "spark";
 	m_effects.init(m_mesh.node, fx);
 }
@@ -433,7 +441,7 @@ void Weapon_LMG::update()
 			if (!m_ammoCredited)
 			{
 				m_ammoCredited = true;
-				m_ammo = m_ammoCapacity;
+				m_ammo += drawFromReserve(m_ammoCapacity - m_ammo);
 			}
 
 			endReload();
@@ -444,7 +452,11 @@ void Weapon_LMG::update()
 			if (!m_ammoCredited && frame >= static_cast<irr::f32>(m_boxOnFrame))
 			{
 				m_ammoCredited = true;
-				m_ammo = m_ammoCapacity;
+
+				// A short draw is fine here and needs no extra handling: the belt
+				// arc is rendered from m_ammo by beltLinksForAmmo(), so a partial
+				// box comes up as a visibly short strand on its own.
+				m_ammo += drawFromReserve(m_ammoCapacity - m_ammo);
 			}
 
 			updateReloadSounds(frame);
@@ -716,11 +728,19 @@ void Weapon_LMG::fire()
 			// Only register collision with static or dynamic entities
 			if (hitDescriptor.type == ET_STATIC || hitDescriptor.type == ET_DYNAMIC)
 			{
-				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
+				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback.
+				// The context is what lets GoreManager put blood at the wound and throw
+				// splatter downrange, instead of spraying from the entity's centre.
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
+					WorldManager::Get()->gameplaySystem()->damageEntity(
+						hitDescriptor.id, m_damage, DAMAGE_TYPE::DEFAULT,
+						DamageContext::fromImpact(raycastResult.point, raycastResult.normal, direction)));
 
-				m_effects.impact(raycastResult.point, raycastResult.normal);
+				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
+				// damage receiver is flesh as far as feedback goes, and GoreManager has
+				// already covered it — this call used to spark off zombies.
+				if (!hitEntity.hasComponent<DamageReceiverComponent>())
+					m_effects.impact(raycastResult.point, raycastResult.normal);
 			}
 		}
 		else if (RenderManager::isWorldGeometryNode(raycastResult.node))
@@ -827,6 +847,15 @@ void Weapon_LMG::reload()
 
 	if (m_ammo >= m_ammoCapacity)
 		return; // nothing to top up — don't burn three and a half seconds on a full belt
+
+	// Nothing in the pool to load with. Cued rather than failing silently: silence
+	// reads as a dropped input, and the player presses reload again instead of
+	// going to look for ammunition.
+	if (reserveRemaining() <= 0)
+	{
+		playEmptyReserveSound();
+		return;
+	}
 
 	if (!m_mesh.node)
 		return;

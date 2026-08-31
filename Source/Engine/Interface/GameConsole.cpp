@@ -12,6 +12,9 @@
 #include "Editor/ImGuiLogSink.h"
 
 #include "Game/Components.h"
+#include "Game/Player/PlayerController.h"
+#include "Game/Gore/FractureManager.h"
+#include "Game/Gore/FractureGeometry.h"
 
 #include "angelscript.h"
 #include "angelscript/sdk/add_on/scripthelper/scripthelper.h"
@@ -268,6 +271,106 @@ void GameConsole::registerBuiltins()
 		Engine::Get()->requestHitStop(static_cast<float>(atof(args[0].c_str())));
 	});
 
+	registerCommand("give", "<weapon|all> arm the player; 'ammo' fills every pool",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!g_PlayerController)
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		auto* weapons = g_PlayerController->weaponController();
+		if (!weapons)
+		{
+			printLine(kColError, "no weapon controller");
+			return;
+		}
+
+		if (args.empty())
+		{
+			printLine(kColError, "usage: give <1-" + std::to_string(WEAP_COUNT - 1) + "|all|ammo>");
+			return;
+		}
+
+		if (args[0] == "all")
+		{
+			weapons->giveAllWeapons();
+			weapons->giveAllAmmo();
+			print("Armed with everything.");
+			return;
+		}
+
+		if (args[0] == "ammo")
+		{
+			weapons->giveAllAmmo();
+			print("Every ammunition pool filled.");
+			return;
+		}
+
+		const int slot = atoi(args[0].c_str());
+		if (slot <= WEAP_NONE || slot >= WEAP_COUNT)
+		{
+			printLine(kColError, "give: weapon must be 1.." + std::to_string(WEAP_COUNT - 1));
+			return;
+		}
+
+		const auto weapon = static_cast<PLAYER_WEAPON>(slot);
+
+		weapons->giveWeapon(weapon, true);
+		weapons->addAmmo(weaponAmmoType(weapon),
+		                 static_cast<unsigned int>(weaponPickupAmmo(weapon)));
+
+		print("Given weapon " + std::to_string(slot) + ".");
+	});
+
+	registerCommand("ammo", "[type] [n] set a reserve pool; no args lists them",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!g_PlayerController || !g_PlayerController->weaponController())
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		auto* weapons = g_PlayerController->weaponController();
+
+		static const char* kNames[AMMO_COUNT] = {
+			"none", "light", "heavy", "magnum", "shell",
+			"match", "bolt", "grenade", "energy", "rocket"
+		};
+
+		if (args.empty())
+		{
+			for (int i = 1; i < AMMO_COUNT; ++i)
+			{
+				const auto type = static_cast<AMMO_TYPE>(i);
+				print("  " + std::string(kNames[i]) + ": "
+				      + std::to_string(weapons->reserveAmmo(type)) + " / "
+				      + std::to_string(ammoReserveMax(type)));
+			}
+			return;
+		}
+
+		int found = -1;
+		for (int i = 1; i < AMMO_COUNT; ++i)
+			if (args[0] == kNames[i]) { found = i; break; }
+
+		if (found < 0)
+		{
+			printLine(kColError, "ammo: unknown pool '" + args[0] + "'");
+			return;
+		}
+
+		const auto type = static_cast<AMMO_TYPE>(found);
+
+		if (args.size() >= 2)
+			weapons->setAmmo(type, static_cast<unsigned int>(atoi(args[1].c_str())));
+
+		print(std::string(kNames[found]) + ": " + std::to_string(weapons->reserveAmmo(type))
+		      + " / " + std::to_string(ammoReserveMax(type)));
+	});
+
 	registerCommand("script", "<code> execute AngelScript (also: prefix line with >)",
 		[this](const std::vector<std::string>&, const std::string& raw)
 	{
@@ -305,6 +408,115 @@ void GameConsole::registerBuiltins()
 		const bool on = (args[1] != "0");
 		rm->setPostProcessPassEnabled(args[0], on);
 		print(args[0] + " = " + (on ? "1" : "0"));
+	});
+
+	registerCommand("fx_fracture", "[0|1] toggle prop fracture (off falls back to the gore path)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* fm = FractureManager::Get();
+		if (!fm) { print("fracture system not running"); return; }
+
+		if (!args.empty())
+			fm->enabled = (args[0] != "0");
+
+		print(std::string("fx_fracture = ") + (fm->enabled ? "1" : "0"));
+	});
+
+	registerCommand("fx_fracture_cells", "[n] override shard count for every prop; 0 = use each entity's own",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* fm = FractureManager::Get();
+		if (!fm) { print("fracture system not running"); return; }
+
+		if (!args.empty())
+			fm->cellOverride = atoi(args[0].c_str());
+
+		print("fx_fracture_cells = " + std::to_string(fm->cellOverride) +
+			(fm->cellOverride > 0 ? "" : " (per-entity)"));
+	});
+
+	registerCommand("fracture", "<entity name> break a prop now, without damaging it",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* fm = FractureManager::Get();
+		if (!fm) { print("fracture system not running"); return; }
+
+		if (args.empty()) { print("usage: fracture <entity name>"); return; }
+
+		const int id = WorldManager::Get()->managerSystem()->getIDByName(args[0]);
+		if (id < 0) { print("no entity named '" + args[0] + "'"); return; }
+
+		auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(id);
+		if (!entity.isValid()) { print("entity '" + args[0] + "' is not valid"); return; }
+
+		// A default DamageContext means "no idea where it was hit", which makes
+		// the shards slump apart rather than blow downrange — the right look for
+		// a console trigger with no shot behind it.
+		if (fm->fracture(entity, DamageContext()))
+			print("fractured '" + args[0] + "'");
+		else
+			print("'" + args[0] + "' cannot fracture (skinned mesh, no node, or degenerate bounds)");
+	});
+
+	registerCommand("fracture_test", "[cells] self-test: verify voronoi cells partition their box",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		// Guards the property that actually matters and that "it produced
+		// geometry" would never catch: the cells must TILE the volume. A point
+		// inside the box has to fall in exactly one cell — zero means a gap
+		// (shards with holes between them), two means an overlap (shards
+		// intersecting in flight).
+		const int cellCount = args.empty() ? 16 : atoi(args[0].c_str());
+		const int samples   = 4000;
+
+		const irr::core::aabbox3df box(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f);
+
+		std::vector<irr::core::vector3df> seeds;
+		FractureGeometry::scatterSeeds(box, cellCount, seeds);
+
+		std::vector<std::vector<FractureGeometry::Plane>> cells(seeds.size());
+		for (size_t i = 0; i < seeds.size(); ++i)
+			FractureGeometry::buildCellPlanes(seeds, i, box, cells[i]);
+
+		auto* rng = Engine::Get()->rng();
+
+		int gaps = 0, overlaps = 0;
+
+		for (int s = 0; s < samples; ++s)
+		{
+			const irr::core::vector3df p(
+				rng->getFloat(box.MinEdge.X, box.MaxEdge.X),
+				rng->getFloat(box.MinEdge.Y, box.MaxEdge.Y),
+				rng->getFloat(box.MinEdge.Z, box.MaxEdge.Z));
+
+			int hits = 0;
+
+			for (const auto& planes : cells)
+			{
+				bool inside = true;
+
+				for (const auto& pl : planes)
+				{
+					if (pl.distance(p) > 1.0e-5f) { inside = false; break; }
+				}
+
+				if (inside)
+					++hits;
+			}
+
+			if (hits == 0)      ++gaps;
+			else if (hits > 1)  ++overlaps;
+		}
+
+		print("fracture_test: " + std::to_string(seeds.size()) + " cells, " +
+			std::to_string(samples) + " samples");
+
+		if (gaps == 0 && overlaps == 0)
+			print("  PASS - cells partition the box exactly");
+		else
+			printLine(ImVec4(1.0f, 0.4f, 0.4f, 1.0f),
+				"  FAIL - " + std::to_string(gaps) + " gaps, " +
+				std::to_string(overlaps) + " overlaps");
 	});
 
 	registerCommand("r_prepass", "[0|1] toggle the depth/normal pre-pass (SSAO, decals, soft particles)",

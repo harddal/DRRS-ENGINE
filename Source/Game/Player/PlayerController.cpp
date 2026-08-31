@@ -24,6 +24,15 @@ using namespace physx;
 
 const float
 	g_sensitivity      = 0.09f,
+
+	// How strongly mouse sensitivity follows the zoom while a sight is raised.
+	// 1.0 = fully zoom-proportional: a given mouse movement sweeps the same
+	// distance ACROSS THE SCREEN however far the view is magnified, which is what
+	// makes a scope feel like the same mouse at a longer focal length rather than
+	// like a twitchier one. 0.0 disables the scaling entirely; values between the
+	// two leave scoped aim deliberately quicker than true proportionality.
+	g_adsSensitivityCoeff = 1.0f,
+
 	g_topAngle         = -89.5f,
 	g_bottomAngle      =  89.5f,
 	g_walkSpeed        =  8.0f,   // units/sec — normal ground speed
@@ -157,8 +166,6 @@ void DisplayStaminaBar(float currentStamina, float maxStamina)
 
 void PlayerController::init()
 {
-	g_PlayerData.inventoryData.size = irr::core::vector2di(9, 3);
-
 #ifndef DISABLE_HUD_AND_INV
 	m_hudController.init();
 #endif
@@ -226,6 +233,12 @@ void PlayerController::update(float dt)
 
 	auto& transform = player.getComponent<TransformComponent>();
 	auto& camera = player.getComponent<CameraComponent>();
+
+	// The unzoomed reference FOV, taken once before anything has had a chance to
+	// write one. Both the FX kick below and the zoom-proportional sensitivity
+	// scaling measure against this, so it has to be captured before either.
+	if (m_baseFov <= 0.0f)
+		m_baseFov = camera.camera->getFOV();
 	auto& cct = player.getComponent<CCTComponent>();
 	auto& sound = player.getComponent<SoundComponent>();
 	auto& damage = player.getComponent<DamageReceiverComponent>();
@@ -267,9 +280,37 @@ void PlayerController::update(float dt)
 	{
 		mouseDelta = InputManager::Get()->getMouseDelta();
 
+		// Zoom-proportional sensitivity.
+		//
+		// Scaled by the ratio of the tangents, not of the angles: what should stay
+		// constant is how far a mouse movement sweeps ACROSS THE SCREEN, and screen
+		// extent goes as tan(fov/2), not as fov. Halving the FOV does not halve the
+		// on-screen speed, so scaling linearly by the angle would leave a strong
+		// scope still far too quick.
+		//
+		// Read from the SUSTAINED zoom channel only, never from the camera's live
+		// FOV: that also carries fovKick, the transient punch a shot gives, and a
+		// muzzle flash briefly widening the view must not briefly make the mouse
+		// more sensitive. See CameraFX for why those two are separate channels.
+		float sensScale = 1.0f;
+
+		if (g_adsSensitivityCoeff > 0.0f && fabsf(g_CameraFX.fovZoom) > 0.001f)
+		{
+			const float baseHalf = baseFov() * 0.5f;
+			const float zoomHalf = (baseFov() + g_CameraFX.fovZoom * irr::core::DEGTORAD) * 0.5f;
+
+			// Guard the tangent: a zoom that drove the FOV to zero or past a
+			// straight angle would blow up or flip sign.
+			if (baseHalf > 0.001f && zoomHalf > 0.001f && zoomHalf < 1.55f)
+			{
+				const float ratio = tanf(zoomHalf) / tanf(baseHalf);
+				sensScale = 1.0f + (ratio - 1.0f) * g_adsSensitivityCoeff;
+			}
+		}
+
 		// Accumulate mouse delta into the clean base rotation only.
-		m_cameraYaw   -= mouseDelta.X * g_sensitivity;
-		m_cameraPitch -= mouseDelta.Y * g_sensitivity;
+		m_cameraYaw   -= mouseDelta.X * g_sensitivity * sensScale;
+		m_cameraPitch -= mouseDelta.Y * g_sensitivity * sensScale;
 
 		if (m_cameraPitch > g_bottomAngle) m_cameraPitch = g_bottomAngle;
 		if (m_cameraPitch < g_topAngle)    m_cameraPitch = g_topAngle;
@@ -300,10 +341,11 @@ void PlayerController::update(float dt)
 		cameraRotation.Z += fxRoll;
 
 		// FOV kick — fire punch widens, nearby explosions crunch in.
-		// Base FOV captured once before any kick is ever applied; nothing else
-		// in the engine calls setFOV, so PlayerController owns it from here.
-		static const float s_baseFov = camera.camera->getFOV();
-		camera.camera->setFOV(s_baseFov + fxFovDeg * irr::core::DEGTORAD);
+		// The unzoomed reference comes from baseFov(), which captures it once
+		// before any kick or zoom is ever applied; nothing else in the engine
+		// calls setFOV, so PlayerController owns it from here. Shared with the
+		// sensitivity scaling above so both read one definition of "unzoomed".
+		camera.camera->setFOV(baseFov() + fxFovDeg * irr::core::DEGTORAD);
 
 		// Clamp after FX to prevent extremes.
 		if (cameraRotation.X > g_bottomAngle) cameraRotation.X = g_bottomAngle;
@@ -990,6 +1032,27 @@ void PlayerController::update(float dt)
 		m_weaponController.update();
 	}
 
+#ifndef DISABLE_HUD_AND_INV
+	// The old InventoryController::update() was never called from anywhere, which
+	// is why Tab did nothing. Ticked here, after the weapon controller, so the
+	// panel's input grab happens after weapon input has been read for the frame.
+	m_inventoryController.update();
+#endif
+
+	// A .pak carrying a player.sav was loaded. Applied HERE, after the weapon
+	// controller's update, for two reasons: the weapons are constructed in
+	// init() but precache()d and init()ed on the controller's FIRST update, so
+	// before that call weaponType() has not been set on any of them and the
+	// restore would address nothing; and staging means this works identically
+	// whether the load happened before PlayerController::init() (boot) or
+	// without re-initing it at all (a mid-game checkpoint load).
+	if (WorldManager::Get()->hasPendingPlayerState())
+	{
+		PlayerSaveState state;
+		if (WorldManager::Get()->takePendingPlayerState(state))
+			applyPlayerState(state);
+	}
+
 	if (damage.didReceiveDamage() && !m_isDead)
 	{
 		sound.play("damage" + std::to_string(rand() % 2 + 1));
@@ -1023,7 +1086,6 @@ void PlayerController::destroy()
 
 	m_firstUpdate = true;
 
-	g_PlayerData.inventoryData.contents.clear();
 }
 
 void PlayerController::pause()
@@ -1071,149 +1133,140 @@ void PlayerController::playJumpSound(anax::Entity& player)
     player.getComponent<SoundComponent>().play(material + "jump");
 }
 
-void PlayerController::loadPlayerData(std::string file)
+// ---------------------------------------------------------------------------
+// Save sidecar
+//
+// This replaces a savePlayerData()/loadPlayerData() pair that was never called
+// from anywhere and could never have worked: the writer used cereal and the
+// reader hand-rolled tinyxml2 over a different shape entirely.
+// ---------------------------------------------------------------------------
+
+bool PlayerController::capturePlayerState(PlayerSaveState& out) const
 {
-	tinyxml2::XMLDocument xml;
-	if (xml.LoadFile(file.c_str()) != tinyxml2::XML_NO_ERROR) {
-		spdlog::error("Failed to load player save data \'" + file + "\' in PlayerController::loadPlayerData()");
-		return;
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+
+	// No live player to read. Reported rather than written as zeroes, so a save
+	// taken with no player loaded leaves the sidecar out and the pak stays a
+	// plain map.
+	if (!player.isValid() || !player.hasComponent<DamageReceiverComponent>())
+		return false;
+
+	auto* weapons = const_cast<WeaponController*>(&m_weaponController);
+
+	out          = PlayerSaveState();
+	out.version  = PlayerSaveState::CURRENT_VERSION;
+
+	// Straight from the component, NOT from g_PlayerData: that field is a copy
+	// refreshed once a frame, and reading it here would save whatever the value
+	// was before this frame's damage landed.
+	out.health = player.getComponent<DamageReceiverComponent>().health;
+
+	out.reserve.reserve(AMMO_COUNT);
+	for (auto i = 0U; i < AMMO_COUNT; ++i)
+		out.reserve.emplace_back(static_cast<int>(weapons->reserveAmmo(static_cast<AMMO_TYPE>(i))));
+
+	for (auto& weapon : weapons->m_player_weapon)
+	{
+		if (!weapon)
+			continue;
+
+		const PLAYER_WEAPON type = weapon->weaponType();
+
+		if (weapons->hasWeapon(type))
+			out.owned.emplace_back(static_cast<int>(type));
+
+		// Recorded for every weapon, owned or not. A gun dropped and picked up
+		// again should come back in the state it was left in, and the record is
+		// three ints.
+		WeaponMagState mag;
+		weapon->saveMagState(mag);
+
+		WeaponMagRecord record;
+		record.weapon = static_cast<int>(type);
+		record.slot0  = mag.slots[0];
+		record.slot1  = mag.slots[1];
+		record.slot2  = mag.slots[2];
+		record.slot3  = mag.slots[3];
+		record.charge = mag.charge;
+
+		out.mags.emplace_back(record);
 	}
 
-	try {
-		auto root = xml.FirstChild()->NextSibling()->FirstChild();
+	out.currentWeapon = static_cast<int>(weapons->currentWeaponType());
 
-		for (auto dataNode = root->FirstChild()->FirstChildElement();
-			dataNode != nullptr;
-			dataNode = dataNode->NextSiblingElement()) {
-			if (std::string(dataNode->Name()) == "value0") {
-				WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<DamageReceiverComponent>().damageReceived = 100 - atoi(dataNode->GetText());
-			}
-		}
+	for (auto& stack : m_inventoryController.inventory().stacks())
+	{
+		ItemStackRecord record;
+		record.id    = stack.id;
+		record.count = stack.count;
+		record.data  = stack.data;
 
-		auto equipped_item = ItemDatabase::GetItemByName(std::string(root->NextSibling()->FirstChild()->Value()));
-		for (auto dataNode = root->NextSibling()->FirstChild()->FirstChild()->FirstChildElement();
-			dataNode != nullptr;
-			dataNode = dataNode->NextSiblingElement()) {
-			if (std::string(dataNode->Name()) == "data1") {
-				if (dataNode->GetText()) {
-					//equipped_item.data1 = dataNode->GetText();
-					continue;
-				}
-			}
-			if (std::string(dataNode->Name()) == "data2") {
-				if (dataNode->GetText()) {
-					//equipped_item.data2 = dataNode->GetText();
-					continue;
-				}
-			}
-			if (std::string(dataNode->Name()) == "data3") {
-				if (dataNode->GetText()) {
-					//equipped_item.data3 = dataNode->GetText();
-					continue;
-				}
-			}
-			if (std::string(dataNode->Name()) == "data4") {
-				if (dataNode->GetText()) {
-					//equipped_item.data4 = dataNode->GetText();
-					continue;
-				}
-			}
-		}
-
-		m_inventoryController.equipTwoHand(equipped_item);
-
-		auto counter = 0U;
-		for (
-			tinyxml2::XMLNode* itemNode = root->NextSibling()->NextSibling()->FirstChild();
-			itemNode != nullptr;
-			itemNode = itemNode->NextSibling()) {
-
-			if (std::string(itemNode->Value()) == "null_item") {
-				counter++;
-
-				continue;
-			}
-
-			auto item = ItemDatabase::GetItemByName(std::string(itemNode->Value()));
-			for (auto dataNode = itemNode->FirstChild()->FirstChildElement();
-				dataNode != nullptr;
-				dataNode = dataNode->NextSiblingElement()) {
-				if (std::string(dataNode->Name()) == "data1") {
-					if (dataNode->GetText()) {
-						//item.data1 = dataNode->GetText();
-						continue;
-					}
-				}
-				if (std::string(dataNode->Name()) == "data2") {
-					if (dataNode->GetText()) {
-						//item.data2 = dataNode->GetText();
-						continue;
-					}
-				}
-				if (std::string(dataNode->Name()) == "data3") {
-					if (dataNode->GetText()) {
-						//item.data3 = dataNode->GetText();
-						continue;
-					}
-				}
-				if (std::string(dataNode->Name()) == "data4") {
-					if (dataNode->GetText()) {
-						//item.data4 = dataNode->GetText();
-						continue;
-					}
-				}
-			}
-
-			g_PlayerData.inventoryData.contents.at(counter) = item;
-
-			counter++;
-		}
+		out.items.emplace_back(std::move(record));
 	}
-	catch (...) {
-		spdlog::error("Failed to deserialize player data \'" + file + "\' in PlayerController::loadPlayerData()");
-		return;
-	}
+
+	return true;
 }
 
-void PlayerController::savePlayerData(std::string file)
+void PlayerController::applyPlayerState(const PlayerSaveState& in)
 {
-	std::ofstream ofs_scene(file);
-	cereal::XMLOutputArchive archive(ofs_scene);
-
-	try {
-		archive.setNextName("data");
-		archive.startNode();
-		{
-			archive.setNextName("health");
-			archive.startNode();
-			archive(g_PlayerData.currentHealth);
-			archive.finishNode();
-		}
-		archive.finishNode();
-
-		archive.setNextName("equipped");
-		archive.startNode();
-		{
-			archive.setNextName(m_inventoryController.getItemTwoHand().name.c_str());
-			archive.startNode();
-			archive(m_inventoryController.getItemTwoHandCopy());
-			archive.finishNode();
-		}
-		archive.finishNode();
-
-		archive.setNextName("inventory");
-		archive.startNode();
-
-		for (auto& item : g_PlayerData.inventoryData.contents) {
-			archive.setNextName(item.name.c_str());
-			archive.startNode();
-			archive(item);
-			archive.finishNode();
-		}
-
-		archive.finishNode();
+	// A sidecar from a newer build may mean a field this build reads differently
+	// or an AMMO_TYPE it has never heard of. Refused rather than half-applied.
+	if (in.version > PlayerSaveState::CURRENT_VERSION)
+	{
+		spdlog::warn("PlayerController::applyPlayerState(): sidecar version {} is newer than this build's {} — ignored",
+		    in.version, PlayerSaveState::CURRENT_VERSION);
+		return;
 	}
-	catch (...) {
-		spdlog::error("Failed to serialize player data in PlayerController::savePlayerData()");
+
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+
+	if (player.isValid() && player.hasComponent<DamageReceiverComponent>())
+	{
+		// Into the COMPONENT. g_PlayerData.currentHealth is overwritten from here
+		// at the top of every update(), so writing to that copy would be undone
+		// before anything read it.
+		player.getComponent<DamageReceiverComponent>().health = in.health;
+		g_PlayerData.currentHealth = in.health;
 	}
+
+	// Only the pools the sidecar actually mentions, so a save written before an
+	// AMMO_TYPE was appended leaves the new pool alone instead of zeroing it.
+	for (auto i = 0U; i < in.reserve.size() && i < AMMO_COUNT; ++i)
+		m_weaponController.setAmmo(static_cast<AMMO_TYPE>(i), static_cast<unsigned int>(in.reserve[i] > 0 ? in.reserve[i] : 0));
+
+	for (auto type : in.owned)
+	{
+		// autoEquip false: the weapon to raise is decided by currentWeapon below,
+		// and letting each grant switch would leave the player holding whichever
+		// one happened to be last in the list.
+		m_weaponController.giveWeapon(static_cast<PLAYER_WEAPON>(type), false);
+	}
+
+	for (auto& record : in.mags)
+	{
+		WeaponMagState mag;
+		mag.slots[0] = record.slot0;
+		mag.slots[1] = record.slot1;
+		mag.slots[2] = record.slot2;
+		mag.slots[3] = record.slot3;
+		mag.charge   = record.charge;
+
+		m_weaponController.loadWeaponMagState(static_cast<PLAYER_WEAPON>(record.weapon), mag);
+	}
+
+	m_weaponController.switchWeapon(static_cast<PLAYER_WEAPON>(in.currentWeapon));
+
+	// A v1 sidecar carries no items and leaves this empty, which correctly loads
+	// as an empty pouch rather than as "do not touch the inventory".
+	std::vector<ItemStack> items;
+	items.reserve(in.items.size());
+
+	for (auto& record : in.items)
+	{
+		ItemStack stack(record.id, record.count);
+		stack.data = record.data;
+		items.emplace_back(std::move(stack));
+	}
+
+	m_inventoryController.inventory().load(items);
 }

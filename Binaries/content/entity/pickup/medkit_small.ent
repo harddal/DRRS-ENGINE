@@ -60,12 +60,12 @@
 				<isVisible>true</isVisible>
 			</value0>
 		</render>
-		<script>
+		<behavior>
 			<value0>
-				<script>content\script\pickup\medkit_small.asc</script>
-				<data size="dynamic"/>
+				<behaviorType>Pickup</behaviorType>
+				<properties>weaponType=0|ammoAmount=0|ammoType=0|healthAmount=0|itemId=medkit|itemCount=1|bobSpeed=0.000000|spinSpeed=0.000000|pickupRadius=1.000000|pickupSound=</properties>
 			</value0>
-		</script>
+		</behavior>
 		<sound>
 			<value0>
 				<sounds size="dynamic"/>

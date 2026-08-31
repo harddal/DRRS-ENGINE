@@ -22,6 +22,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_cylinder; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_cylinder; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_cylinder = (in.slots[0] < m_cylinderSize ? in.slots[0] : m_cylinderSize); }
+
 private:
 	// Single-action: one shot per click, hard cadence limit between shots
 	bool m_firedThisPress = false;

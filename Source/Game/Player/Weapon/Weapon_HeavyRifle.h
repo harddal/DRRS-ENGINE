@@ -25,6 +25,12 @@ public:
 	void fire();
 	void reload();
 
+	int displayAmmo() const override { return m_rounds; }
+	// Magazine contents for the save sidecar. See WeaponMagState — slot 0 is this
+	// weapon's only counter.
+	void saveMagState(WeaponMagState& out) const override { out.slots[0] = m_rounds; }
+	void loadMagState(const WeaponMagState& in) override  { if (in.slots[0] >= 0) m_rounds = (in.slots[0] < m_magSize ? in.slots[0] : m_magSize); }
+
 private:
 	float m_recoil = 0.01f;
 	float m_lastFireTime = 0.0f;

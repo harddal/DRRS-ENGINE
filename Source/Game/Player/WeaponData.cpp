@@ -7,8 +7,221 @@
 
 #include "Engine/World/WorldManager.h"
 
+#include "Game/Player/PlayerController.h"
+
+#include <climits>
+
 // Define the static member for ImpactBurnShaderCallback
 float ImpactBurnShaderCallback::currentSpawnTime = 0.0f;
+
+// ---------------------------------------------------------------------------
+// Ammunition tables
+//
+// Magazine sizes are deliberately absent: those already live in each weapon's
+// own header, where they are tuned alongside the animation frames that seat
+// them. Duplicating them here would be two sources of truth for the same
+// number, and the copy in the table is the one that would rot.
+// ---------------------------------------------------------------------------
+
+WEAPON_CATEGORY weaponCategory(PLAYER_WEAPON weapon)
+{
+	switch (weapon)
+	{
+	// Bucket 1 — anything swung rather than fired.
+	case WEAP_MELEE:      return WEAPCAT_MELEE;
+	case WEAP_PITCHFORK:  return WEAPCAT_MELEE;
+
+	// Bucket 2 — one-handed. Thin today, but it is the slot muscle memory expects
+	// a sidearm in, so it stays its own bucket rather than being folded elsewhere.
+	case WEAP_REVOLVER:   return WEAPCAT_SIDEARM;
+
+	case WEAP_SHOTGUN:    return WEAPCAT_SHOTGUN;
+	case WEAP_SAWNOFFS:   return WEAPCAT_SHOTGUN;
+
+	// Bucket 4 — the automatics and self-loaders. The largest bucket, which is
+	// fine: it is the one a player cycles deliberately.
+	case WEAP_SMG:        return WEAPCAT_AUTOMATIC;
+	case WEAP_RIFLE:      return WEAPCAT_AUTOMATIC;
+	case WEAP_HEAVYRIFLE: return WEAPCAT_AUTOMATIC;
+	case WEAP_DUALSMG:    return WEAPCAT_AUTOMATIC;
+
+	// Bucket 5 — the two that are slow to bring up and heavy to carry.
+	case WEAP_LMG:        return WEAPCAT_HEAVY;
+	case WEAP_SNIPER:     return WEAPCAT_HEAVY;
+
+	case WEAP_LAUNCHER:   return WEAPCAT_EXPLOSIVE;
+
+	// Bucket 7 — neither gun nor melee.
+	case WEAP_CROSSBOW:   return WEAPCAT_EXOTIC;
+	case WEAP_SKULLSTAFF: return WEAPCAT_EXOTIC;
+
+	// WEAP_NONE is reached with 0, not with a bucket.
+	case WEAP_NONE:
+	default:              return WEAPCAT_NONE;
+	}
+}
+
+const char* weaponDisplayName(PLAYER_WEAPON weapon)
+{
+	switch (weapon)
+	{
+	case WEAP_MELEE:      return "Knife";
+	case WEAP_PITCHFORK:  return "Pitchfork";
+	case WEAP_REVOLVER:   return "Revolver";
+	case WEAP_SHOTGUN:    return "Shotgun";
+	case WEAP_SAWNOFFS:   return "Sawn-offs";
+	case WEAP_SMG:        return "SMG";
+	case WEAP_RIFLE:      return "Rifle";
+	case WEAP_HEAVYRIFLE: return "Heavy Rifle";
+	case WEAP_DUALSMG:    return "Dual SMGs";
+	case WEAP_LMG:        return "LMG";
+	case WEAP_SNIPER:     return "Sniper";
+	case WEAP_LAUNCHER:   return "Grenade Launcher";
+	case WEAP_CROSSBOW:   return "Crossbow";
+	case WEAP_SKULLSTAFF: return "Skull Staff";
+	case WEAP_NONE:
+	default:              return "";
+	}
+}
+
+const char* weaponIconPath(PLAYER_WEAPON weapon)
+{
+	// Baked from the pickup world models by Tools/render_weapon_icon.py. The names
+	// follow the world_model/ .glb they were rendered from, not the weapon enum, so
+	// re-running the tool over that directory keeps this set in step.
+	switch (weapon)
+	{
+	case WEAP_MELEE:      return "content/texture/ui/weapon/knife.png";
+	case WEAP_PITCHFORK:  return "content/texture/ui/weapon/pitchfork.png";
+	case WEAP_REVOLVER:   return "content/texture/ui/weapon/revolver.png";
+	case WEAP_SHOTGUN:    return "content/texture/ui/weapon/shotgun.png";
+	case WEAP_SAWNOFFS:   return "content/texture/ui/weapon/sawnoffs.png";
+	case WEAP_SMG:        return "content/texture/ui/weapon/smg.png";
+	case WEAP_RIFLE:      return "content/texture/ui/weapon/rifle.png";
+	case WEAP_HEAVYRIFLE: return "content/texture/ui/weapon/heavyrifle.png";
+	case WEAP_DUALSMG:    return "content/texture/ui/weapon/dual_smgs.png";
+	case WEAP_LMG:        return "content/texture/ui/weapon/lmg.png";
+	case WEAP_SNIPER:     return "content/texture/ui/weapon/sniper.png";
+	case WEAP_LAUNCHER:   return "content/texture/ui/weapon/grenadelauncher.png";
+	case WEAP_CROSSBOW:   return "content/texture/ui/weapon/crossbow.png";
+	case WEAP_SKULLSTAFF: return "content/texture/ui/weapon/skullstaff.png";
+	case WEAP_NONE:
+	default:              return nullptr;
+	}
+}
+
+AMMO_TYPE weaponAmmoType(PLAYER_WEAPON weapon)
+{
+	switch (weapon)
+	{
+	case WEAP_DUALSMG:    return AMMO_LIGHT;
+	case WEAP_SMG:        return AMMO_LIGHT;
+
+	// The LMG shares the rifle's pool on purpose. It is the weapon's cost: a
+	// hundred-round belt drains the supply the heavy rifle also needs, and it
+	// keeps a level from having to place a pickup type that exists for one gun.
+	case WEAP_HEAVYRIFLE: return AMMO_HEAVY;
+	case WEAP_LMG:        return AMMO_HEAVY;
+	case WEAP_RIFLE:      return AMMO_HEAVY;
+
+	case WEAP_REVOLVER:   return AMMO_MAGNUM;
+	case WEAP_SHOTGUN:    return AMMO_SHELL;
+	case WEAP_SAWNOFFS:   return AMMO_SHELL;
+	case WEAP_SNIPER:     return AMMO_MATCH;
+	case WEAP_CROSSBOW:   return AMMO_BOLT;
+	case WEAP_LAUNCHER:   return AMMO_GRENADE;
+
+	// Melee, the pitchfork, and the staff. The first two have no ammunition at
+	// all; the staff runs on mana, which regenerates at 14/sec and so is a
+	// cooldown wearing a resource's clothes — it is persisted through
+	// WeaponMagState::charge but it has no pool and nothing drops it.
+	case WEAP_MELEE:
+	case WEAP_PITCHFORK:
+	case WEAP_SKULLSTAFF:
+	default:              return AMMO_NONE;
+	}
+}
+
+int weaponPickupAmmo(PLAYER_WEAPON weapon)
+{
+	// Roughly two to three magazines' worth per weapon pickup, less for the
+	// things that hurt. Placeholders in the sense that they are a balance call,
+	// but they are all in one place, so retuning after a playthrough is cheap.
+	switch (weapon)
+	{
+	case WEAP_DUALSMG:    return 64;
+	case WEAP_SMG:        return 64;
+	case WEAP_HEAVYRIFLE: return 90;
+	case WEAP_LMG:        return 100;
+	case WEAP_RIFLE:      return 60;
+	case WEAP_REVOLVER:   return 18;
+	case WEAP_SHOTGUN:    return 16;
+	case WEAP_SAWNOFFS:   return 12;
+	case WEAP_SNIPER:     return 10;
+	case WEAP_CROSSBOW:   return 8;
+	case WEAP_LAUNCHER:   return 6;
+	default:              return 0;
+	}
+}
+
+int ammoReserveMax(AMMO_TYPE type)
+{
+	switch (type)
+	{
+	case AMMO_LIGHT:   return 300;
+	case AMMO_HEAVY:   return 400;
+	case AMMO_MAGNUM:  return 60;
+	case AMMO_SHELL:   return 60;
+	case AMMO_MATCH:   return 40;
+	case AMMO_BOLT:    return 30;
+	case AMMO_GRENADE: return 20;
+	case AMMO_ENERGY:  return 200;
+	case AMMO_ROCKET:  return 20;
+
+	// Not a cap of zero — see reserveRemaining(), which reads AMMO_NONE as an
+	// inexhaustible pool. A weapon on this type never touches the reserve array.
+	case AMMO_NONE:
+	default:           return 0;
+	}
+}
+
+int PlayerWeapon::reserveRemaining() const
+{
+	const AMMO_TYPE type = weaponAmmoType(m_weapon_type);
+
+	if (type == AMMO_NONE)
+		return INT_MAX;
+
+	if (!g_PlayerController)
+		return 0;
+
+	auto* weapons = g_PlayerController->weaponController();
+	if (!weapons)
+		return 0;
+
+	return static_cast<int>(weapons->reserveAmmo(type));
+}
+
+int PlayerWeapon::drawFromReserve(int want)
+{
+	if (want <= 0)
+		return 0;
+
+	const AMMO_TYPE type = weaponAmmoType(m_weapon_type);
+
+	// Melee and anything else without a pool reloads for free.
+	if (type == AMMO_NONE)
+		return want;
+
+	if (!g_PlayerController)
+		return 0;
+
+	auto* weapons = g_PlayerController->weaponController();
+	if (!weapons)
+		return 0;
+
+	return static_cast<int>(weapons->takeAmmo(type, static_cast<unsigned int>(want)));
+}
 
 void PlayerWeapon::updateWeaponSway(float dt)
 {
@@ -180,8 +393,9 @@ int PlayerWeapon::soundLeadFrames(float transientSeconds) const
 bool PlayerWeapon::resolveMeshPart(const char* jointNamePrefix, MeshPart& outPart)
 {
 	outPart.buffers.clear();
-	outPart.bone    = nullptr;
-	outPart.visible = true;
+	outPart.bone     = nullptr;
+	outPart.animBone = nullptr;
+	outPart.visible  = true;
 
 	if (!m_mesh.node || !jointNamePrefix)
 		return false;
@@ -216,6 +430,14 @@ bool PlayerWeapon::resolveMeshPart(const char* jointNamePrefix, MeshPart& outPar
 		}
 
 		outPart.bone = m_mesh.node->getJointNode(joint->Name.c_str());
+
+		// The parent is the joint that is actually keyed — see the note on
+		// MeshPart::animBone. Falling back to the geometry joint keeps this
+		// safe for an asset that ever puts geometry straight on an animated node.
+		outPart.animBone = (outPart.bone && outPart.bone->getParent())
+			? outPart.bone->getParent()
+			: static_cast<irr::scene::ISceneNode*>(outPart.bone);
+
 		break;
 	}
 
@@ -263,10 +485,24 @@ bool PlayerWeapon::meshPartWorldTransform(MeshPart& part, irr::core::matrix4& ou
 irr::core::vector3df PlayerWeapon::matchPartScale(const MeshPart& part,
                                                   const irr::core::vector3df& targetExtent) const
 {
-	const irr::core::vector3df fallback(m_viewScaleOffset);
+	// A stand-in casing at its NATURAL size, not at the viewmodel scale.
+	//
+	// This used to fall back to m_viewScaleOffset, which is 0.01 across the whole
+	// pack — and every shell mesh is already authored in world units, a few
+	// centimetres long. Multiplying by 0.01 rendered the casing at a fifth of a
+	// millimetre: spawned, tracked, updated, and completely invisible. A silent
+	// failure that looks exactly like "shell ejection is not implemented".
+	//
+	// 1.0 is wrong too when it happens, but it is VISIBLY wrong, and the warnings
+	// below say why.
+	const irr::core::vector3df fallback(1.0f, 1.0f, 1.0f);
 
 	if (!m_mesh.node || !part.bone || part.buffers.empty())
+	{
+		spdlog::warn("PlayerWeapon::matchPartScale(): part has no resolved geometry — "
+			"the stand-in will be spawned at its natural size");
 		return fallback;
+	}
 
 	irr::scene::IMesh* mesh = m_mesh.node->getMesh();
 	if (!mesh || part.buffers.front() >= mesh->getMeshBufferCount())
@@ -435,6 +671,16 @@ void PlayerWeapon::precacheSharedSounds()
 {
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/equip.wav",   true);
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/unequip.wav", true);
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/dryfire.wav", true);
+}
+
+// Cue for a reload the player asked for and cannot have. Silence here reads as
+// a dropped input — the player presses reload again rather than going looking
+// for ammunition, which is the opposite of what the empty pool should tell them.
+void PlayerWeapon::playEmptyReserveSound()
+{
+	SoundManager::Get()->sound()->playRandomized2D(
+	    "content/sound/weapon/dryfire", 0.05f, 1, -1.0f, "weapon_empty_reserve");
 }
 
 // Both transition sounds share one pool group so cycling the mouse wheel through
