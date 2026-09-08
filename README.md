@@ -16,7 +16,8 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 - CPU lightmap baking (xatlas UV unwrap → ray-traced irradiance → dilated texture)
 - SPARK particle system integration: data-driven `.psys` effect files
 - Splatmap terrain blending
-- ImGui-based rendering backend (OpenGL 3+)
+- Irrlicht-based rendering backend (OpenGL 3+)
+- Prefers GLB for models, PNG for textures
 
 **Editor**
 - In-engine level editor with entity hierarchy, component inspector, and asset browser
@@ -99,6 +100,8 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 | `Mouse` | Look |
 | `LMB` | Primary fire |
 | `RMB` | Alternate fire / aim |
+
+NOTE: I do not currently bundle 2D/3D assets used as their licenses do not allow it, your own art can be used however.
 
 ---
 
