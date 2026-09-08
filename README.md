@@ -78,7 +78,7 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 ### Requirements
 
 - Windows 10/11 (x64)
-- Visual Studio 2019 or later (MSVC, C++17)
+- Visual Studio 2017 (MSVC, C++14/17)
 - Third-party dependencies (see Tech Stack table above)
 
 ### Build
