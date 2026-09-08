@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 
 #include "Game/Components/NPCComponent.h"
+#include "Game/Components/Faction.h"
 #include "../CameraFX.h"
 
 #include "Engine/Renderer/Particle/ParticleManager.h"
@@ -308,17 +309,28 @@ void Weapon_RocketLauncher::renderNPCLockIndicators(irr::scene::ICameraSceneNode
 	irr::core::vector3df camForward = cam->getTarget() - cam->getAbsolutePosition();
 	camForward.normalize();
 
+	// Lock-on politics. The player is the attacker here, so a CIVILIAN, a
+	// pacified NPC and a squadmate carrying FACTION::PLAYER all fall out of the
+	// list for free -- the table's PLAYER row only has UNDEAD and CULT true.
+	anax::Entity& lockOwner = WorldManager::Get()->managerSystem()->getEntityByName("player");
+
 	auto& entities = WorldManager::Get()->world()->getEntities();
 	for (auto& entity : entities)
 	{
 		if (!entity.isValid()) continue;
-		if (!entity.hasComponent<NPCComponent>()) continue;
 		if (!entity.hasComponent<MeshComponent>())  continue;
+		if (!entity.hasComponent<DescriptorComponent>()) continue;
 
-		auto& npc = entity.getComponent<NPCComponent>();
 		auto& desc = entity.getComponent<DescriptorComponent>();
 
 		if (!desc.isAlive) continue;
+
+		// isHostile ALONE, no hasComponent<NPCComponent>() gate. The tag is not a
+		// reliable "is a lockable enemy" test: an NPC saved into a scene before
+		// the faction system existed carries no NPCComponent at all, and would be
+		// filtered out here even though factionOf() resolves it correctly through
+		// its behaviour. Hostility is the question being asked, so ask it.
+		if (!isHostile(lockOwner, entity)) continue;
 
 		auto& mesh = entity.getComponent<MeshComponent>();
 

@@ -98,6 +98,7 @@
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp17</LanguageStandard>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">stdcpp17</LanguageStandard>
     </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_MixamoImporter.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_ParticleDesigner.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Toolbar.cpp" />
     <ClCompile Include="Source\Editor\Interface\EditorInterface_Utilities.cpp" />
@@ -138,6 +139,7 @@
     <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNavMeshBuilder.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNavMeshQuery.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Detour\Source\DetourNode.cpp" />
+    <ClCompile Include="Source\Engine\Navigation\CrowdManager.cpp" />
     <ClCompile Include="Source\Engine\Navigation\NavigationManager.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\Recast.cpp" />
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastAlloc.cpp" />
@@ -255,10 +257,13 @@
     <ClCompile Include="Source\Engine\World\Systems\TweenSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\ParticleSystem.cpp" />
     <ClCompile Include="Source\Engine\World\WorldManager.cpp" />
+    <ClCompile Include="Source\Game\AI\AICoordinator.cpp" />
     <ClCompile Include="Source\Game\Behavior\BehaviorFactory.cpp" />
     <ClCompile Include="Source\Game\Behavior\BehaviorSystem.cpp" />
     <ClCompile Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.cpp" />
+    <ClCompile Include="Source\Game\Behavior\Classes\SuicideBomberBehavior.cpp" />
     <ClCompile Include="Source\Game\Behavior\Classes\TurretBehavior.cpp" />
+    <ClCompile Include="Source\Game\Behavior\CharacterBehavior.cpp" />
     <ClCompile Include="Source\Game\Behavior\EntityBehavior.cpp" />
     <ClCompile Include="Source\Game\Behavior\Classes\PickupBehavior.cpp" />
     <ClCompile Include="Source\Game\DialogManager.cpp" />
@@ -266,6 +271,8 @@
     <ClCompile Include="Source\Game\GameManager.cpp" />
     <ClCompile Include="Source\Game\GameplaySystem.cpp" />
     <ClCompile Include="Source\Game\Gore\GoreManager.cpp" />
+    <ClCompile Include="Source\Game\Skill\SkillSystem.cpp" />
+    <ClCompile Include="Source\Game\Skill\SkillPanel.cpp" />
     <ClCompile Include="Source\Game\Gore\FractureManager.cpp" />
     <ClCompile Include="Source\Game\Gore\FractureGeometry.cpp" />
     <ClCompile Include="Source\Game\LogicLinks.cpp" />
@@ -274,7 +281,6 @@
     <ClCompile Include="Source\Game\IntroState.cpp" />
     <ClCompile Include="Source\Game\Item\ItemDatabase.cpp" />
     <ClCompile Include="Source\Game\MenuState.cpp" />
-    <ClCompile Include="Source\Game\NPC\NPCSystem.cpp" />
     <ClCompile Include="Source\Game\Player\FreeCameraController.cpp" />
     <ClCompile Include="Source\Game\Player\HUDController.cpp" />
     <ClCompile Include="Source\Game\Player\InteractionController.cpp" />
@@ -309,6 +315,7 @@
     <ClCompile Include="Source\Game\Player\Weapon\WeaponEffects.cpp" />
     <ClCompile Include="Source\Game\ProcessGameComponents.cpp" />
     <ClCompile Include="Source\Utility\INIFile.cpp" />
+    <ClCompile Include="Source\Utility\ProcessRunner.cpp" />
     <ClCompile Include="Source\Utility\Utility.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -371,6 +378,7 @@
     <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNavMeshQuery.h" />
     <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourNode.h" />
     <ClInclude Include="Source\Engine\Navigation\Detour\Include\DetourStatus.h" />
+    <ClInclude Include="Source\Engine\Navigation\CrowdManager.h" />
     <ClInclude Include="Source\Engine\Navigation\NavigationManager.h" />
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\Recast.h" />
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAlloc.h" />
@@ -467,10 +475,13 @@
     <ClInclude Include="Source\Engine\World\Systems\NavigationSystem.h" />
     <ClInclude Include="Source\Engine\World\Systems\TweenSystem.h" />
     <ClInclude Include="Source\Engine\World\Systems\ParticleSystem.h" />
+    <ClInclude Include="Source\Game\AI\AICoordinator.h" />
     <ClInclude Include="Source\Game\Behavior\BehaviorFactory.h" />
     <ClInclude Include="Source\Game\Behavior\BehaviorSystem.h" />
     <ClInclude Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.h" />
+    <ClInclude Include="Source\Game\Behavior\Classes\SuicideBomberBehavior.h" />
     <ClInclude Include="Source\Game\Behavior\Classes\TurretBehavior.h" />
+    <ClInclude Include="Source\Game\Behavior\CharacterBehavior.h" />
     <ClInclude Include="Source\Game\Behavior\EntityBehavior.h" />
     <ClInclude Include="Source\Game\Behavior\Classes\PickupBehavior.h" />
     <ClInclude Include="Source\Game\Components\BehaviorComponent.h" />
@@ -478,7 +489,6 @@
     <ClInclude Include="Source\Game\Components\ParticleComponent.h" />
     <ClInclude Include="Source\Game\Components\WaterComponent.h" />
     <ClInclude Include="Source\Game\DialogManager.h" />
-    <ClInclude Include="Source\Game\NPC\NPCSystem.h" />
     <ClInclude Include="Source\Game\ParticleSystem.h" />
     <ClInclude Include="Source\Game\Player\CameraFX.h" />
     <ClInclude Include="Source\Game\Player\FreeCameraController.h" />
@@ -501,6 +511,9 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_LMG.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sniper.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Launcher.h" />
+    <ClInclude Include="Source\Game\Skill\SkillSystem.h" />
+    <ClInclude Include="Source\Game\Skill\SkillPanel.h" />
+    <ClInclude Include="Source\Game\Skill\WeaponSkills.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_DualSMG.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_SkullStaff.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Sawnoffs.h" />
@@ -546,7 +559,6 @@
     <ClInclude Include="Source\Engine\World\Components\LightComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\MeshComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\PhysicsComponent.h" />
-    <ClInclude Include="Source\Engine\World\Components\PrefabComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\RenderComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\ScriptComponent.h" />
     <ClInclude Include="Source\Engine\World\Components\SoundComponent.h" />
@@ -570,6 +582,7 @@
     <ClInclude Include="Source\Game\Components\ItemComponent.h" />
     <ClInclude Include="Source\Game\Components\LogicComponent.h" />
     <ClInclude Include="Source\Game\Components\MarkerComponent.h" />
+    <ClInclude Include="Source\Game\Components\Faction.h" />
     <ClInclude Include="Source\Game\Components\NPCComponent.h" />
     <ClInclude Include="Source\Game\Components\TriggerZoneComponent.h" />
     <ClInclude Include="Source\Game\EndGameState.h" />
@@ -594,6 +607,7 @@
     <ClInclude Include="Source\Game\Player\PlayerSaveState.h" />
     <ClInclude Include="Source\Game\Player\PlayerInventory.h" />
     <ClInclude Include="Source\Utility\INIFile.h" />
+    <ClInclude Include="Source\Utility\ProcessRunner.h" />
     <ClInclude Include="Source\Utility\Utility.h" />
   </ItemGroup>
   <ItemGroup>

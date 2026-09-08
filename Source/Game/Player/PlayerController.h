@@ -42,6 +42,24 @@ public:
 	void unlockPlayer() { m_locked = false; }
 	bool isPlayerLocked() { return m_locked; }
 
+	// Noclip: free-fly, no collision, no gravity. The CCT is teleported with
+	// PxController::setPosition() instead of ::move(). Entering it clears any
+	// momentum and any latched swim/ladder state so the player doesn't resume
+	// falling or stay "on a ladder" once it's switched off; GameplaySystem also
+	// skips its ladder/hurt/water volume tests while this is set.
+	void setNoclip(bool on)
+	{
+		m_noclip = on;
+		if (on)
+		{
+			m_playerVelocity.set(0.0f, 0.0f, 0.0f);
+			m_isSwimming = false;
+			m_isHeadUnderWater = false;
+			m_isOnLadder = false;
+		}
+	}
+	bool isNoclip() const { return m_noclip; }
+
 	int getCurrentHealth() { return g_PlayerData.currentHealth; }
 	int getMaxHealth() { return WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<DamageReceiverComponent>().threshold; }
 
@@ -88,6 +106,9 @@ protected:
 
 private:
     bool m_locked = false, m_isMoving = false, m_firstUpdate = true, m_isSwimming = false, m_isHeadUnderWater = false, m_isBlocking = false, m_isSliding = false;
+
+	// Debug free-fly (console: noclip). See setNoclip().
+	bool m_noclip = false;
 
 	// Ladder climbing (CONTENT_LADDER brush volumes)
 	bool m_isOnLadder = false;

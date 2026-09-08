@@ -15,24 +15,25 @@
 struct TransformComponent : anax::Component
 {
     TransformComponent() :
-        isChild(false), isParent(false), inheritScale(false),
+        isChild(false), isParent(false),
         position(irr::core::vector3df(0, 0, 0)), 
         rotation(irr::core::vector3df(0, 0, 0)), 
         scale(   irr::core::vector3df(1, 1, 1)),
-        position_local(irr::core::vector3df(0, 0, 0)),
-        rotation_local(irr::core::vector3df(0, 0, 0)),
-        scale_local(irr::core::vector3df(1, 1, 1)),
-		offset(  irr::core::vector3df(0, 0, 0)),
         initialPosition(irr::core::vector3df(0, 0, 0)),
         initialRotation(irr::core::vector3df(0, 0, 0)),
         initialScale(   irr::core::vector3df(1, 1, 1)),
         node(nullptr), parent(_entity_null_value) {}
 
-    bool isChild, isParent, inheritScale;
+    // Runtime-only, and deliberately NOT serialized.  The link itself lives in
+    // `parent`/`children`, which are entity ids reassigned on every load, so a
+    // file that stored isChild carried no way to find the parent again: the
+    // parenting was silently dropped by TransformSystem::onEntityAdded and the
+    // saved flags only ever asserted a relationship the loader could not honour.
+    // Persisting a hierarchy needs a name-based link resolved in a post-load
+    // fixup pass - see "To Do Lists/prefab_system_plan.md", section 3 (P2).
+    bool isChild, isParent;
 
-    irr::core::vector3df position, rotation, scale, offset;
-
-    irr::core::vector3df position_local, rotation_local, scale_local;
+    irr::core::vector3df position, rotation, scale;
 
     irr::core::vector3df initialPosition, initialRotation, initialScale;
 
@@ -40,9 +41,6 @@ struct TransformComponent : anax::Component
 
 	entityid parent;
 	std::vector<entityid> children;
-
-	std::string parent_name;
-	std::vector<std::string> children_names;
 
     template <class Archive>
     void save(Archive& archive) const
@@ -54,9 +52,6 @@ struct TransformComponent : anax::Component
             CEREAL_NVP_("initialposition.X", initialPosition.X), CEREAL_NVP_("initialposition.Y", initialPosition.Y), CEREAL_NVP_("initialposition.Z", initialPosition.Z),
             CEREAL_NVP_("initialrotation.X", initialRotation.X), CEREAL_NVP_("initialrotation.Y", initialRotation.Y), CEREAL_NVP_("initialrotation.Z", initialRotation.Z),
             CEREAL_NVP_("initialscale.X", initialScale.X), CEREAL_NVP_("initialscale.Y", initialScale.Y), CEREAL_NVP_("initialscale.Z", initialScale.Z));
-        archive(
-            CEREAL_NVP_("isParent", isParent), CEREAL_NVP_("isChild", isChild),
-            CEREAL_NVP_("parent_name", parent_name), CEREAL_NVP_("children_names", children_names));
     }
 
     template <class Archive>
@@ -75,13 +70,9 @@ struct TransformComponent : anax::Component
                 CEREAL_NVP_("initialrotation.X", irx), CEREAL_NVP_("initialrotation.Y", iry), CEREAL_NVP_("initialrotation.Z", irz),
                 CEREAL_NVP_("initialscale.X", isx), CEREAL_NVP_("initialscale.Y", isy), CEREAL_NVP_("initialscale.Z", isz));
         } catch (...) {}
-        // isParent/isChild/parent_name/children_names were not serialized by the old code (bug);
-        // wrap in try-catch so old scene files without these fields still load.
-        try {
-            archive(
-                CEREAL_NVP_("isParent", isParent), CEREAL_NVP_("isChild", isChild),
-                CEREAL_NVP_("parent_name", parent_name), CEREAL_NVP_("children_names", children_names));
-        } catch (...) {}
+        // Files written before 2026-09-02 also carry isParent/isChild/parent_name/
+        // children_names here.  They are ignored: cereal's XML archive resolves
+        // members by name, so the unread siblings are simply skipped.
 
         position        = irr::core::vector3df(px,  py,  pz);
         rotation        = irr::core::vector3df(rx,  ry,  rz);
@@ -154,5 +145,4 @@ struct TransformComponent : anax::Component
 		setScale(irr::core::vector3df(1.0f, 1.0f, 1.0f));
     }
 
-	void populateParentChildNamesForExport();
 };

@@ -8,6 +8,7 @@
 #include "Engine/World/WorldManager.h"
 
 #include "Game/Player/PlayerController.h"
+#include "Game/Skill/SkillSystem.h"
 
 #include <climits>
 
@@ -58,6 +59,48 @@ WEAPON_CATEGORY weaponCategory(PLAYER_WEAPON weapon)
 	// WEAP_NONE is reached with 0, not with a bucket.
 	case WEAP_NONE:
 	default:              return WEAPCAT_NONE;
+	}
+}
+
+SKILL_TREE weaponSkillTree(PLAYER_WEAPON weapon)
+{
+	switch (weapon)
+	{
+	// The launcher is the tree that is actually implemented today. Everything
+	// else below is assigned so the shape is settled and a tree can be filled in
+	// without moving weapons around later — but until a weapon's call sites are
+	// converted to read through stati()/statf(), rows added to its tree resolve
+	// correctly and are then read by nobody. `skill_validate` reports exactly
+	// that, so an unconverted weapon fails loudly rather than silently.
+	case WEAP_LAUNCHER:   return STREE_LAUNCHER;
+
+	// Shared trees. Two weapons that want the same handling skills, with any
+	// exception written as a row targeted at one of them rather than as a split.
+	case WEAP_SMG:
+	case WEAP_DUALSMG:    return STREE_SMG;
+
+	case WEAP_RIFLE:
+	case WEAP_HEAVYRIFLE: return STREE_RIFLE;
+
+	case WEAP_SHOTGUN:
+	case WEAP_SAWNOFFS:   return STREE_SHOTGUN;
+
+	// Weapons whose mechanics are unlike anything else in the pack, so sharing
+	// buys nothing: the belt and bloom, the scope and bolt, the spellbook.
+	case WEAP_LMG:        return STREE_LMG;
+	case WEAP_SNIPER:     return STREE_SNIPER;
+	case WEAP_CROSSBOW:   return STREE_CROSSBOW;
+	case WEAP_SKULLSTAFF: return STREE_STAFF;
+
+	case WEAP_REVOLVER:   return STREE_SIDEARM;
+
+	case WEAP_MELEE:
+	case WEAP_PITCHFORK:  return STREE_MELEE;
+
+	// Empty hands are not upgradeable, and STREE_NONE is a perfectly good answer
+	// for any weapon that is never meant to be.
+	case WEAP_NONE:
+	default:              return STREE_NONE;
 	}
 }
 
@@ -164,7 +207,9 @@ int weaponPickupAmmo(PLAYER_WEAPON weapon)
 	}
 }
 
-int ammoReserveMax(AMMO_TYPE type)
+// The base cap, before any skill. Split out so the skill multiplier is applied
+// in exactly one place below rather than at each of the nine returns.
+static int ammoReserveMaxBase(AMMO_TYPE type)
 {
 	switch (type)
 	{
@@ -183,6 +228,73 @@ int ammoReserveMax(AMMO_TYPE type)
 	case AMMO_NONE:
 	default:           return 0;
 	}
+}
+
+int ammoReserveMax(AMMO_TYPE type)
+{
+	// WSTAT_RESERVE_MAX is the one stat that is NOT keyed by weapon: the cap
+	// belongs to the pool, and several weapons can share a pool. So it resolves
+	// through its own path rather than through the per-weapon cache.
+	//
+	// AMMO_NONE keeps returning 0, which reserveRemaining() reads as an
+	// inexhaustible pool rather than an empty one — scaling it would be
+	// meaningless and the guard inside reserveMulti() keeps it at 1.0 anyway.
+	const int base = ammoReserveMaxBase(type);
+
+	if (base <= 0)
+		return base;
+
+	return static_cast<int>(base * SkillSystem::Get()->reserveMulti(type));
+}
+
+// ---------------------------------------------------------------------------
+// Reading a stat with its skill modifiers applied
+//
+// See the long note on these in WeaponData.h. The short version: the weapon's
+// member is the BASE and is never written to, so nothing here has to be undone,
+// re-applied, or kept in step with anything else.
+// ---------------------------------------------------------------------------
+
+float PlayerWeapon::statf(WEAPON_STAT stat, float base) const
+{
+	const SkillSystem* skills = SkillSystem::Get();
+
+	return base * skills->statMul(m_weapon_type, stat)
+	            + skills->statAdd(m_weapon_type, stat);
+}
+
+int PlayerWeapon::stati(WEAPON_STAT stat, int base) const
+{
+	const float value = statf(stat, static_cast<float>(base));
+
+	// Rounded, not truncated: a +8% on 20 rounds should read as 22, and
+	// truncation would quietly eat the last fraction of every multiplier.
+	return static_cast<int>(value + 0.5f);
+}
+
+float PlayerWeapon::statInv(WEAPON_STAT stat, float base) const
+{
+	const SkillSystem* skills = SkillSystem::Get();
+
+	// The inverted form. The add is taken off first so that an ADD row on an
+	// inverted stat still reads in the player's favour — "+2 accuracy" should
+	// tighten the spread, not widen it — and the divide then applies the
+	// multiplier in the same direction.
+	//
+	// statMul() floors its return well above zero, so this cannot divide by
+	// zero however hostile a row's value is.
+	const float value = (base - skills->statAdd(m_weapon_type, stat))
+	                  / skills->statMul(m_weapon_type, stat);
+
+	// A spread or an interval driven negative would invert the behaviour it
+	// controls — a negative cone half-angle, or a fire interval that is always
+	// satisfied. Clamp at zero, which for both of those means "perfect".
+	return value < 0.0f ? 0.0f : value;
+}
+
+bool PlayerWeapon::hasUnlock(int bit) const
+{
+	return SkillSystem::Get()->hasUnlock(m_weapon_type, bit);
 }
 
 int PlayerWeapon::reserveRemaining() const
@@ -635,6 +747,11 @@ bool PlayerWeapon::playAnimation(const std::string& name)
 
 // --- Hit-confirmation feedback (shared static state — one player, one crosshair) ---
 
+// Points a confirmed kill is worth. One place, so the whole economy is retuned
+// by one number. The tier thresholds in SkillSystem.cpp are the other half of
+// that pacing decision — move them together.
+static const int _skill_points_per_kill = 1;
+
 static float s_hitFlashTime  = -1.0e9f;  // last confirmed hit (ms)
 static float s_killFlashTime = -1.0e9f;  // last confirmed kill (ms)
 static float s_lastHitTick   = -1.0e9f;  // hit-tick sound rate limiter (ms)
@@ -649,9 +766,18 @@ void PlayerWeapon::registerHitFeedback(HIT_RESULT result)
 	if (result == HIT_RESULT::KILL)
 	{
 		s_killFlashTime = now;
+
+		// Skill points. This is the one place every weapon in the pack already
+		// funnels its kills through, so awarding here needs no per-weapon work
+		// and cannot be forgotten when a weapon is added.
+		//
+		// m_weapon_type is in scope now that this is a member, so a per-weapon or
+		// per-tree rule can be written here later without touching a call site.
+		SkillSystem::Get()->awardPoints(_skill_points_per_kill);
+
 		// Kill confirm: low, weighty ping — always plays
-		SoundManager::Get()->sound()->play2D("content/sound/effect/ping.wav",
-			false, 0, 0.6f, nullptr, false, 0.65f);
+		// SoundManager::Get()->sound()->play2D("content/sound/effect/ping.wav",
+		// 	false, 0, 0.6f, nullptr, false, 0.65f);
 	}
 	else
 	{
@@ -661,8 +787,8 @@ void PlayerWeapon::registerHitFeedback(HIT_RESULT result)
 		if (now - s_lastHitTick >= tickInterval)
 		{
 			s_lastHitTick = now;
-			SoundManager::Get()->sound()->play2D("content/sound/effect/ping.wav",
-				false, 0, 0.3f, nullptr, false, 1.45f);
+			// SoundManager::Get()->sound()->play2D("content/sound/effect/ping.wav",
+			// 	false, 0, 0.3f, nullptr, false, 1.45f);
 		}
 	}
 }

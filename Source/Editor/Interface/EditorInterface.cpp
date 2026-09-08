@@ -185,6 +185,7 @@ void EditorInterface::draw()
 		draw_window_entity_builder();
 		draw_window_script_editor();
 		draw_window_particle_designer();
+		draw_window_mixamo_importer();
 
 		// Submitted last so it does not steal focus from the panels above on the first
 		// frame. g_sceneInteractor.draw() now runs INSIDE this window — the gizmo binds

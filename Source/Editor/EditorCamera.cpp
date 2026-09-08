@@ -104,13 +104,20 @@ void EditorCamera::update()
     	}
 		else
 		{
-			// Deliberately not InputManager::getMouseDelta(): that re-centres on the
-			// WINDOW centre and measures its delta against that same point. Once the
-			// viewport is a docked panel the window centre is usually outside it, which
-			// both drags the cursor away from the view and biases every delta.
-			const auto warpTarget = viewportCenterDesktop();
-			const auto mouseDelta = warpTarget - InputManager::Get()->getMousePosition();
-			InputManager::Get()->setMousePosition(warpTarget);
+			// Raw (WM_INPUT) motion, with the cursor pinned to the viewport centre for
+			// the duration of the drag rather than the window centre — once the
+			// viewport is a docked panel the window centre is usually outside it.
+			//
+			// This replaces a per-frame warp-and-measure, which was correct for a local
+			// mouse but broke under any input source that asserts an absolute cursor
+			// position (a Sunshine/Moonlight stream in remote-desktop mouse mode, RDP,
+			// a tablet): those re-place the cursor faster than we could re-centre it,
+			// leaving a constant bias that spun the camera. See InputManager.cpp.
+			//
+			// ignore_process_flag: the editor camera must keep turning even while an
+			// ImGui text field holds focus and general input processing is off.
+			InputManager::Get()->setMouseLookAnchor(viewportCenterDesktop());
+			const auto mouseDelta = InputManager::Get()->getMouseDelta(true);
 
 			cameraRotation.Y -= mouseDelta.X * sensitivity;
 			cameraRotation.X -= mouseDelta.Y * sensitivity;
@@ -130,6 +137,10 @@ void EditorCamera::update()
 	}
 	if (InputManager::Get()->getMouseRelease(1, &right_mouse_release, true))
 	{
+		// Unpin before restoring: the look is still engaged for one more step (it is
+		// only torn down when the next update() sees no delta request), and while the
+		// pin is up SetCursorPos is clamped into it, which would drop the restore.
+		InputManager::Get()->releaseMouseLook();
 		InputManager::Get()->setMousePosition(old_cursor_pos);
 		RenderManager::Get()->device()->getCursorControl()->setVisible(true);
 	}

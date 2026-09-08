@@ -81,9 +81,10 @@ namespace
 		if (stored > IMPACT_AUTO && stored < IMPACT_SURFACE_COUNT)
 			return static_cast<IMPACT_SURFACE>(stored);
 
-		// AUTO: the entity's behaviour gets first say (the retired NPCComponent
-		// no longer marks creatures — MeleeZombieBehavior::bloodType() and its
-		// kin do). A behaviour returning IMPACT_AUTO has no opinion.
+		// AUTO: the entity's behaviour gets first say. NPCComponent is now an
+		// identity/faction tag and says nothing about what a creature is made
+		// of — CharacterBehavior::bloodType() and its overrides do. A behaviour
+		// returning IMPACT_AUTO has no opinion.
 		if (entity.hasComponent<BehaviorComponent>())
 		{
 			const auto& bc = entity.getComponent<BehaviorComponent>();
@@ -160,15 +161,6 @@ void GameplaySystem::onEntityAdded(anax::Entity& entity)
 		entity.getComponent<AutoKillComponent>().spawn_encoded = Engine::Get()->getCurrentTime();
 	}
 
-	if (entity.hasComponent<NPCComponent>())
-	{
-		auto& npc = entity.getComponent<NPCComponent>();
-
-		if (npc.current_waypoint.empty()) 
-		{
-			npc.current_waypoint = npc.start_waypoint;
-		}
-	}
 }
 
 void GameplaySystem::onEntityRemoved(anax::Entity& entity)
@@ -267,6 +259,11 @@ void GameplaySystem::updateBrushVolumes()
     const irr::core::vector3df bodyChest = p + irr::core::vector3df(0.0f, 1.3f, 0.0f);
     bool onLadder = false;
 
+    // Noclip skips the ladder grab and the hurt-volume tick (water/swim is
+    // handled the same way in update()). Triggers still fire — flying through a
+    // level to test its scripting is a legitimate use.
+    const bool noclip = g_PlayerController && g_PlayerController->isNoclip();
+
     auto touchesBody = [&](const Brush& b)
     {
         return (b.bounds.isPointInside(bodyFeet)  && BrushGeometry::containsPoint(b, bodyFeet)) ||
@@ -284,12 +281,12 @@ void GameplaySystem::updateBrushVolumes()
         if (!brush.geometryValid || brush.isMoverBrush())
             continue;
 
-        if ((brush.contentFlags & CONTENT_LADDER) && !onLadder)
+        if ((brush.contentFlags & CONTENT_LADDER) && !onLadder && !noclip)
             onLadder = touchesBody(brush);
 
         if ((brush.contentFlags & CONTENT_HURT) && brush.hurtDamagePerSecond > 0.0f)
         {
-            if (playerDesc.isAlive && touchesBody(brush))
+            if (playerDesc.isAlive && !noclip && touchesBody(brush))
             {
                 brush.hurtAccum += brush.hurtDamagePerSecond * dtSeconds;
                 if (brush.hurtAccum >= 1.0f)
@@ -964,7 +961,10 @@ void GameplaySystem::update()
 		}
 
 		// --------- WATER COMPONENT
-		if (entity.hasComponent<WaterComponent>() && !player_in_water_zone)
+		// Skipped entirely while noclipping — setNoclip() already cleared the
+		// swim/underwater flags, and the test would just re-set them every frame.
+		if (entity.hasComponent<WaterComponent>() && !player_in_water_zone
+			&& !(g_PlayerController && g_PlayerController->isNoclip()))
 		{
 			if (entity.hasComponent<TransformComponent>())
 			{
@@ -1038,6 +1038,23 @@ HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE
 				auto& desc  = entities[i].getComponent<DescriptorComponent>();
 				auto& dcomp = entities[i].getComponent<DamageReceiverComponent>();
 
+				// Too weak to hurt this thing at all. Refused before anything is
+				// recorded, so the hit can never accumulate towards death, gore
+				// or fracture — but still show the surface impact, otherwise a
+				// player shooting an armoured prop gets no feedback at all and
+				// reads it as the weapon being broken.
+				if (dcomp.minimumDamageRequired > 0 &&
+					static_cast<int>(damage) < dcomp.minimumDamageRequired)
+				{
+					const IMPACT_SURFACE weakSurf =
+						resolveImpactSurface(entities[i], dcomp.impactSurface);
+
+					if (weakSurf != IMPACT_FLESH)
+						playSurfaceImpact(weakSurf, ctx, false);
+
+					return HIT_RESULT::NONE;
+				}
+
 				// Was it lethally damaged before this hit? (update() may not have
 				// flipped isAlive yet — mirror its health rule so same-frame
 				// follow-up hits on a dying entity don't double-report the kill)
@@ -1047,6 +1064,12 @@ HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE
 				dcomp.damageReceived += damage;
 				dcomp.lastReceivedType = type;
 				dcomp.receivedDamage = true;
+
+				// Latched, never cleared here — the behaviour layer consumes it
+				// with didReceiveExplosive(). Set after the minimum-damage gate
+				// so a refused hit cannot set off anything.
+				if (ctx.explosive)
+					dcomp.receivedExplosive = true;
 
 				// Flesh bleeds; a crate or barrel throws debris instead. Resolved
 				// once here so the corpse and alive branches agree.

@@ -10,6 +10,7 @@
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Input/InputManager.h"
 #include "Engine/Navigation/NavigationManager.h"
+#include "Engine/Navigation/CrowdManager.h"
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Prop/PropManager.h"
 #include "Engine/Renderer/RenderManager.h"
@@ -163,13 +164,17 @@ public:
     irr::f32 getDeltaTime() const { return m_deltaTime; }
 
 	// ------------------------------------------------------------------
-	// Time scale — scales the fixed-timestep accumulator feed, slowing the
-	// whole simulation coherently (logic, PhysX step frequency, particles,
-	// getCurrentTime()) while rendering and audio run at real time.
+	// Time scale — scales the SIZE of each fixed step, not how often we step,
+	// slowing the whole simulation coherently (logic, PhysX, particles,
+	// getCurrentTime()) while rendering, input sampling and audio run at real
+	// time. The loop still takes ~60 steps per real second at every scale, so
+	// every rendered frame gets a fresh world state and slow motion is smooth
+	// rather than juddery. Above 1.0 the step is split into substeps so no
+	// single step ever exceeds the 16.67ms baseline (see Engine::update).
 	//
 	// setTimeScale : persistent world speed (bullet time). Clamped to
-	//                [0.1, 2.0] — a persistent near-zero scale would starve
-	//                the fixed loop of input sampling and softlock the game.
+	//                [0.1, 2.0] — a persistent scale of 0 would freeze the
+	//                world with no way to act your way out of it.
 	// requestHitStop : temporary near-freeze layered on top; effective scale
 	//                is min(hitStopScale, timeScale) while active. Counts
 	//                down on the REAL clock, so it always recovers even at
@@ -205,6 +210,7 @@ public:
 
     StateManager*      stateManager()      { return &m_stateManager; }
     NavigationManager* navigationManager() { return &m_navigationManager; }
+    CrowdManager*      crowdManager()      { return &m_crowdManager; }
 	RNG*		       rng()               { return &m_rng; }
 
     const MaterialBuilder& getMaterialBuilder() { return m_materialBuilder; }
@@ -248,7 +254,8 @@ private:
 	                                             // which beat against the real frame rate and
 	                                             // produced periodic 0-step / 2-step frames.
 	double m_accumulator = 0.0;                  // Time accumulator for fixed updates
-	float m_interpolationAlpha = 0.0f;           // Render interpolation (0-1) — NOT YET CONSUMED
+	float m_interpolationAlpha = 0.0f;           // Render interpolation (0-1) — NOT YET CONSUMED.
+	                                             // Plan: "To Do Lists/render_interpolation_plan.md"
 	const double m_maxFrameTime = 0.25;          // Spiral of death protection (250ms max)
 	double m_simulationTime = 0.0;               // Actual simulation time in milliseconds (increments each fixed step)
 
@@ -256,6 +263,9 @@ private:
 	float m_timeScale = 1.0f;                    // Persistent world speed (bullet time)
 	float m_hitStopRemainingMs = 0.0f;           // Real-time countdown of the active hit-stop
 	float m_hitStopScale = 0.05f;                // Scale used while a hit-stop is active
+	float m_appliedTimerSpeed = 1.0f;            // Last value pushed to Irrlicht's virtual timer.
+	                                             // Guards against re-rebasing it every frame — see
+	                                             // the setSpeed() comment in Engine::update().
 
 	// Same rule as above: the *Tick members hold absolute times (double), the
 	// *Time members hold durations (float is fine, and the getters return f32).
@@ -275,6 +285,13 @@ private:
     PropManager m_propManager;
     BrushManager m_brushManager;
     NavigationManager m_navigationManager;
+
+    // AFTER NavigationManager on purpose. Members destruct in reverse declaration
+    // order, so the crowd is released before ~NavigationManager runs
+    // destroyNavMesh() -- which calls CrowdManager::Get(), and gets a null
+    // s_Instance by then. Declared the other way round it would be a
+    // use-after-free at shutdown.
+    CrowdManager      m_crowdManager;
 
 	RNG m_rng;
 

@@ -697,6 +697,9 @@ void Weapon_FuelRodCannon::updateZones(float dt)
 
 				// Contamination: primaries only — watch for NPC death inside the zone.
 				// Dead entities are NOT skipped here so we catch the tick they die.
+				//
+				// Deliberately faction-AGNOSTIC: a friendly corpse contaminates
+				// the ground it fell on just as well as a hostile one.
 				if (!it->isSecondary && entity.hasComponent<NPCComponent>())
 				{
 					if (!desc.isAlive && it->secondarySpawned.find(desc.id) == it->secondarySpawned.end())

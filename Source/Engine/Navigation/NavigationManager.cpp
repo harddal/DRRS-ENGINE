@@ -2,8 +2,10 @@
 
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
 
 #include "Engine/Navigation/Recast/Include/RecastAlloc.h"
+#include "Engine/Navigation/CrowdManager.h"
 
 NavigationManager* NavigationManager::s_Instance = nullptr;
 
@@ -334,15 +336,44 @@ bool NavigationManager::buildNavMesh(const NavMeshConfig& config)
         return false;
     }
 
+    captureBounds();
+
     spdlog::info("NavigationManager: navmesh built ({} verts, {} tris)",
                  nverts, ntris);
     return true;
 }
 
+void NavigationManager::captureBounds()
+{
+    m_boundsMin.set(0.0f, 0.0f, 0.0f);
+    m_boundsMax.set(0.0f, 0.0f, 0.0f);
+
+    if (!m_navMesh) return;
+
+    // Always a single tile (tile 0, layer 0) -- see serializeNavMesh(). Access
+    // through a const pointer so the compiler picks the public const overload.
+    const dtNavMesh* constMesh = m_navMesh;
+    const dtMeshTile* tile = constMesh->getTile(0);
+    if (!tile || !tile->header) return;
+
+    m_boundsMin.set(tile->header->bmin[0], tile->header->bmin[1], tile->header->bmin[2]);
+    m_boundsMax.set(tile->header->bmax[0], tile->header->bmax[1], tile->header->bmax[2]);
+}
+
 void NavigationManager::destroyNavMesh()
 {
+    // The crowd holds this dtNavMesh AND an internal dtNavMeshQuery built
+    // against it, so it has to let go BEFORE the free -- and it holds them even
+    // with zero agents registered, which is why this is unconditional and not
+    // gated on anything being alive. An empty crowd will not fault here; it
+    // faults on the first addAgent() in the NEXT scene.
+    if (CrowdManager::Get()) CrowdManager::Get()->shutdown();
+
     if (m_navQuery) { dtFreeNavMeshQuery(m_navQuery); m_navQuery = nullptr; }
     if (m_navMesh)  { dtFreeNavMesh(m_navMesh);       m_navMesh  = nullptr; }
+
+    m_boundsMin.set(0.0f, 0.0f, 0.0f);
+    m_boundsMax.set(0.0f, 0.0f, 0.0f);
 
     // The single clear point for the stale flag: buildNavMesh() and
     // loadNavMesh() both call us first, so a fresh bake and a scene load
@@ -426,6 +457,8 @@ bool NavigationManager::loadNavMesh(const uint8_t* data, size_t size)
         return false;
     }
 
+    captureBounds();
+
     spdlog::info("NavigationManager::loadNavMesh: loaded {} bytes", size);
     return true;
 }
@@ -487,6 +520,42 @@ std::vector<irr::core::vector3df> NavigationManager::findPath(
             straightVerts[i * 3 + 2]);
     }
     return result;
+}
+
+namespace
+{
+    // dtNavMeshQuery wants a bare function pointer, so this cannot be a lambda
+    // with capture or a member. rand() is fine here -- nothing about an idle
+    // wander destination needs to be reproducible, and the project already
+    // seeds and uses rand() for the bomber's fuse jitter.
+    float navFrand()
+    {
+        return static_cast<float>(rand()) / static_cast<float>(RAND_MAX + 1);
+    }
+}
+
+bool NavigationManager::randomPointNear(const irr::core::vector3df& pos, float radius,
+                                        irr::core::vector3df& outPoint) const
+{
+    if (!m_navMesh || !m_navQuery) return false;
+
+    const float halfExtents[3] = { 2.0f, 4.0f, 2.0f };
+    const float inPos[3]       = { pos.X, pos.Y, pos.Z };
+
+    dtPolyRef startRef = 0;
+    if (dtStatusFailed(m_navQuery->findNearestPoly(inPos, halfExtents, &m_filter, &startRef, nullptr))
+        || !startRef)
+        return false;
+
+    dtPolyRef outRef = 0;
+    float     pt[3]  = { 0.0f, 0.0f, 0.0f };
+
+    if (dtStatusFailed(m_navQuery->findRandomPointAroundCircle(
+            startRef, inPos, radius, &m_filter, navFrand, &outRef, pt)) || !outRef)
+        return false;
+
+    outPoint = { pt[0], pt[1], pt[2] };
+    return true;
 }
 
 bool NavigationManager::findNearestPoint(const irr::core::vector3df& pos,

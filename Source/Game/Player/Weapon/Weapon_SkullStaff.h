@@ -111,6 +111,51 @@ struct SpellDesc
 class Weapon_SkullStaff : public PlayerWeapon
 {
 public:
+	// --- Capability bits -----------------------------------------------------
+	// UNLOCK BIT i IS SPELL i. There is no parallel table and no separate unlock
+	// enum, because the spell table's order is ALREADY a save format:
+	// saveMagState() writes out.slots[0] = m_spell, so reordering s_spells[] was
+	// a breaking change before this system existed. Unlock bits riding the same
+	// index therefore add no new file-format hazard — but they do mean the
+	// comment on s_spells[] in the .cpp about not reordering it now has two
+	// reasons behind it rather than one.
+	//
+	// Bit 0 (Soul Fire) is granted by defaultUnlocks() and can never be bought,
+	// so the staff always has exactly one castable spell.
+	//
+	// These names exist so the skill table can say Weapon_SkullStaff::UNLOCK_MEND
+	// rather than a bare 2. They are NOT a parallel vocabulary — they are names
+	// for s_spells[]'s own indices, and they must be kept in step with it. That
+	// matters more here than it does on the launcher: skill_validate can only
+	// check that a bit is IN RANGE, and every spell index is, so a mistyped
+	// integer would validate cleanly and quietly unlock the wrong spell.
+	// init() asserts the count below matches the table, which catches the one
+	// mistake that is actually likely — appending a spell and forgetting this.
+	enum
+	{
+		UNLOCK_SOUL_FIRE   = 0,   // granted by default; never a skill row
+		UNLOCK_GRAVE_BLOOM = 1,
+		UNLOCK_MEND        = 2,
+
+		UNLOCK_SPELL_COUNT = 3
+	};
+
+	unsigned int supportedStats() const override
+	{
+		return WSTAT_BIT(WSTAT_DAMAGE)
+		     | WSTAT_BIT(WSTAT_SPLASH_DAMAGE)
+		     | WSTAT_BIT(WSTAT_SPLASH_RADIUS)
+		     | WSTAT_BIT(WSTAT_PROJECTILE_SPEED)
+		     | WSTAT_BIT(WSTAT_FIRE_RATE);
+	}
+
+	// Spell 0 only. Everything above it is bought.
+	unsigned int defaultUnlocks() const override { return 1u; }
+
+	// Defined in the .cpp: it reads s_spells[bit].name, so the skill table's
+	// tooltip and the spellbook can never drift apart.
+	const char* unlockName(int bit) const override;
+
 	void precache();
 	void init();
 	void update();
@@ -137,6 +182,14 @@ public:
 		out.charge   = m_mana;
 	}
 
+	// NOTE: this deliberately does NOT reject a locked spell, even though
+	// selectSpell() does. PlayerController::applySaveState() restores mag state
+	// BEFORE it calls applyRanks(), because resolve() has to seed defaultUnlocks()
+	// from weapons that exist — so at this moment the unlock cache still holds
+	// the PREVIOUS run's skills, or nothing at all at startup. Validating here
+	// would silently reset a legitimately-unlocked spell 2 back to spell 0 on
+	// every load. ensureSpellUnlocked() in update() does the enforcement instead,
+	// by which time the ranks are in.
 	void loadMagState(const WeaponMagState& in) override
 	{
 		if (in.slots[0] >= 0 && in.slots[0] < s_spellCount)
@@ -147,10 +200,15 @@ public:
 	}
 
 	// Spell selection, exposed so a pickup or a console command can drive it
-	// later rather than only the right mouse button.
+	// later rather than only the right mouse button. Both refuse a locked spell:
+	// selectSpell() rejects the index outright and cycleSpell() steps over it.
 	void selectSpell(int index);
 	void cycleSpell();
 	int  spellIndex() const { return m_spell; }
+
+	// Bit i is spell i, so this is just hasUnlock() with the range check the
+	// table needs. Public because the HUD and any future spellbook UI want it.
+	bool spellUnlocked(int index) const;
 
 private:
 	enum class State
@@ -174,6 +232,14 @@ private:
 	int m_spell = 0;
 
 	const SpellDesc& spell() const;
+
+	// Drags m_spell back to a legal row when the unlock state has moved under it
+	// — a save loaded before applyRanks() ran, or `skill_reset` while the staff
+	// is in hand. Called once per update(): hasUnlock() is a bitmask test, so
+	// this is cheaper than the branch that would avoid it, and doing it here
+	// rather than at the two entry points means there is exactly ONE place that
+	// can leave the player holding a locked spell.
+	void ensureSpellUnlocked();
 
 	// Set once the cast has actually let go of its spell, so a clip that runs on
 	// past the release cannot fire a second one.
@@ -237,8 +303,18 @@ private:
 	void updateProjectiles(float dt);
 	void detonate(const SpellDesc& desc, const irr::core::vector3df& pos,
 	              entityid directHitID, const irr::core::vector3df& surfaceNormal);
-	void applySplashDamage(const SpellDesc& desc, const irr::core::vector3df& epicentre,
-	                       entityid directHitEntityID);
+
+	// Takes the ALREADY-RESOLVED radius and damage rather than the SpellDesc it
+	// used to read them off. detonate() resolves both once and passes them down,
+	// so the guard, the blast-scale, the cull and the falloff divisor are
+	// mathematically guaranteed to be the same number. Reading the radius twice
+	// through statf() would give the same answer today — but a falloff computed
+	// against a different radius than the cull used hands an entity just inside
+	// the ring a NEGATIVE share, and that is a bug worth making unrepresentable
+	// rather than merely unlikely.
+	void applySplashDamage(const irr::core::vector3df& epicentre,
+	                       entityid directHitEntityID,
+	                       float splashRadius, float splashDamage);
 	void drawSpellHud();
 
 public:

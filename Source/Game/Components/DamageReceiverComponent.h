@@ -131,6 +131,18 @@ struct DamageReceiverComponent : anax::Component
 	// interior material.
 	bool fractureHollow = false;
 
+	// --- Damage gate ---------------------------------------------------------
+	// A hit whose raw damage is BELOW this is refused outright: nothing is
+	// recorded, the entity cannot die from it, and the attacker gets no
+	// hitmarker. Lets a prop demand a real weapon — an armoured door that
+	// shrugs off pistol rounds but yields to the launcher — without giving it
+	// a huge health pool that a pistol could still chip away at.
+	//
+	// Compared against the damage of the single hit as passed to
+	// GameplaySystem::damageEntity(), which for a hitscan weapon is its per-shot
+	// base damage. 0 (the default) lets everything through.
+	int minimumDamageRequired = 0;
+
 	// IMPACT_SURFACE; stored as int so cereal needs no enum mapping, matching
 	// fractureProfile above. Only consulted when the entity does NOT come apart
 	// into shards on this hit.
@@ -146,6 +158,19 @@ struct DamageReceiverComponent : anax::Component
 	bool deathResolved = false;
 
     bool didReceiveDamage() { bool temp = receivedDamage; receivedDamage = false; return temp; }
+
+	// --- Explosive hit latch (runtime only, never serialized) ----------------
+	// Set whenever damage arrives with a radial DamageContext (ctx.explosive),
+	// i.e. from a blast rather than a shot. Latches until read so a bullet
+	// landing on the same entity later in the same frame cannot clear it before
+	// the behaviour layer gets to look.
+	//
+	// This is what lets a carried charge cook off: a suicide bomber caught in
+	// any blast — another bomber's, or a launcher round — sets its own fuse.
+	// An explosive barrel would use exactly the same flag.
+	bool receivedExplosive = false;
+
+	bool didReceiveExplosive() { bool temp = receivedExplosive; receivedExplosive = false; return temp; }
 
 	// How far past dead this entity has been taken, as a fraction of its own
 	// health pool. 0.0 = died exactly on zero; 1.0 = absorbed a second full
@@ -175,6 +200,7 @@ struct DamageReceiverComponent : anax::Component
         try { archive(CEREAL_NVP(fractureProfile)); } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(fractureHollow));  } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(impactSurface));   } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(minimumDamageRequired)); } catch (cereal::Exception&) {}
     }
 
 	DamageReceiverComponent() : 

@@ -19,7 +19,6 @@ static anax::Entity     s_builderEntity;
 bool                    s_builderEntityCreated  = false;  // extern in Internal.h — used by detectKeyShortcuts
 static char             s_builderName[256]       = "new_entity";
 static int              s_builderType            = 1;     // ET_STATIC
-static bool             s_builderCompEnabled[28] = {};
 static char             s_builderExportPath[512] = {};
 
 // ---- Entity Builder preview state ----
@@ -54,7 +53,6 @@ static const BuilderComponentEntry k_builderComponents[] = {
     { "Mesh",                  ENTITY_COMPONENT::MESH,                false },
     { "NPC",                   ENTITY_COMPONENT::NPC,                 false },
     { "Physics",               ENTITY_COMPONENT::PHYSICS,             false },
-    { "Prefab",                ENTITY_COMPONENT::PREFAB,              false },
     { "Render",                ENTITY_COMPONENT::RENDER,              false },
     { "Script",                ENTITY_COMPONENT::SCRIPT,              false },
     { "Sound",                 ENTITY_COMPONENT::SOUND,               false },
@@ -67,7 +65,12 @@ static const BuilderComponentEntry k_builderComponents[] = {
     { "Water",                 ENTITY_COMPONENT::WATER,               false },
     { "Skybox",                ENTITY_COMPONENT::SKYBOX,              false },
 };
-static constexpr int k_builderComponentCount = 29;
+static constexpr int k_builderComponentCount =
+    static_cast<int>(sizeof(k_builderComponents) / sizeof(k_builderComponents[0]));
+
+// Sized from the table above, never by hand: the count and this array used to be
+// maintained separately and had already drifted apart (29 vs 28).
+static bool s_builderCompEnabled[k_builderComponentCount] = {};
 
 static void s_previewEnsureInfra()
 {

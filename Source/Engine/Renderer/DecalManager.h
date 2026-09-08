@@ -79,7 +79,7 @@ private:
     //
     // Each decal is one draw call (a box, depth test off, sampling the prepass),
     // so this is the first number to lower if the frame rate dips in a fight.
-    static constexpr size_t MAX_DECALS   = 320;   // oldest of its class evicted beyond this
+    static constexpr size_t MAX_DECALS   = 512;   // oldest of its class evicted beyond this
     static constexpr float  FADE_WINDOW  = 5.0f;  // fade-out seconds at end of life
 
     std::vector<Decal>        m_decals;

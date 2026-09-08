@@ -396,18 +396,13 @@ private:
         return nullptr;
     }
 
-    video::ITexture* createEmbeddedTexture(const void* bytes, size_t size, size_t imageIndex,
-                                           bool noMip)
+    video::ITexture* createEmbeddedTexture(const void* bytes, size_t size, size_t imageIndex)
     {
         video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
 
         core::stringc texName(m_filePath);
         texName += "_embedded_";
         texName += (int)imageIndex;
-        // Same image can legitimately be referenced as both a colour map and a
-        // normal map; the mip setting differs, so they need separate cache keys.
-        if (noMip)
-            texName += "_nomip";
 
         video::ITexture* texture = driver->findTexture(texName.c_str());
         if (texture)
@@ -423,21 +418,12 @@ private:
         return texture;
     }
 
-    // noMip: normal maps are uploaded without mipmaps, matching RenderSystem's
-    // loadPBR(). phong_perpixel reconstructs the tangent frame from dFdx/dFdy,
-    // and at low mip levels those gradients go ill-conditioned -> wrong normals.
-    video::ITexture* resolveTexture(size_t textureIndex, bool noMip = false)
-    {
-        video::IVideoDriver* driver = m_sceneManager->getVideoDriver();
-        if (noMip)
-            driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, false);
-        video::ITexture* texture = resolveTextureImpl(textureIndex, noMip);
-        if (noMip)
-            driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, true);
-        return texture;
-    }
-
-    video::ITexture* resolveTextureImpl(size_t textureIndex, bool noMip)
+    // Every map, normal maps included, is uploaded with mipmaps. Normal maps
+    // were once excepted to protect the dFdx/dFdy tangent frame in
+    // phong_perpixel; that was a misdiagnosis of the shader's determinant
+    // guard, which failed up close rather than at distance, and the guard is
+    // gone. See RenderSystem::loadPBR() for the same note.
+    video::ITexture* resolveTexture(size_t textureIndex)
     {
         if (textureIndex >= m_asset.textures.size())
             return nullptr;
@@ -469,11 +455,11 @@ private:
         }
         if (const auto* arr = std::get_if<fastgltf::sources::Array>(&image.data))
         {
-            return createEmbeddedTexture(arr->bytes.data(), arr->bytes.size(), imageIndex, noMip);
+            return createEmbeddedTexture(arr->bytes.data(), arr->bytes.size(), imageIndex);
         }
         if (const auto* vec = std::get_if<fastgltf::sources::Vector>(&image.data))
         {
-            return createEmbeddedTexture(vec->bytes.data(), vec->bytes.size(), imageIndex, noMip);
+            return createEmbeddedTexture(vec->bytes.data(), vec->bytes.size(), imageIndex);
         }
         if (const auto* bufView = std::get_if<fastgltf::sources::BufferView>(&image.data))
         {
@@ -485,7 +471,7 @@ private:
             const std::byte* bytes = getBufferBytes(view.bufferIndex, bufSize);
             if (!bytes || view.byteOffset + view.byteLength > bufSize)
                 return nullptr;
-            return createEmbeddedTexture(bytes + view.byteOffset, view.byteLength, imageIndex, noMip);
+            return createEmbeddedTexture(bytes + view.byteOffset, view.byteLength, imageIndex);
         }
         return nullptr;
     }
@@ -500,7 +486,7 @@ private:
     }
 
     // Decoded pixels for a glTF texture. Caller drops the image. Mirrors the
-    // source dispatch in resolveTextureImpl(), but yields an IImage we can edit
+    // source dispatch in resolveTexture(), but yields an IImage we can edit
     // rather than a finished GPU texture.
     video::IImage* loadTextureImage(size_t textureIndex)
     {
@@ -722,7 +708,7 @@ private:
 
             if (mat.normalTexture.has_value())
                 irrMaterial.TextureLayer[SLOT_NORMAL_].Texture =
-                    resolveTexture(mat.normalTexture.value().textureIndex, /*noMip*/ true);
+                    resolveTexture(mat.normalTexture.value().textureIndex);
 
             // One packed ORM texture (R=occlusion, G=roughness, B=metallic) with
             // the scalar factors folded in, bound to both slots. The shader

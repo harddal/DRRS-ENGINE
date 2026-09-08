@@ -88,7 +88,6 @@ void EditorInterface::draw_window_add_component()
 			"Mesh\0"
 			"NPC\0"
 			"Physics\0"
-			"Prefab\0"
 			"Render\0"
 			"Script\0"
 			"Sound\0"
@@ -101,9 +100,9 @@ void EditorInterface::draw_window_add_component()
 			"Water\0"
 			"Particle\0"
 			"Behavior\0"
-			"Skybox\0\0"; // 31
+			"Skybox\0\0"; // 30
 
-		ImGui::Combo("Component", &current_selected_component, component_list, 31);
+		ImGui::Combo("Component", &current_selected_component, component_list, 30);
 		ImGui::SameLine();
 
 		{
@@ -150,10 +149,6 @@ void EditorInterface::draw_window_add_component()
 					case ENTITY_COMPONENT::PHYSICS:
 						if (entity.hasComponent<PhysicsComponent>()) break;
 						entity.addComponent<PhysicsComponent>();
-						break;
-					case ENTITY_COMPONENT::PREFAB:
-						if (entity.hasComponent<PrefabComponent>()) break;
-						entity.addComponent<PrefabComponent>();
 						break;
 					case ENTITY_COMPONENT::RENDER:
 						if (entity.hasComponent<RenderComponent>()) break;
@@ -531,6 +526,18 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(1); ImGui::InputInt("##health", &dam.threshold);
 				ImGui::SetItemTooltip("Total damage this entity can take before it dies.\nAlso used as its starting health (default 100).");
 
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Min Dmg");
+				ImGui::TableSetColumnIndex(1);
+				if (ImGui::InputInt("##mindamage", &dam.minimumDamageRequired) &&
+					dam.minimumDamageRequired < 0)
+					dam.minimumDamageRequired = 0;
+				ImGui::SetItemTooltip("Hits weaker than this do nothing at all - no damage, no death,\n"
+				                      "no hitmarker (the impact FX still plays so the shot reads).\n"
+				                      "Compared against a single hit's damage, so a weapon whose\n"
+				                      "per-shot damage is below this can never destroy this entity.\n"
+				                      "0 (default) lets everything through.");
+
 				{
 					static const char* impact_surface_names[IMPACT_SURFACE_COUNT] = {
 						"Auto", "Flesh", "Wood", "Metal", "Stone", "Glass", "Dirt", "None"
@@ -558,7 +565,7 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				{
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Shards");
-					ImGui::TableSetColumnIndex(1); ImGui::SliderInt("##fracturecells", &dam.fractureCells, 2, 32);
+					ImGui::TableSetColumnIndex(1); ImGui::SliderInt("##fracturecells", &dam.fractureCells, 2, 128);
 					ImGui::SetItemTooltip("Target number of pieces. Clamped to 2-32 at fracture time.");
 
 					const char* fracture_profiles[FRACTURE_PROFILE_COUNT];
@@ -1267,34 +1274,12 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			auto& npc = entity.getComponent<NPCComponent>();
 
+			// Three rows, and that is the whole component now. The vision/chase/
+			// attack/state/waypoint inputs that used to live here drove NPCSystem's
+			// pipeline; every one of them is a BehaviorProperty on the individual
+			// behaviour today, edited in the Behavior panel.
 			char npc_name_buf[256] = {};
-			for (auto i = 0U; i < npc.name.length() && i < 256; i++) npc_name_buf[i] = npc.name[i];
-			char npc_wp_buf[256] = {};
-			for (auto i = 0U; i < npc.start_waypoint.length() && i < 256; i++) npc_wp_buf[i] = npc.start_waypoint[i];
-			char npc_cwp_buf[256] = {};
-			for (auto i = 0U; i < npc.current_waypoint.length() && i < 256; i++) npc_cwp_buf[i] = npc.current_waypoint[i];
-
-			std::string npc_state_str;
-			switch (npc.state)
-			{
-			case NPC_AI_STATE::INACTIVE: npc_state_str = "INACTIVE"; break;
-			case NPC_AI_STATE::IDLE:     npc_state_str = "IDLE";     break;
-			case NPC_AI_STATE::PATROL:   npc_state_str = "PATROL";   break;
-			case NPC_AI_STATE::ALERT:    npc_state_str = "ALERT";    break;
-			case NPC_AI_STATE::ATTACK:   npc_state_str = "ATTACK";   break;
-			case NPC_AI_STATE::CHASE:    npc_state_str = "CHASE";    break;
-			case NPC_AI_STATE::FLEE:     npc_state_str = "FLEE";     break;
-			case NPC_AI_STATE::DEAD:     npc_state_str = "DEAD";     break;
-			default:                     npc_state_str = "NULL";     break;
-			}
-			std::string npc_disp_str;
-			switch (npc.disposition)
-			{
-			case NPC_AI_DISPOSITION::NEUTRAL:  npc_disp_str = "NEUTRAL";  break;
-			case NPC_AI_DISPOSITION::ENEMY:    npc_disp_str = "ENEMY";    break;
-			case NPC_AI_DISPOSITION::FRIENDLY: npc_disp_str = "FRIENDLY"; break;
-			default:                           npc_disp_str = "NULL";     break;
-			}
+			for (auto i = 0U; i < npc.displayName.length() && i < 255; i++) npc_name_buf[i] = npc.displayName[i];
 
 			if (ImGui::BeginTable("##npc_props", 2, ImGuiTableFlags_SizingFixedFit))
 			{
@@ -1305,77 +1290,33 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Display Name");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
 				if (ImGui::InputText("##npc_name", npc_name_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
-					npc.name = npc_name_buf;
+					npc.displayName = npc_name_buf;
+				ImGui::SetItemTooltip("Name shown on the HUD and in dialog. Not the entity name.");
 
 				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Vision Range");
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Faction");
 				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				ImGui::InputFloat("##npc_vision", &npc.visionRange, 1, 10, "%.2f");
-				ImGui::SetItemTooltip("Distance (world units) at which the NPC can spot its target and react.");
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Chase Range");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				ImGui::InputFloat("##npc_chase", &npc.chaseRange, 1, 10, "%.2f");
-				ImGui::SetItemTooltip("Maximum pursuit distance - beyond this the NPC gives up the chase.");
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Attack Range");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				ImGui::InputFloat("##npc_atk", &npc.attackRange, 1, 10, "%.2f");
-				ImGui::SetItemTooltip("Distance at which the NPC stops moving and starts attacking.");
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Attack Delay");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				ImGui::InputFloat("##npc_delay", &npc.attackDelay, 1, 10, "%.2f");
-				ImGui::SetItemTooltip("Time between attacks, in seconds.");
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("AI State");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::TextDisabled("%s", npc_state_str.c_str());
-				ImGui::SameLine();
-				int mtype = static_cast<unsigned int>(npc.state);
-				ImGui::PushID(1);
-				ImGui::SetNextItemWidth(50.0f);
-				if (ImGui::InputInt("##npc_state", &mtype, 1, 1))
 				{
-					mtype = mtype < 0 ? 0 : (mtype > 7 ? 0 : mtype);
-					npc.state = static_cast<NPC_AI_STATE>(mtype);
+					// Order matches the FACTION enum, which is APPEND-ONLY: the index
+					// is what gets serialized, so reordering these re-factions every
+					// saved NPC.
+					static const char* faction_items[] = { "NEUTRAL", "PLAYER", "UNDEAD", "CULT", "CIVILIAN" };
+					int fsel = static_cast<int>(npc.faction);
+					if (fsel < 0 || fsel >= static_cast<int>(FACTION::FACTION_COUNT)) fsel = 0;
+					if (ImGui::Combo("##npc_faction", &fsel, faction_items, IM_ARRAYSIZE(faction_items)))
+						npc.faction = static_cast<FACTION>(fsel);
 				}
-				ImGui::SetItemTooltip("Starting/current AI state:\n0 INACTIVE, 1 IDLE, 2 PATROL, 3 ALERT, 4 ATTACK, 5 CHASE, 6 FLEE, 7 DEAD");
-				ImGui::PopID();
+				ImGui::SetItemTooltip("Whose side this NPC is on. WHO it will attack is the\n"
+				                      "hostility table in Faction.h, not a per-NPC setting.\n"
+				                      "The player entity needs no NPC component - it is\n"
+				                      "identified by its ET_PLAYER descriptor type.");
 
 				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("AI Disposition");
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Pacified");
 				ImGui::TableSetColumnIndex(1);
-				ImGui::TextDisabled("%s", npc_disp_str.c_str());
-				ImGui::SameLine();
-				int mtype1 = static_cast<unsigned int>(npc.disposition);
-				ImGui::PushID(2);
-				ImGui::SetNextItemWidth(50.0f);
-				if (ImGui::InputInt("##npc_disp", &mtype1, 1, 1))
-				{
-					mtype1 = mtype1 < 0 ? 0 : (mtype1 > 2 ? 0 : mtype1);
-					npc.disposition = static_cast<NPC_AI_DISPOSITION>(mtype1);
-				}
-				ImGui::SetItemTooltip("Attitude toward the player:\n0 NEUTRAL, 1 ENEMY (attacks on sight), 2 FRIENDLY");
-				ImGui::PopID();
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Init Waypoint");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##npc_wp", npc_wp_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
-					npc.start_waypoint = npc_wp_buf;
-				ImGui::SetItemTooltip("Name of the WAYPOINT marker where this NPC begins its patrol route.");
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Curr Waypoint");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##npc_cwp", npc_cwp_buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
-					npc.current_waypoint = npc_cwp_buf;
-				ImGui::SetItemTooltip("Waypoint the NPC is currently heading to. Runtime state - normally leave alone.");
+				ImGui::Checkbox("##npc_pacified", &npc.pacified);
+				ImGui::SetItemTooltip("Overrides the table for this one NPC: attacks nobody,\n"
+				                      "and nobody attacks it. The tamed-monster escape hatch.");
 
 				ImGui::EndTable();
 			}
@@ -1456,35 +1397,6 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 					ImGui::SetItemTooltip("Mass per unit of volume - determines how heavy the body is\nand how hard it is to push.");
 				}
 
-				ImGui::EndTable();
-			}
-
-			break;
-		}
-	case ENTITY_COMPONENT::PREFAB:
-		{
-			if (!entity.hasComponent<PrefabComponent>())
-				return false;
-
-			auto& prefab = entity.getComponent<PrefabComponent>();
-
-			char buf[256];
-			memset(buf, 0, 256);
-			for (auto i = 0U; i < prefab.parent.length() && i < 256; i++) buf[i] = prefab.parent[i];
-
-			if (ImGui::BeginTable("##prefab_props", 2, ImGuiTableFlags_SizingFixedFit))
-			{
-				ImGui::TableSetupColumn("##lbl", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-				ImGui::TableSetupColumn("##val", ImGuiTableColumnFlags_WidthStretch);
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Parent");
-				ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1);
-				if (ImGui::InputText("##prefab_parent", buf, 256, ImGuiInputTextFlags_EnterReturnsTrue))
-				{
-					prefab.parent = buf;
-					prefab.isChild = prefab.parent.length() > 0;
-				}
-				ImGui::SetItemTooltip("Name of the parent entity this prefab member belongs to.\nLeave empty to make this entity the prefab root.");
 				ImGui::EndTable();
 			}
 
@@ -2383,7 +2295,6 @@ void EditorInterface::add_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::MESH:                entity.addComponent<MeshComponent>();              break;
 	case ENTITY_COMPONENT::NPC:                 entity.addComponent<NPCComponent>();               break;
 	case ENTITY_COMPONENT::PHYSICS:             entity.addComponent<PhysicsComponent>();           break;
-	case ENTITY_COMPONENT::PREFAB:              entity.addComponent<PrefabComponent>();            break;
 	case ENTITY_COMPONENT::RENDER:              entity.addComponent<RenderComponent>();            break;
 	case ENTITY_COMPONENT::SCRIPT:              entity.addComponent<ScriptComponent>();            break;
 	case ENTITY_COMPONENT::SOUND:               entity.addComponent<SoundComponent>();             break;
@@ -2421,7 +2332,6 @@ bool EditorInterface::has_component(ENTITY_COMPONENT component, anax::Entity& en
 	case ENTITY_COMPONENT::MESH:                return entity.hasComponent<MeshComponent>();
 	case ENTITY_COMPONENT::NPC:                 return entity.hasComponent<NPCComponent>();
 	case ENTITY_COMPONENT::PHYSICS:             return entity.hasComponent<PhysicsComponent>();
-	case ENTITY_COMPONENT::PREFAB:              return entity.hasComponent<PrefabComponent>();
 	case ENTITY_COMPONENT::RENDER:              return entity.hasComponent<RenderComponent>();
 	case ENTITY_COMPONENT::SCRIPT:              return entity.hasComponent<ScriptComponent>();
 	case ENTITY_COMPONENT::SOUND:               return entity.hasComponent<SoundComponent>();

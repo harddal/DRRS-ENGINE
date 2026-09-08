@@ -23,14 +23,21 @@ using namespace SPK::IRR;
 void Weapon_Launcher::precache()
 {
 	ParticleManager::Get()->precache("explosion", _asset_psys("explosion"));
+	ParticleManager::Get()->precache("spark",     _asset_psys("spark")); // shrapnel muzzle spit + ricochets
 
 	// equip/unequip are shared across weapons and preloaded by WeaponController.
 	// The launcher's own fire and bounce cues already exist from the old weapon;
 	// the break-open borrows the generic latch and shell cues until a dedicated
 	// set is authored. All of these resolve through playRandomized2D/3D, so
 	// dropping numbered variants next to them upgrades the gun with no code change.
+	//
+	// bounce.wav was authored for the old lobbed grenade, which the alt fire has
+	// replaced; it is a hard object striking a hard surface, so it carries over
+	// unchanged as the shrapnel ricochet. A dedicated metallic ping dropped in
+	// beside it as bounce1/bounce2.wav would be picked up with no code change.
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/grenade_launcher/fire.wav",   true);
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/grenade_launcher/bounce.wav", true);
+	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/shotgun/fire.wav",            true);
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/cock_rifle.wav",   true);
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/insert_shell.wav", true);
 	SoundManager::Get()->sound()->addSoundSourceFromFile("content/sound/weapon/dryfire.wav",      true);
@@ -189,7 +196,7 @@ void Weapon_Launcher::init()
 
 	m_loaded = true;
 
-	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair044.png");
+	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair200.png");
 
 	// Character sheet: fat slow muzzle bloom, no tracer (the grenade IS the
 	// tracer), no per-shot casing — the spent case is thrown by the reload, from
@@ -234,6 +241,7 @@ void Weapon_Launcher::init()
 void Weapon_Launcher::destroy()
 {
 	m_effects.destroy();
+	destroyShrapnelPool();
 
 	RenderManager::Get()->unregisterViewmodelNode(m_mesh.node);
 	m_mesh.node->remove();
@@ -254,7 +262,9 @@ void Weapon_Launcher::enterState(State next)
 	// weapon falling out of frame if nothing catches it. Set here rather than at
 	// the call sites so no path can leave either applied to a clip that does not
 	// want it.
-	setClipSpeed(next == State::Reloading ? m_reloadSpeed : 1.0f);
+	setClipSpeed(next == State::Reloading
+	             ? statf(WSTAT_RELOAD_SPEED, m_reloadSpeed)
+	             : 1.0f);
 	setStabilizationAmount(next == State::Reloading ? stabilizationTuneAmount() : 0.0f);
 
 	switch (next)
@@ -501,10 +511,15 @@ void Weapon_Launcher::update()
 
 			if (m_loaded)
 			{
-				// Right mouse lobs a bouncing grenade instead of an impact one.
-				// Latched at the moment of the press so a player who rolls off
-				// one button onto the other mid-shot still gets what they asked for.
-				m_bounceThisPress = rmb && !lmb;
+				// Right mouse spends the round as a flak burst instead of a
+				// grenade. Latched at the moment of the press so a player who
+				// rolls off one button onto the other mid-shot still gets what
+				// they asked for.
+				//
+				// Gated on the skill: until UNLOCK_FLAK is bought this stays
+				// false and right mouse lobs an ordinary grenade, so the weapon
+				// is a plain grenade launcher rather than one with a dead button.
+				m_shrapnelThisPress = rmb && !lmb && hasUnlock(UNLOCK_FLAK);
 				fire();
 			}
 			else
@@ -523,10 +538,14 @@ void Weapon_Launcher::persist()
 {
 	const float dt = Engine::Get()->getDeltaTime();
 
-	// Grenades keep flying, bouncing and detonating while the launcher is
-	// holstered — persist() is called for every weapon every frame, which is the
-	// whole reason in-flight ordnance lives here rather than in update().
+	// Grenades and shrapnel keep flying, bouncing and detonating while the
+	// launcher is holstered — persist() is called for every weapon every frame,
+	// which is the whole reason in-flight ordnance lives here rather than in
+	// update(). It matters more for the flak burst than for the grenade: switching
+	// weapons the instant you fire is exactly what a player does with a gun whose
+	// reload is 2.2 seconds.
 	updateProjectiles(dt);
+	updateShrapnel(dt);
 
 	m_effects.update(dt);
 }
@@ -620,21 +639,47 @@ void Weapon_Launcher::fire()
 	// in the breech when it ends, which is why this ALWAYS chains into the reload.
 	enterState(State::Firing);
 
-	spawnProjectile(m_bounceThisPress);
-
 	m_effects.muzzleFlash();
 
-	SoundManager::Get()->sound()->playRandomized2D(
-		"content/sound/weapon/grenade_launcher/fire", 0.05f, 2, -1.0f, "launcher_fire");
+	if (m_shrapnelThisPress)
+	{
+		fireShrapnel();
 
-	// Thumpy single-shot kick — lighter than the rocket, heavier than a rifle
-	g_CameraFX.addRecoil(-2.0f, Engine::Get()->rng()->getFloat(-0.25f, 0.25f));
+		// The flak burst reads as a scattergun, not a mortar. Same shell casing,
+		// same break-open, but the report has to say "canister" — so the launcher's
+		// own boom is pitched up out of the way and a shotgun crack is layered
+		// under it at half volume. Two cheap voices beat waiting for an asset.
+		SoundManager::Get()->sound()->play2D(
+			"content/sound/weapon/grenade_launcher/fire.wav", false, 2, 0.8f, "launcher_fire", false, 1.35f);
+		SoundManager::Get()->sound()->play2D(
+			"content/sound/weapon/shotgun/fire.wav", false, 2, 0.5f, "launcher_fire", false, 0.85f);
 
-	addViewKick(
-		irr::core::vector3df(0.0f, 0.02f, -0.09f),
-		irr::core::vector3df(4.0f,
-			Engine::Get()->rng()->getFloat(-0.6f, 0.6f),
-			Engine::Get()->rng()->getFloat(-1.0f, 1.0f)));
+		// Sharper and wider than the grenade: a spray weapon should feel like it is
+		// trying to get away from you sideways rather than punching straight back.
+		g_CameraFX.addRecoil(-2.6f, Engine::Get()->rng()->getFloat(-0.7f, 0.7f));
+
+		addViewKick(
+			irr::core::vector3df(0.0f, 0.03f, -0.12f),
+			irr::core::vector3df(5.5f,
+				Engine::Get()->rng()->getFloat(-1.4f, 1.4f),
+				Engine::Get()->rng()->getFloat(-2.0f, 2.0f)));
+	}
+	else
+	{
+		spawnProjectile();
+
+		SoundManager::Get()->sound()->playRandomized2D(
+			"content/sound/weapon/grenade_launcher/fire", 0.05f, 2, -1.0f, "launcher_fire");
+
+		// Thumpy single-shot kick — lighter than the rocket, heavier than a rifle
+		g_CameraFX.addRecoil(-2.0f, Engine::Get()->rng()->getFloat(-0.25f, 0.25f));
+
+		addViewKick(
+			irr::core::vector3df(0.0f, 0.02f, -0.09f),
+			irr::core::vector3df(4.0f,
+				Engine::Get()->rng()->getFloat(-0.6f, 0.6f),
+				Engine::Get()->rng()->getFloat(-1.0f, 1.0f)));
+	}
 }
 
 void Weapon_Launcher::reload()
@@ -711,11 +756,16 @@ void Weapon_Launcher::updateReloadSounds(float frame)
 // m_effects.muzzleWorldPosition() instead of a FIRESPOT bone this .glb does not
 // have, the aim point goes through the base class's getCrosshairAimPoint(), and
 // the per-shot feedback moved out to fire() so this function only makes a
-// grenade. The arc solve, the bounce handling and the splash falloff are as they
-// were.
+// grenade. The arc solve and the splash falloff are as they were.
+//
+// The lobbed BOUNCING grenade the old class supported is gone from this path:
+// the right button now spends the round on shrapnel instead, so nothing sets
+// WeaponProjectile::isBouncing and the skip-then-detonate branches it gated have
+// been removed rather than left as unreachable code. They are in the old class,
+// and in this file's history, if the bouncer is ever wanted back.
 // =============================================================================
 
-void Weapon_Launcher::spawnProjectile(bool bounce)
+void Weapon_Launcher::spawnProjectile()
 {
 	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 	if (!player.isValid() || !player.hasComponent<CameraComponent>())
@@ -745,10 +795,16 @@ void Weapon_Launcher::spawnProjectile(bool bounce)
 		float d = toTarget.getLength();
 		float h = aimTarget.Y - spawnPos.Y;
 
+		// Resolved once here rather than at each of the four uses below: the
+		// arc solve, its two components and the fallback lob must all agree, and
+		// a stat read that drifted between them would produce a projectile whose
+		// stored speed did not match the velocity it was launched with.
+		const float launchSpeed = statf(WSTAT_PROJECTILE_SPEED, m_projectileSpeed);
+
 		bool solved = false;
 		if (d > 0.01f)
 		{
-			float v2   = m_projectileSpeed * m_projectileSpeed;
+			float v2   = launchSpeed * launchSpeed;
 			float disc = v2 * v2 - m_gravity * (m_gravity * d * d + 2.0f * h * v2);
 			if (disc >= 0.0f)
 			{
@@ -756,8 +812,8 @@ void Weapon_Launcher::spawnProjectile(bool bounce)
 				float theta    = std::atan(tanTheta);
 				irr::core::vector3df horizDir = toTarget;
 				horizDir.normalize();
-				launchVelocity    = horizDir * (m_projectileSpeed * std::cos(theta));
-				launchVelocity.Y += m_projectileSpeed * std::sin(theta);
+				launchVelocity    = horizDir * (launchSpeed * std::cos(theta));
+				launchVelocity.Y += launchSpeed * std::sin(theta);
 				solved = true;
 			}
 		}
@@ -768,7 +824,7 @@ void Weapon_Launcher::spawnProjectile(bool bounce)
 			irr::core::vector3df fallDir = (aimTarget - spawnPos).normalize();
 			fallDir.Y += m_lobAngle;
 			fallDir.normalize();
-			launchVelocity = fallDir * m_projectileSpeed;
+			launchVelocity = fallDir * launchSpeed;
 		}
 	}
 
@@ -818,7 +874,7 @@ void Weapon_Launcher::spawnProjectile(bool bounce)
 	projectileEntity.activate();
 
 	WeaponProjectile proj;
-	proj.speed            = m_projectileSpeed;
+	proj.speed            = statf(WSTAT_PROJECTILE_SPEED, m_projectileSpeed);
 	proj.useTracking      = false;
 	proj.targetId         = _entity_null_value;
 	proj.distanceTraveled = 0.0f;
@@ -827,8 +883,8 @@ void Weapon_Launcher::spawnProjectile(bool bounce)
 	proj.velocity         = launchVelocity;
 	proj.previousPosition = spawnPos;
 	proj.trailParticles   = nullptr;
-	proj.isBouncing       = bounce;
-	proj.maxLifetime      = bounce ? 2500.0f : 5000.0f;
+	proj.isBouncing       = false;
+	proj.maxLifetime      = 5000.0f;
 
 	m_projectiles.emplace_back(proj);
 }
@@ -950,7 +1006,7 @@ void Weapon_Launcher::updateProjectiles(float dt)
 
 		bool shouldRemove = false;
 
-		// Where the next frame's swept raycast originates — updated on bounce to sit off the surface
+		// Where the next frame's swept raycast originates
 		irr::core::vector3df sweepOrigin = currentPos;
 
 		if (hitSomething && hitNode)
@@ -961,32 +1017,6 @@ void Weapon_Launcher::updateProjectiles(float dt)
 				hitEntityID == it->entity.getComponent<DescriptorComponent>().id)
 			{
 				// Hit own mesh — ignore
-			}
-			else if (it->isBouncing)
-			{
-				if (it->bounceCount >= 1)
-				{
-					// Second contact — detonate on the surface we struck
-					detonateAt(hitPoint, hitEntityID, hitNormal);
-					shouldRemove = true;
-				}
-				else
-				{
-					// First bounce — reflect velocity with energy loss
-					float dot = it->velocity.dotProduct(hitNormal);
-					it->velocity -= hitNormal * (2.0f * dot);
-					it->velocity *= 0.6f;
-
-					// Push the grenade off the surface so the next sweep doesn't immediately re-detect it
-					irr::core::vector3df safePoint = hitPoint + hitNormal * 0.3f;
-					sweepOrigin = safePoint;
-					transformComp.position = safePoint;
-					if (transformComp.node)
-						transformComp.node->setPosition(safePoint);
-
-					it->bounceCount++;
-					SoundManager::Get()->sound()->play3D("content/sound/weapon/grenade_launcher/bounce.wav", hitPoint);
-				}
 			}
 			else
 			{
@@ -1021,17 +1051,7 @@ void Weapon_Launcher::updateProjectiles(float dt)
 		it->previousPosition = sweepOrigin;
 		it->lifetime += dt;
 
-		// Bounce grenade timer detonation
-		if (it->isBouncing && !shouldRemove && it->lifetime >= it->maxLifetime)
-		{
-			irr::core::vector3df detonPos = transformComp.node
-				? transformComp.node->getAbsolutePosition()
-				: nextPos;
-			detonateAt(detonPos, _entity_null_value);
-			shouldRemove = true;
-		}
-
-		if (shouldRemove || (!it->isBouncing && it->lifetime >= it->maxLifetime))
+		if (shouldRemove || it->lifetime >= it->maxLifetime)
 		{
 			if (it->trailParticles)
 			{
@@ -1067,6 +1087,13 @@ void Weapon_Launcher::detonateAt(const irr::core::vector3df& pos, entityid direc
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
 	applySplashDamage(pos, directHitID);
 
+	// The casing comes apart with it — a sphere of the same glowing shrapnel the
+	// alt fire throws, off the same pool. This is what gives the grenade a reason
+	// to be aimed at a group rather than at one target: the splash falls off with
+	// distance and stops at m_splashRadius, but a fragment keeps going until it
+	// hits someone, and it ricochets around corners the blast cannot reach.
+	spawnShrapnelBurst(pos, surfaceNormal);
+
 	// Light flash + scorch (oriented to the hit surface) + smoke + proximity feedback
 	m_effects.explosionAt(pos,
 		irr::video::SColorf(1.0f, 0.75f, 0.35f), 9.0f, 3.5f, 5.0f, 300.0f,
@@ -1074,14 +1101,26 @@ void Weapon_Launcher::detonateAt(const irr::core::vector3df& pos, entityid direc
 
 	if (directHitID != _entity_null_value)
 	{
+		// Explosive context here too — a grenade planted directly on a bomber
+		// should set him off, not merely kill him.
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(m_pointDamage)));
+			directHitID,
+			static_cast<unsigned int>(stati(WSTAT_DAMAGE, static_cast<int>(m_pointDamage))),
+			DAMAGE_TYPE::DEFAULT, DamageContext::fromBlast(pos, pos)));
 	}
 }
 
 void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
 {
-	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
+	// Resolved once, at the top: the radius is used three times below — the
+	// early-out, the cull and the falloff divisor — and a falloff computed
+	// against a different radius than the cull used would let an entity just
+	// inside the ring take a negative share.
+	const float splashRadius = statf(WSTAT_SPLASH_RADIUS, m_splashRadius);
+	const float splashDamage = statf(WSTAT_SPLASH_DAMAGE, m_splashDamage);
+	const float splashForce  = statf(WSTAT_SPLASH_FORCE,  m_splashForce);
+
+	if (splashRadius <= 0.0f || splashDamage <= 0.0f)
 		return;
 
 	// One feedback event per detonation regardless of how many entities it caught
@@ -1102,22 +1141,27 @@ void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, e
 		irr::core::vector3df entityPos = entity.getComponent<TransformComponent>().getPosition();
 		float dist = (entityPos - epicentre).getLength();
 
-		if (dist >= m_splashRadius) continue;
+		if (dist >= splashRadius) continue;
 
-		float falloff = 1.0f - (dist / m_splashRadius);
-		float damage  = m_splashDamage * falloff;
+		float falloff = 1.0f - (dist / splashRadius);
+		float damage  = splashDamage * falloff;
 
 		if (damage >= 1.0f)
 		{
+			// The blast context matters beyond gore direction: it sets
+			// DamageReceiverComponent::receivedExplosive, which is what lets a
+			// carried charge cook off. Without it a suicide bomber caught in
+			// this blast just dies instead of going up.
 			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(
-				desc.id, static_cast<unsigned int>(damage));
+				desc.id, static_cast<unsigned int>(damage), DAMAGE_TYPE::DEFAULT,
+				DamageContext::fromBlast(epicentre, entityPos));
 
 			// Splash-damaging yourself is not a hit confirm
 			if (desc.name != "player" && static_cast<int>(r) > static_cast<int>(bestResult))
 				bestResult = r;
 		}
 
-		if (m_splashForce > 0.0f && entity.hasComponent<PhysicsComponent>())
+		if (splashForce > 0.0f && entity.hasComponent<PhysicsComponent>())
 		{
 			auto& phys = entity.getComponent<PhysicsComponent>();
 			if (phys.actor && !phys.kinematic)
@@ -1129,10 +1173,776 @@ void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, e
 				else
 					dir = irr::core::vector3df(0.0f, 1.0f, 0.0f);
 
-				float impulse = m_splashForce * falloff;
+				float impulse = splashForce * falloff;
 				phys.actor->addForce(
 					physx::PxVec3(dir.X, dir.Y, dir.Z) * impulse,
 					physx::PxForceMode::eIMPULSE);
+			}
+		}
+	}
+
+	registerHitFeedback(bestResult);
+}
+
+// =============================================================================
+// Alt fire — flak shrapnel.
+//
+// A cone of incandescent steel that ricochets off the world and cools from
+// white-hot to dead grey over about a second and a half. Fourteen fragments per
+// round, each carrying its own damage that halves on every bounce, so the shot
+// is devastating in a corridor and nearly harmless across a hall — which is the
+// whole point of putting it on the same gun as a 200-damage grenade.
+//
+// Deliberately NOT built on WeaponProjectile: these are pooled scene nodes with
+// fake physics, the same shape as the shell casings in WeaponEffects, because
+// fourteen ECS entities per shot each with a mesh and a light is an order of
+// magnitude more machinery than two seconds of sparks is worth.
+// =============================================================================
+
+// The hulls the gib generator produced. They are convex, jagged and normalised
+// to roughly two units across, which is exactly the silhouette shrapnel wants —
+// no new asset needed, and nothing about them is meat except the texture this
+// weapon does not bind.
+static const char* const _shard_meshes[] =
+{
+	"content/mesh/gib/gib_shard.obj",
+	"content/mesh/gib/gib_sliver1.obj",
+	"content/mesh/gib/gib_sliver2.obj",
+};
+
+// The light coming OFF the fragment, which is a different thing from the colour
+// of the fragment itself: hot yellow at the muzzle, through orange, to red as it
+// dies. It never reaches a cold stop because it does not need one — the halo's
+// intensity is faded to nothing separately, so the red end is simply where the
+// last visible ember sits.
+// The scene target is linear (see the material block in ensureShrapnelPool), so a
+// colour picked by eye — which is a colour in sRGB — has to be linearised before it
+// is handed to a FIXED-FUNCTION node, because nothing between here and the
+// tonemapper will do it. Shaders such as phong_perpixel linearise their own inputs;
+// an additive billboard has no shader and would otherwise add an sRGB number to a
+// linear buffer, over-contributing everywhere and worst at the dim end — which is
+// exactly the part of a cooling ramp that carries the information.
+static irr::video::SColor _linearise(irr::video::SColor srgb, float scale)
+{
+	auto ch = [scale](irr::u32 v) -> irr::u32
+	{
+		const float lin = powf(v / 255.0f, 2.2f) * scale;
+		return static_cast<irr::u32>(irr::core::clamp(lin, 0.0f, 1.0f) * 255.0f);
+	};
+
+	return irr::video::SColor(255, ch(srgb.getRed()), ch(srgb.getGreen()), ch(srgb.getBlue()));
+}
+
+irr::video::SColor Weapon_Launcher::shardGlowColor(float heat)
+{
+	struct Stop { float t; float r, g, b; };
+
+	static const Stop stops[] =
+	{
+		{ 0.00f, 150.0f,  20.0f,  10.0f }, // last ember, on its way out
+		{ 0.25f, 235.0f,  45.0f,  15.0f }, // red
+		{ 0.60f, 255.0f, 150.0f,  35.0f }, // orange
+		{ 1.00f, 255.0f, 245.0f, 130.0f }, // bright hot yellow, out of the barrel
+	};
+
+	heat = irr::core::clamp(heat, 0.0f, 1.0f);
+
+	const int count = static_cast<int>(sizeof(stops) / sizeof(stops[0]));
+
+	for (int i = 1; i < count; ++i)
+	{
+		if (heat > stops[i].t && i != count - 1)
+			continue;
+
+		const Stop& a = stops[i - 1];
+		const Stop& b = stops[i];
+
+		const float span = b.t - a.t;
+		const float k    = span > 0.0001f ? irr::core::clamp((heat - a.t) / span, 0.0f, 1.0f) : 0.0f;
+
+		return irr::video::SColor(255,
+			static_cast<irr::u32>(a.r + (b.r - a.r) * k),
+			static_cast<irr::u32>(a.g + (b.g - a.g) * k),
+			static_cast<irr::u32>(a.b + (b.b - a.b) * k));
+	}
+
+	return irr::video::SColor(255, 150, 20, 10);
+}
+
+bool Weapon_Launcher::ensureShrapnelPool()
+{
+	if (m_shrapnelPoolReady)
+		return !m_shrapnel.empty();
+
+	m_shrapnelPoolReady = true; // one attempt, whatever happens — do not retry every shot
+
+	auto* rm = RenderManager::Get();
+	if (!rm || !rm->sceneManager())
+		return false;
+
+	auto* smgr = rm->sceneManager();
+
+	const int shapeCount = static_cast<int>(sizeof(_shard_meshes) / sizeof(_shard_meshes[0]));
+
+	irr::scene::IMesh* sources[sizeof(_shard_meshes) / sizeof(_shard_meshes[0])] = { nullptr };
+	int loaded = 0;
+
+	for (int i = 0; i < shapeCount; ++i)
+	{
+		if (auto* m = smgr->getMesh(_shard_meshes[i]))
+		{
+			sources[loaded++] = m->getMesh(0);
+		}
+		else
+		{
+			spdlog::warn("Weapon_Launcher: shrapnel mesh '{}' missing", _shard_meshes[i]);
+		}
+	}
+
+	if (loaded == 0)
+	{
+		spdlog::error("Weapon_Launcher: no shrapnel meshes loaded; alt fire disabled");
+		return false;
+	}
+
+	irr::video::ITexture* glowTex = rm->driver()
+		? rm->driver()->getTexture("content/texture/particle/scorch_03.png")
+		: nullptr;
+
+	// A tiling generic metal: the gib hulls' UVs were laid out for the gore atlas,
+	// so anything with a meaningful layout would sample arbitrary parts of it,
+	// whereas a uniform metal reads correctly at any UV — and at 0.15 units across
+	// nobody is reading the texel detail anyway, only the fact that it is dark metal
+	// and not flat. This one averages RGB (110, 78, 58).
+	//
+	// It has been measured. If the shards ever look washed out again the cause is
+	// downstream of here — check the colour space the material writes in before
+	// touching the texture or the material colours; see the material block below.
+	irr::video::ITexture* metalTex = rm->driver()
+		? rm->driver()->getTexture("content/texture/terrain/Delven Pack/dlv_metalgen2.png")
+		: nullptr;
+
+	if (!metalTex)
+		spdlog::warn("Weapon_Launcher: shrapnel metal texture missing; shards will draw untextured");
+
+	m_shrapnel.resize(m_shardPoolSize);
+
+	for (int i = 0; i < m_shardPoolSize; ++i)
+	{
+		Shard& shard = m_shrapnel[i];
+
+		// Round-robin over the shapes so one burst is visibly made of different
+		// fragments rather than fourteen copies of the same chip. The meshes are
+		// SHARED across the pool — nothing is per-shard about the geometry any
+		// more, now that the heat lives on the halo rather than in vertex colours.
+		shard.node = smgr->addMeshSceneNode(sources[i % loaded]);
+
+		if (!shard.node)
+			continue;
+
+		// phong_perpixel, LIT — not the unlit EMT_SOLID this used to be.
+		//
+		// This is the washed-out-cream bug, and every previous pass at it was
+		// looking in the wrong place: the material colours were never the problem
+		// and neither was the texture (measure it — dlv_metalgen1 averages RGB
+		// 110/78/58, a dark warm metal, exactly as intended).
+		//
+		// The scene renders into an ECF_A16B16G16R16F target in LINEAR space and
+		// tonemap.frag encodes it to sRGB on the way out with pow(colour, 1/2.2).
+		// Everything that draws into that target therefore owes it linear values,
+		// and phong_perpixel pays that with `albedo = pow(texColor.rgb, 2.2)` at
+		// the top of its shading.
+		//
+		// A fixed-function EMT_SOLID node has no such step. It wrote the raw sRGB
+		// texel into a buffer that is about to be gamma-encoded a SECOND time:
+		// 0.43 -> 0.43^(1/2.2) = 0.68. The dark brown metal left the tonemapper as
+		// pale cream (173, 149, 130), and any exposure above 1.0 pushed it the rest
+		// of the way to white. Nothing about the material could have fixed that —
+		// it is a colour-space error, not a shading one.
+		//
+		// (Which also settles the old note about EmissiveColor appearing to
+		// brighten an unlit node. It cannot, and it did not; what changed the
+		// picture was always this double encode.)
+		//
+		// Lighting is now ON. Unlit was only ever chosen to dodge the black-metal
+		// trap below, and being lit is the better look anyway: these are steel
+		// chips in a lit world, and the halo still carries all of the heat.
+		const auto perpixel = ShaderMaterialManager::get("phong_perpixel");
+
+		if (perpixel != irr::video::EMT_SOLID)
+			shard.node->setMaterialType(perpixel);
+
+		shard.node->setMaterialTexture(SLOT_DIFFUSE, metalTex);
+		shard.node->setMaterialFlag(irr::video::EMF_LIGHTING, true);
+		shard.node->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, true);
+		shard.node->setMaterialFlag(irr::video::EMF_BILINEAR_FILTER, true);
+		shard.node->setMaterialFlag(irr::video::EMF_USE_MIP_MAPS, true);
+
+		for (irr::u32 m = 0; m < shard.node->getMaterialCount(); ++m)
+		{
+			irr::video::SMaterial& mat = shard.node->getMaterial(m);
+
+			// DIELECTRIC, despite being steel. phong_perpixel reads metallic from
+			// SpecularColor's ALPHA and .obj primitives arrive with it at 255, i.e.
+			// full metal — and its diffuseFactor is (1 - metallic), so a metallic
+			// shard multiplies this dark albedo away to near-black and keeps only a
+			// specular tinted by F0 = albedo. That is the same trap the gibs fell
+			// into (GoreManager::applyGibMaterial has the long version). Brass
+			// casings survive it only because brass really is metal AND bright.
+			mat.SpecularColor.setAlpha(0);   // uMetallic 0
+			mat.DiffuseColor.setAlpha(255);  // uAlpha — fully opaque
+
+			// uRoughness = 1 - sqrt(Shininess / 128). 26 gives ~0.55: dull enough to
+			// stay dark metal, glossy enough to catch a highlight as it tumbles,
+			// which is most of what sells a fragment this small as solid.
+			mat.Shininess = 26.0f;
+		}
+
+		shard.node->setVisible(false);
+
+		// The halo is what actually sells "glowing" — the mesh alone is a bright
+		// speck at this size. Additive, and per the additive-vertex-colour rule
+		// its tint comes from setColor(), never from the material.
+		if (glowTex)
+		{
+			shard.glow = smgr->addBillboardSceneNode(
+				shard.node, irr::core::dimension2df(0.5f, 0.5f));
+
+			if (shard.glow)
+			{
+				shard.glow->setMaterialTexture(0, glowTex);
+				shard.glow->setMaterialType(irr::video::EMT_TRANSPARENT_ADD_COLOR);
+				shard.glow->setMaterialFlag(irr::video::EMF_LIGHTING, false);
+				shard.glow->setMaterialFlag(irr::video::EMF_ZWRITE_ENABLE, false);
+			}
+		}
+	}
+
+	return true;
+}
+
+void Weapon_Launcher::destroyShrapnelPool()
+{
+	for (auto& shard : m_shrapnel)
+	{
+		// The billboard is a child, so removing the node takes it with it.
+		if (shard.node)
+			shard.node->remove();
+
+		shard.node = nullptr;
+		shard.glow = nullptr;
+	}
+
+	// Nothing to drop: the shard meshes come from the scene manager's own cache
+	// and are shared, so the nodes' grabs are the only references this weapon ever
+	// held. Removing them above released those.
+	m_shrapnel.clear();
+	m_shrapnelPoolReady = false;
+}
+
+void Weapon_Launcher::fireShrapnel()
+{
+	if (!ensureShrapnelPool() || !m_mesh.node)
+		return;
+
+	anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+	if (!player.isValid() || !player.hasComponent<CameraComponent>())
+		return;
+
+	auto& camera = player.getComponent<CameraComponent>();
+	camera.camera->updateAbsolutePosition();
+	m_mesh.node->updateAbsolutePosition();
+	m_mesh.node->animateJoints();
+
+	// Same point the flash is drawn at, for the same reason the grenade uses it:
+	// one definition of "where the muzzle is" instead of two that drift apart.
+	const irr::core::vector3df spawnPos = m_effects.muzzleWorldPosition();
+
+	irr::core::vector3df aim = getCrosshairAimPoint(m_maxAimRange) - spawnPos;
+	if (aim.getLengthSQ() < 0.0001f)
+		return;
+	aim.normalize();
+
+	// Orthonormal basis for the cone. crossProduct with world up degenerates when
+	// the player is looking straight up or down, so fall back to an axis that
+	// cannot be parallel to the aim in that case.
+	irr::core::vector3df up(0.0f, 1.0f, 0.0f);
+	if (std::fabs(aim.dotProduct(up)) > 0.99f)
+		up.set(1.0f, 0.0f, 0.0f);
+
+	irr::core::vector3df right = aim.crossProduct(up);
+	right.normalize();
+	irr::core::vector3df coneUp = right.crossProduct(aim);
+	coneUp.normalize();
+
+	// tan of the cone half-angle: the radius of the disc the shards are aimed
+	// through, one unit downrange.
+	// Spread is an INVERTED stat — a smaller cone is a better one — so it is
+	// read through statInv() against WSTAT_ACCURACY rather than multiplied.
+	const float shardSpread = statInv(WSTAT_ACCURACY, m_shardSpread);
+	const float spreadRadius = std::tan(shardSpread * irr::core::DEGTORAD);
+
+	const float shardDamage = statf(WSTAT_ALT_DAMAGE, m_shardDamage);
+
+	// The pool is a fixed array (m_shardPoolSize), so an upgraded burst is
+	// clamped to it. acquireShard() already returns null and breaks the loop
+	// when the pool is dry; this just keeps the intent visible at the count.
+	int burst = stati(WSTAT_PELLETS, m_shardsPerBurst);
+	if (burst > m_shardPoolSize)
+		burst = m_shardPoolSize;
+
+	auto* rng = Engine::Get()->rng();
+
+	for (int spawned = 0; spawned < burst; ++spawned)
+	{
+		Shard* slot = acquireShard();
+		if (!slot)
+			break; // no nodes at all — pool build failed
+
+		// Uniform over the disc, not over the radius — sampling the radius flat
+		// piles the fragments into the middle and the burst reads as a slug with
+		// fringe rather than as a spread.
+		const float theta = rng->getFloat(0.0f, 2.0f * irr::core::PI);
+		const float r     = spreadRadius * std::sqrt(rng->getFloat(0.0f, 1.0f));
+
+		irr::core::vector3df dir = aim
+			+ right  * (r * std::cos(theta))
+			+ coneUp * (r * std::sin(theta));
+		dir.normalize();
+
+		const float speed = m_shardSpeed * rng->getFloat(1.0f - m_shardSpeedVar, 1.0f + m_shardSpeedVar);
+
+		// Disarmed: see Shard::armed. These start inside their owner.
+		launchShard(*slot, spawnPos, dir, speed, shardDamage, false);
+	}
+
+	// Muzzle spit — the canister coming apart at the barrel.
+	ParticleManager::Get()->spawn("spark", irr2spk(spawnPos));
+}
+
+// The PRIMARY fire's payoff: the grenade's casing coming apart. Same pool, same
+// physics and the same cooling as the alt fire's cone — only the distribution
+// and the tuning differ, which is the entire reason the launch path was pulled
+// out into launchShard().
+void Weapon_Launcher::spawnShrapnelBurst(const irr::core::vector3df& origin,
+	const irr::core::vector3df& surfaceNormal)
+{
+	if (!ensureShrapnelPool())
+		return;
+
+	auto* rng = Engine::Get()->rng();
+
+	// Lifted off the surface it went off against, so the half of the sphere aimed
+	// into the wall is not already embedded in it on frame one. With no normal —
+	// an airburst or a timer — the blast centre is already in open space.
+	irr::core::vector3df centre = origin;
+
+	if (surfaceNormal.getLengthSQ() > 0.0001f)
+	{
+		irr::core::vector3df n = surfaceNormal;
+		n.normalize();
+		centre += n * 0.3f;
+	}
+
+	for (int i = 0; i < m_fragCount; ++i)
+	{
+		Shard* slot = acquireShard();
+		if (!slot)
+			break;
+
+		// Uniform on the SPHERE. Sampling two angles instead would bunch the
+		// fragments at the poles and leave a visible seam around the equator;
+		// picking the height uniformly and the ring radius from it is what makes
+		// the distribution even.
+		const float z     = rng->getFloat(-1.0f, 1.0f);
+		const float theta = rng->getFloat(0.0f, 2.0f * irr::core::PI);
+		const float r     = std::sqrt(std::max(0.0f, 1.0f - z * z));
+
+		const irr::core::vector3df dir(r * std::cos(theta), z, r * std::sin(theta));
+
+		const float speed = m_fragSpeed * rng->getFloat(1.0f - m_shardSpeedVar, 1.0f + m_shardSpeedVar);
+
+		// ARMED, unlike the muzzle cone: the blast is out in the world rather than
+		// inside the player, so a fragment that reaches them is a real one.
+		launchShard(*slot, centre, dir, speed, m_fragDamage, true);
+	}
+}
+
+Weapon_Launcher::Shard* Weapon_Launcher::acquireShard()
+{
+	// A free slot if there is one, otherwise the oldest shard in the pool.
+	// Recycling rather than skipping is what keeps every burst the same size once
+	// the floor is covered in debris — the alternative is the weapon quietly
+	// getting weaker the longer the fight has been going on.
+	Shard* slot = nullptr;
+
+	for (auto& candidate : m_shrapnel)
+	{
+		if (!candidate.node)
+			continue;
+
+		if (!candidate.active)
+			return &candidate;
+
+		if (!slot || candidate.age > slot->age)
+			slot = &candidate;
+	}
+
+	return slot;
+}
+
+void Weapon_Launcher::launchShard(Shard& shard, const irr::core::vector3df& origin,
+	const irr::core::vector3df& dir, float speed, float damage, bool armed)
+{
+	if (!shard.node)
+		return;
+
+	auto* rng = Engine::Get()->rng();
+
+	const float scale = rng->getFloat(m_shardScaleMin, m_shardScaleMax);
+
+	shard.velocity = dir * speed;
+	shard.rotation.set(
+		rng->getFloat(0.0f, 360.0f),
+		rng->getFloat(0.0f, 360.0f),
+		rng->getFloat(0.0f, 360.0f));
+	shard.angularVelocity.set(
+		rng->getFloat(-900.0f, 900.0f),
+		rng->getFloat(-900.0f, 900.0f),
+		rng->getFloat(-900.0f, 900.0f));
+
+	shard.age       = 0.0f;
+	shard.damage    = damage;
+	shard.bounces   = 0;
+	shard.active    = true;
+	shard.settled   = false;
+	shard.armed     = armed;
+	shard.scale     = scale;
+	shard.fadeStart = m_shardLifetime - m_shardFadeTime;
+
+	// Nudged along its own direction so a fragment cannot start inside the surface
+	// it was launched from, which would have it ricochet on its first frame.
+	shard.node->setPosition(origin + dir * m_spawnOffset);
+	shard.node->setRotation(shard.rotation);
+	shard.node->setScale(irr::core::vector3df(scale, scale, scale));
+	shard.node->setVisible(true);
+}
+
+void Weapon_Launcher::updateShrapnel(float dt)
+{
+	if (m_shrapnel.empty())
+		return;
+
+	const float dt_s = dt * 0.001f;
+	const float now  = static_cast<float>(Engine::Get()->getCurrentTime());
+
+	// One hit confirm for the whole burst-frame. Fourteen fragments landing on the
+	// same target would otherwise fire fourteen hitmarkers in one tick.
+	HIT_RESULT bestResult = HIT_RESULT::NONE;
+
+	for (auto& shard : m_shrapnel)
+	{
+		if (!shard.active || !shard.node)
+			continue;
+
+		shard.age += dt;
+
+		// Fragments shrink away rather than blinking out. Fourteen of them popping
+		// on the same frame is far more noticeable than fourteen of them leaving,
+		// and an untextured solid has no alpha to fade, so size is the only handle.
+		// A fragment that has used up its ricochets starts this immediately — see
+		// the bounce block below — which is also what takes it out of collision.
+		float fade = 1.0f;
+
+		if (shard.age >= shard.fadeStart)
+		{
+			fade = 1.0f - (shard.age - shard.fadeStart) / m_shardFadeTime;
+
+			if (fade <= 0.0f)
+			{
+				shard.active = false;
+				shard.node->setVisible(false);
+				continue;
+			}
+		}
+
+		// Settled debris that has finished cooling and is not yet on its way out is
+		// completely inert — it lies where it landed for the rest of the minute.
+		// With a pool of 112 and a lifetime this long, nearly every shard is in
+		// that state nearly all of the time, which is what makes a 60-second
+		// lifetime affordable. Note it still has to COOL after it lands: a
+		// fragment that comes to rest half a second in is still orange, and
+		// freezing its colour there would leave hot metal lying on the floor.
+		const bool cold = shard.age >= m_shardCoolTime;
+
+		if (shard.settled && cold && fade >= 1.0f)
+			continue;
+
+		// Never landed on anything: fired into the sky, or out through a gap. It is
+		// the only kind of shard that keeps costing a raycast, so it goes rather
+		// than tumbling for the remaining fifty-odd seconds.
+		if (!shard.settled && shard.age >= m_shardMaxFlight && shard.fadeStart > shard.age)
+			shard.fadeStart = shard.age;
+
+		if (!shard.settled)
+		{
+			shard.velocity.Y -= m_shardGravity * dt_s;
+		}
+
+		const irr::core::vector3df pos = shard.node->getPosition();
+		irr::core::vector3df       newPos = pos + (shard.settled
+			? irr::core::vector3df(0.0f, 0.0f, 0.0f)
+			: shard.velocity * dt_s);
+
+		// Swept cast along this frame's travel, extended by the shard's own radius
+		// at each end so a fast fragment cannot tunnel through a thin wall. A
+		// fragment already on its way out is skipped: it is spent, and having it
+		// still able to damage things while visibly disappearing is a bad trade.
+		const float speed = shard.velocity.getLength();
+
+		if (!shard.settled && speed > 0.001f && fade >= 1.0f)
+		{
+			const float radius = 0.12f;
+
+			// Extended FORWARD only, never backward. Extending the start backward
+			// puts the ray origin inside whatever the shard just bounced off: a
+			// head-on ricochet leaves the fragment sitting a hair off the surface,
+			// so a start pulled 0.12 back along the new travel direction is behind
+			// the wall, re-hits every frame, and burns the whole bounce budget in
+			// three frames. The symptom was shrapnel vanishing on any shot that was
+			// not fired at a glancing angle — a glancing one slides clear before
+			// the next sweep, which is exactly why it looked angle-dependent.
+			const irr::core::vector3df travelDir = shard.velocity / speed;
+			const irr::core::vector3df rayStart  = pos;
+			const irr::core::vector3df rayEnd    = newPos + travelDir * radius;
+
+			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(rayStart, rayEnd, true);
+
+			if (hit.hit && hit.node)
+			{
+				// A fragment that lands on something damageable is spent in it —
+				// it does not come back out. Anything else is a surface to skip off.
+				HIT_RESULT result  = HIT_RESULT::NONE;
+				bool       hitSelf = false;
+				bool       ignore  = false;
+
+				// Brush chunks and world props carry no ECS id, and an unset node id
+				// reads as 0 — which is a VALID entity id. Asking the node for an
+				// entity without this guard is how a wall ends up damaging whatever
+				// entity 0 happens to be.
+				if (!RenderManager::isWorldGeometryNode(hit.node))
+				{
+					anax::Entity& hitEntity =
+						WorldManager::Get()->managerSystem()->getEntityByID(hit.node->getID());
+
+					if (hitEntity.isValid() && hitEntity.hasComponent<DescriptorComponent>())
+					{
+						auto& hitDesc = hitEntity.getComponent<DescriptorComponent>();
+
+						// ET_PLAYER is in this list deliberately: a fragment that
+						// comes back off a wall you were too close to should put it
+						// in YOU. That is the price of the launcher's damage, and it
+						// is the whole reason firing flak into a doorway you are
+						// standing in — or lobbing a grenade at your own feet — is a
+						// bad idea.
+						//
+						// Only ARMED fragments can do it; see Shard::armed for which
+						// start that way. (raycastWorldPosition already recasts past
+						// the player for rays starting inside the hitbox; this makes
+						// the intent explicit and cannot misfire if that behaviour
+						// ever changes.)
+						const bool player = (hitDesc.type == ET_PLAYER);
+
+						if (player && !shard.armed)
+						{
+							// PASSES THROUGH rather than bouncing. Letting an unarmed
+							// fragment ricochet off its owner would arm it and send it
+							// straight back into them, so merely pulling the trigger
+							// could cost health — self-damage has to come from the
+							// geometry you chose to shoot, never from the shot itself.
+							ignore = true;
+						}
+						else if (player || hitDesc.type == ET_STATIC || hitDesc.type == ET_DYNAMIC)
+						{
+							hitSelf = player;
+
+							result = WorldManager::Get()->gameplaySystem()->damageEntity(
+								hitDesc.id,
+								static_cast<unsigned int>(shard.damage),
+								DAMAGE_TYPE::DEFAULT,
+								DamageContext::fromImpact(hit.point, hit.normal, travelDir));
+						}
+					}
+				}
+
+				// 'ignore' means this was never a contact — the fragment carries on
+				// through with its velocity untouched, and the move at the bottom of
+				// the loop runs exactly as it would have if the sweep found nothing.
+				if (!ignore)
+				{
+					if (result != HIT_RESULT::NONE)
+					{
+						// Landed in something. Note the test is on the RESULT, not
+						// on whether an entity was there: a crate with no damage
+						// receiver is a wall as far as a fragment is concerned, and
+						// bouncing off it is both better looking and the honest
+						// simulation.
+						//
+						// Shooting yourself is not a hit confirm — same rule the
+						// splash damage follows. A hitmarker for your own blood
+						// would read as having landed the shot.
+						if (!hitSelf && static_cast<int>(result) > static_cast<int>(bestResult))
+							bestResult = result;
+
+						ParticleManager::Get()->spawn("spark", irr2spk(hit.point));
+
+						shard.active = false;
+						shard.node->setVisible(false);
+						continue;
+					}
+
+					// --- Ricochet ------------------------------------------------
+					const irr::core::vector3df n = hit.normal;
+
+					shard.velocity = (shard.velocity - n * (2.0f * shard.velocity.dotProduct(n)))
+						* m_shardBounceLoss;
+					shard.angularVelocity *= 0.6f;
+					shard.damage *= m_shardDamageLoss;
+					shard.bounces++;
+
+					// Off a surface and heading somewhere it was not aimed: from here
+					// it can come home. A muzzle burst arms exactly here.
+					shard.armed = true;
+
+					// Clear of the surface by more than the sweep's own forward
+					// reach, so the next frame's ray cannot start on the wrong side.
+					newPos = hit.point + n * (radius + 0.05f);
+
+					// Throttled as a group: a burst into a corner is fourteen
+					// impacts inside one frame, and fourteen voices plus fourteen
+					// particle systems on the same tick is a hitch and a clipped mess.
+					if (now - m_lastShardSound >= 45.0f)
+					{
+						m_lastShardSound = now;
+						SoundManager::Get()->sound()->playRandomized3D(
+							"content/sound/weapon/grenade_launcher/bounce", hit.point,
+							0.18f, 3, 0.4f, "launcher_shrapnel");
+					}
+
+					if (now - m_lastShardSpark >= 60.0f)
+					{
+						m_lastShardSpark = now;
+						ParticleManager::Get()->spawn("spark", irr2spk(hit.point));
+					}
+
+					// Out of ricochets, or it has bled off enough speed that another
+					// bounce would be a twitch.
+					const bool spent = shard.bounces > m_shardMaxBounces ||
+						shard.velocity.getLength() < m_shardSettleSpeed;
+
+					// ...but a fragment can only come to REST on something it could
+					// actually rest on. Settling wherever it happened to run out left
+					// shards stuck to walls, which is the one thing that reads as a
+					// bug rather than as debris. A surface counts as ground only if
+					// it is facing meaningfully upward; everything else — walls,
+					// ceilings, steep ramps — has to hand the fragment back to
+					// gravity.
+					const bool ground = n.Y > 0.5f;
+
+					if (spent && ground)
+					{
+						shard.settled = true;
+						shard.velocity.set(0.0f, 0.0f, 0.0f);
+						shard.angularVelocity.set(0.0f, 0.0f, 0.0f);
+
+						// Sit it right down on the surface rather than leaving it
+						// floating at the clearance the sweep needed.
+						newPos = hit.point + n * (shard.scale * 0.8f);
+					}
+					else if (spent)
+					{
+						// Spent against a wall or a ceiling. Drop it: straight down,
+						// off the face it hit, so it falls clear and settles properly
+						// on whatever is below. Overwriting the velocity rather than
+						// damping it is deliberate — a fragment with a little
+						// tangential energy left skips down the wall in a series of
+						// grazing hits, which looks worse than either sticking or
+						// falling.
+						// Comfortably above m_shardSettleSpeed, or the very next test
+						// would call it spent again and it would never get moving.
+						shard.velocity.set(0.0f, -m_shardSettleSpeed * 2.0f, 0.0f);
+						shard.angularVelocity *= 0.3f;
+
+						// It has to stop counting bounces here, or scraping down a
+						// wall exhausts the budget it needs to land on the floor.
+						shard.bounces = m_shardMaxBounces;
+					}
+				}
+			}
+		}
+
+		shard.node->setPosition(newPos);
+
+		if (!shard.settled)
+		{
+			shard.rotation += shard.angularVelocity * dt_s;
+			shard.node->setRotation(shard.rotation);
+		}
+
+		const float drawScale = shard.scale * fade;
+		shard.node->setScale(irr::core::vector3df(drawScale, drawScale, drawScale));
+
+		// --- Cooling ---------------------------------------------------------
+		// The heat is carried ENTIRELY by the halo; the fragment underneath is just
+		// lit metal and is supposed to look like it (dark warm steel, RGB 110/78/58
+		// on average). Earlier notes here blamed the metal reading as near-white on
+		// an emissive term leaking in — it was not: the shard was drawing its sRGB
+		// texel straight into the linear HDR target and being gamma-encoded twice.
+		// That is fixed in the material now, so this ramp is finally visible against
+		// something dark instead of against an already-white chip.
+		const float heat = 1.0f - irr::core::clamp(shard.age / m_shardCoolTime, 0.0f, 1.0f);
+
+		if (shard.glow)
+		{
+			// Squared, not cubed. Cubing was compensation for a halo that had to get
+			// out of the way of a blown-out fragment as fast as possible; with the
+			// metal reading dark the ember can be allowed to live across the whole
+			// cool time, which is the difference between a cooling shard and a shard
+			// that is briefly bright and then simply grey. Still taken down with the
+			// shrink, so a shard leaving early does not leave its glow behind.
+			const float glowFade = heat * heat * fade;
+
+			if (glowFade > 0.02f)
+			{
+				// Sized against the SHARD, not in absolute units. The hulls are
+				// normalised to ~2 units across, so the fragment draws at about
+				// 2 * scale: this stays between one and two times the chunk's own
+				// size — a rim when it is cooling, a modest bloom when it is fresh.
+				const float size = shard.scale * (2.0f + 2.0f * glowFade);
+				shard.glow->setSize(irr::core::dimension2df(size, size));
+
+				// Its OWN ramp, not the metal's — hot yellow through orange to red.
+				// Additive: the material colour has no effect here, only setColor(),
+				// and scaling the components is what dims it, since an additive
+				// billboard has no meaningful alpha to fade instead.
+				//
+				// Linearised on the way out. The ramp stops are authored by eye and
+				// so are sRGB, but this is a fixed-function node writing into the
+				// linear HDR target with no shader to convert them (see _linearise).
+				// Passing them raw is what made the halo read as a flat wash that was
+				// either on or off: the dim end over-contributed most, so the middle
+				// of the cool-down had no shape to it. The full 1.0 ceiling is safe
+				// now — saturating to white IS what a fragment at full heat should
+				// do, and it only lasts as long as the top of the curve.
+				const irr::video::SColor ember = shardGlowColor(heat);
+
+				shard.glow->setColor(_linearise(ember, glowFade));
+
+				shard.glow->setVisible(true);
+			}
+			else
+			{
+				shard.glow->setVisible(false);
 			}
 		}
 	}

@@ -9,7 +9,6 @@
 #include "Engine/World/Components/LightComponent.h"
 #include "Engine/World/Components/MeshComponent.h"
 #include "Engine/World/Components/PhysicsComponent.h"
-#include "Engine/World/Components/PrefabComponent.h"
 #include "Engine/World/Components/RenderComponent.h"
 #include "Engine/World/Components/ScriptComponent.h"
 #include "Engine/World/Components/SkyboxComponent.h"

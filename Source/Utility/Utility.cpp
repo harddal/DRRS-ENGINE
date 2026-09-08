@@ -1,6 +1,7 @@
 #include "Utility.h"
 
 #include <Windows.h>
+#include <ShlObj.h>     // IFileOpenDialog / SHCreateItemFromParsingName (folder picker)
 #include <spdlog/spdlog.h>
 
 using std::chrono::high_resolution_clock;
@@ -146,4 +147,78 @@ std::string Utility::SaveFileDialog(const char* filter, const char* initialDir)
 	spdlog::info("SaveFileDialog() - {}", result);
 
 	return result;
+}
+std::string Utility::OpenFolderDialog(const char* title, const char* initialDir)
+{
+	// The editor may already have COM initialised on this thread (Irrlicht and the
+	// shell dialogs both do it). RPC_E_CHANGED_MODE means "already initialised with
+	// a different threading model" — that is fine to use, we just must not uninit it.
+	const HRESULT initHr   = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	const bool    ownsInit = SUCCEEDED(initHr);
+
+	std::string result;
+	IFileOpenDialog* dialog = nullptr;
+
+	if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+	                               IID_PPV_ARGS(&dialog))))
+	{
+		DWORD options = 0;
+		if (SUCCEEDED(dialog->GetOptions(&options)))
+			dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_NOCHANGEDIR);
+
+		if (title)
+		{
+			wchar_t wideTitle[256] = {};
+			MultiByteToWideChar(CP_ACP, 0, title, -1, wideTitle, 256);
+			dialog->SetTitle(wideTitle);
+		}
+
+		if (initialDir && *initialDir)
+		{
+			wchar_t wideDir[MAX_PATH] = {};
+			MultiByteToWideChar(CP_ACP, 0, initialDir, -1, wideDir, MAX_PATH);
+
+			IShellItem* folder = nullptr;
+			if (SUCCEEDED(SHCreateItemFromParsingName(wideDir, nullptr, IID_PPV_ARGS(&folder))))
+			{
+				dialog->SetFolder(folder);
+				folder->Release();
+			}
+		}
+
+		if (SUCCEEDED(dialog->Show(nullptr)))
+		{
+			IShellItem* item = nullptr;
+			if (SUCCEEDED(dialog->GetResult(&item)))
+			{
+				PWSTR widePath = nullptr;
+				if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &widePath)))
+				{
+					char narrow[MAX_PATH] = {};
+					WideCharToMultiByte(CP_ACP, 0, widePath, -1, narrow, MAX_PATH, nullptr, nullptr);
+					result = narrow;
+					CoTaskMemFree(widePath);
+				}
+				item->Release();
+			}
+		}
+		dialog->Release();
+	}
+
+	if (ownsInit)
+		CoUninitialize();
+
+	spdlog::info("OpenFolderDialog() - {}", result);
+	return result;
+}
+
+std::string Utility::ExecutableDirectory()
+{
+	char path[MAX_PATH] = {};
+	if (!GetModuleFileNameA(nullptr, path, MAX_PATH))
+		return std::string();
+
+	std::string full(path);
+	const size_t slash = full.find_last_of("\\/");
+	return (slash == std::string::npos) ? std::string() : full.substr(0, slash + 1);
 }

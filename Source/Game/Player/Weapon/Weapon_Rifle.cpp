@@ -41,7 +41,7 @@ void Weapon_Rifle::init()
 	// identical joint names, identical 'arms' root at (0, 2.945, -17.671). A
 	// 130-unit barrel puts it between the heavy rifle and the sniper, so it
 	// starts from their framing. Tune with the F2 window, not here.
-	m_viewPositionOffset = irr::core::vector3df(0.1050f, -0.1650f, 0.0800f);
+	m_viewPositionOffset = irr::core::vector3df(0.1050f, -0.1600f, 0.1500f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(0.01f, 0.01f, 0.01f);
 

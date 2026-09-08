@@ -9,6 +9,12 @@
 
 #include "Game/Components/DamageReceiverComponent.h"
 
+// Pure enums only — WEAPON_STAT, SKILL_TREE, the effect kinds. It deliberately
+// does NOT include this header back, which is what keeps the pair acyclic:
+// anything in the skill system that needs PLAYER_WEAPON (SkillDef) lives in
+// SkillSystem.h instead, which includes both.
+#include "Game/Skill/WeaponSkills.h"
+
 #define _weapon_crosshair_size 64
 #define _weapon_crosshair2x_size 128
 #define _weapon_crosshair3x_size 256
@@ -63,6 +69,20 @@ enum WEAPON_CATEGORY
 // hardcoded "give <0-12>" usage string did. Adding a weapon means touching this
 // file, which is the same file its ammo type already lives in.
 WEAPON_CATEGORY weaponCategory(PLAYER_WEAPON weapon);
+
+// Which skill tree a weapon upgrades through, or STREE_NONE for one that is not
+// meant to be upgraded at all.
+//
+// Deliberately NOT derived from weaponCategory(). The selection buckets group
+// weapons by how you REACH one in a fight, which is a different question from
+// how one is upgraded — WEAPCAT_EXOTIC holds the crossbow and the skull staff,
+// which share nothing worth a common skill. A tree may cover several weapons
+// (the SMG and the dual SMGs want shared handling skills); a skill row targeted
+// at one weapon inside a shared tree is how the exceptions are written.
+//
+// Lives beside weaponCategory() and weaponAmmoType() for the same reason they
+// do: adding a weapon should mean editing one file, not hunting for tables.
+SKILL_TREE weaponSkillTree(PLAYER_WEAPON weapon);
 
 // For the selection HUD. weaponIconPath() returns nullptr when a weapon has no
 // icon, so the HUD can fall back to text rather than drawing a broken texture.
@@ -325,7 +345,14 @@ public:
 	// Hit-confirmation feedback. Weapons pass the HIT_RESULT from
 	// GameplaySystem::damageEntity(); HIT flashes the hitmarker + plays a tick
 	// (rate-limited), KILL shows a larger red marker + kill sound. NONE is a no-op.
-	static void registerHitFeedback(HIT_RESULT result);
+	//
+	// NOT static, though its feedback state still is. Every one of the 25 call
+	// sites is an unqualified call from inside an instance member function, so
+	// dropping 'static' compiles unchanged everywhere — and it buys the skill
+	// award path access to m_weapon_type, which is what a per-weapon or per-tree
+	// point rule would need. drawHitFeedback() below has no such caller and
+	// stays static.
+	void registerHitFeedback(HIT_RESULT result);
 
 	// Draws the fading hitmarker over the crosshair. Called once per frame by
 	// WeaponController::update() — weapons never call this themselves.
@@ -394,6 +421,31 @@ public:
 	// registered out of order would shift every index under an old save.
 	PLAYER_WEAPON weaponType() const { return m_weapon_type; }
 
+	// --- Skill surface -------------------------------------------------------
+	// What this weapon exposes to the skill system. These DESCRIBE; nothing is
+	// ever written through them. The skill UI, the console dumps and
+	// SkillSystem::validate() all read them, which is what lets a skill row
+	// targeting a stat the weapon never reads be caught at startup instead of in
+	// a balance pass weeks later.
+	//
+	// A weapon that overrides neither is simply not upgradeable, which is a
+	// perfectly good answer and the default.
+
+	// Bitmask of WSTAT_BIT(...) for every stat this weapon actually reads through
+	// statf/stati/statInv. Claiming a stat here and then not reading it is the
+	// one failure the validator cannot see, so keep it honest.
+	virtual unsigned int supportedStats() const { return 0; }
+
+	// Capability bits the weapon starts with, before any skill is bought. Bit
+	// indices are declared by the weapon itself, in its own header — there is no
+	// central unlock enum, because that file would be touched by every content
+	// addition and would rot the way a key->weapon table would have.
+	virtual unsigned int defaultUnlocks() const { return 0; }
+
+	// Human name for one of this weapon's unlock bits, or nullptr where it
+	// defines none. Doubles as the UI label and as the validator's oracle.
+	virtual const char* unlockName(int /*bit*/) const { return nullptr; }
+
 	// Rounds in the gun, for the HUD. -1 means "this weapon has no ammunition
 	// readout" — melee and the pitchfork — and the HUD draws nothing.
 	//
@@ -413,6 +465,37 @@ public:
 	int reserveRemaining() const;
 
 protected:
+	// --- Reading a stat with its skill modifiers applied ----------------------
+	//
+	// The weapon's own member stays the BASE and is never written to. That is
+	// what makes this whole design safe: there is no cached base to restore, no
+	// re-apply pass to forget after a save load, and no argument with the F2
+	// viewmodel tuner, which goes on editing the base while the skill multiplies
+	// on top of it. The value is correct by construction at every read.
+	//
+	//   m_damage                 ->  stati(WSTAT_DAMAGE, m_damage)
+	//   m_splashRadius           ->  statf(WSTAT_SPLASH_RADIUS, m_splashRadius)
+	//
+	// statInv() is for the INVERTED stats — the ones whose member runs opposite
+	// to the player's interest. A fire INTERVAL and a SPREAD both get smaller as
+	// they get better, but WSTAT_FIRE_RATE and WSTAT_ACCURACY are defined so that
+	// bigger is better (see WeaponSkills.h), so those members are read through
+	// this and divided rather than multiplied:
+	//
+	//   m_fireInterval           ->  statInv(WSTAT_FIRE_RATE, m_fireInterval)
+	//   m_spread                 ->  statInv(WSTAT_ACCURACY, m_spread)
+	//
+	// Getting that pairing wrong is the one mistake here that produces a
+	// plausible-looking number moving the wrong way, so the rule is: if the
+	// member gets SMALLER as the weapon gets BETTER, it is read with statInv().
+	float statf  (WEAPON_STAT stat, float base) const;
+	int    stati (WEAPON_STAT stat, int   base) const;
+	float statInv(WEAPON_STAT stat, float base) const;
+
+	// Is a capability bit turned on? Bit indices are this weapon's own — see
+	// defaultUnlocks() above.
+	bool hasUnlock(int bit) const;
+
 	// Moves up to 'want' rounds out of the shared reserve and into the magazine,
 	// returning what was ACTUALLY moved so a weapon can tell a full reload from a
 	// partial one. The LMG needs that distinction — its belt arc is drawn from

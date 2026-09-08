@@ -48,6 +48,8 @@ void InventoryController::init()
 	m_selected         = static_cast<size_t>(-1);
 	m_activeCategory.clear();
 
+	m_skillPanel.setOpen(false);
+
 	g_PlayerInventoryIsDisplaying = false;
 	g_LockPlayerForInput          = false;
 
@@ -140,19 +142,62 @@ bool InventoryController::giveItem(const std::string& id, int count, const std::
 	return m_inventory.add(id, count, data) > 0;
 }
 
-void InventoryController::update()
+void InventoryController::update(bool otherUiWantsInput)
 {
 	static bool tabPressed = false;
 	if (InputManager::Get()->getKeyPressOnce(KEY_TAB, &tabPressed, true))
 	{
 		m_displayInventory = !m_displayInventory;
+
+		// Opening one panel closes the other. They are both modal and both
+		// centred, so allowing both would stack two windows the player has to
+		// dismiss separately.
+		if (m_displayInventory)
+			m_skillPanel.setOpen(false);
+
 		InputManager::Get()->centerMouse();
 	}
 
-	ImGui::GetIO().MouseDrawCursor = m_displayInventory;
-	InputManager::Get()->canProcessInput(!m_displayInventory);
+	static bool skillPressed = false;
+	if (InputManager::Get()->getKeyPressOnce(KEY_K, &skillPressed, true))
+	{
+		m_skillPanel.toggle();
 
-	g_PlayerInventoryIsDisplaying = m_displayInventory;
+		if (m_skillPanel.isOpen())
+			m_displayInventory = false;
+
+		InputManager::Get()->centerMouse();
+	}
+
+	// THE ONE WRITER of these three, computed from every contributor. They are
+	// level-triggered flags rather than requests, so a second writer setting
+	// them from its own state alone would clobber the first every frame — see
+	// the note on skillPanel() in the header, and the one on
+	// WeaponController::setViewmodelDebug(), which is the bug this centralising
+	// actually fixed.
+	//
+	// A new window that needs the cursor is added to THIS expression. It does
+	// not get its own copy of the three lines below.
+	//
+	// These stay in the fixed-step update rather than moving to updateUI() with
+	// the drawing: InputManager::update() is called from inside the same fixed
+	// loop, so canProcessInput() has to be set before it, not after.
+	const bool anyPanelOpen =
+		m_displayInventory || m_skillPanel.isOpen() || otherUiWantsInput;
+
+	ImGui::GetIO().MouseDrawCursor = anyPanelOpen;
+	InputManager::Get()->canProcessInput(!anyPanelOpen);
+
+	g_PlayerInventoryIsDisplaying = anyPanelOpen;
+}
+
+// Once per RENDERED frame. See the note in the header on why none of this can
+// live in update().
+void InventoryController::updateUI()
+{
+	// The skill panel pushes its own theme; the pouch's is pushed here because
+	// drawPanel() is written assuming it.
+	m_skillPanel.draw();
 
 	if (!m_displayInventory)
 		return;

@@ -7,6 +7,7 @@
 #include <fstream>
 
 #include "Game/Item/ItemDatabase.h"
+#include "Game/Skill/SkillSystem.h"
 
 #include "PlayerData.h"
 
@@ -607,7 +608,7 @@ void PlayerController::update(float dt)
 	}
 
 	// Reset vertical velocity and jump state when landing
-	if (g_isOnSurface && m_playerVelocity.Y < 0)
+	if (g_isOnSurface && m_playerVelocity.Y < 0 && !m_noclip)
 	{
 		if (m_lastAirVelocityY < -4.0f)
 		{
@@ -856,6 +857,40 @@ void PlayerController::update(float dt)
 		m_playerVelocity.Y * elapsedSeconds,
 		(m_playerVelocity.Z * cosf(moveDirection) + m_playerVelocity.X * cosf(moveDirection + __pi / 2.0f)) * elapsedSeconds);
 
+	// Noclip overrides the whole velocity/gravity pipeline: fly along the camera
+	// look vector (pitch included), with jump/crouch as world up/down. Same
+	// pitch/yaw convention as Math::GetDirectionVector. The move() call below
+	// becomes a collision-free setPosition().
+	if (m_noclip)
+	{
+		const float pitchRad = deg2rad(m_cameraPitch);
+		const float yawRad    = deg2rad(m_cameraYaw);
+
+		const vector3df fwd(sinf(yawRad) * cosf(pitchRad), -sinf(pitchRad), cosf(yawRad) * cosf(pitchRad));
+		const vector3df rgt(sinf(yawRad + __pi / 2.0f), 0.0f, cosf(yawRad + __pi / 2.0f));
+
+		vector3df fly(0.0f, 0.0f, 0.0f);
+		if (!isPlayerLocked() && !g_PlayerInventoryIsDisplaying)
+		{
+			auto* in = InputManager::Get();
+			if (in->isActionPressed("forward"))  fly += fwd;
+			if (in->isActionPressed("backward")) fly -= fwd;
+			if (in->isActionPressed("strafer"))  fly += rgt;
+			if (in->isActionPressed("strafel"))  fly -= rgt;
+			if (in->isActionPressed("jump"))     fly.Y += 1.0f;
+			if (in->isActionPressed("crouch"))   fly.Y -= 1.0f;
+		}
+		if (fly.getLengthSQ() > 0.0001f)
+			fly.normalize();
+
+		const float flySpeed = (InputManager::Get()->isActionPressed("sprint") ? g_sprintSpeed : g_walkSpeed) * 3.0f;
+
+		cct.displacement = physx::PxVec3(fly.X, fly.Y, fly.Z) * (flySpeed * elapsedSeconds);
+
+		m_playerVelocity.set(0.0f, 0.0f, 0.0f);
+		g_isOnSurface = false;
+	}
+
 	// Ride kinematic movers (elevators, doors): PhysX CCTs are not carried by
 	// kinematic platforms, so track the actor under our feet and add its
 	// per-frame pose delta to our displacement while grounded.
@@ -889,7 +924,21 @@ void PlayerController::update(float dt)
 		m_groundMover = mover;
 	}
 
-	PxControllerCollisionFlags collisionFlags = cct.controller->move(cct.displacement, 0.001f, elapsedSeconds, filters);
+	PxControllerCollisionFlags collisionFlags;
+	if (m_noclip)
+	{
+		// Hard teleport — PxController::setPosition ignores geometry, unlike ::move.
+		const physx::PxExtendedVec3 pos = cct.controller->getPosition();
+		cct.controller->setPosition(physx::PxExtendedVec3(
+			pos.x + cct.displacement.x,
+			pos.y + cct.displacement.y,
+			pos.z + cct.displacement.z));
+		m_smoothedY = static_cast<float>(cct.controller->getPosition().y); // no vertical smoothing lag while flying
+	}
+	else
+	{
+		collisionFlags = cct.controller->move(cct.displacement, 0.001f, elapsedSeconds, filters);
+	}
 	
 	// Frame-based buffering to prevent collision flag flicker from causing head bob jitter
 	// Requires multiple consecutive airborne frames before switching state
@@ -1036,7 +1085,11 @@ void PlayerController::update(float dt)
 	// The old InventoryController::update() was never called from anywhere, which
 	// is why Tab did nothing. Ticked here, after the weapon controller, so the
 	// panel's input grab happens after weapon input has been read for the frame.
-	m_inventoryController.update();
+	//
+	// The F2 tuner's cursor request is handed over rather than taken: this is
+	// the only place that can see both controllers, and InventoryController is
+	// the single writer of the cursor and input-lock flags.
+	m_inventoryController.update(m_weaponController.isViewmodelDebugOpen());
 #endif
 
 	// A .pak carrying a player.sav was loaded. Applied HERE, after the weapon
@@ -1065,9 +1118,17 @@ void PlayerController::update(float dt)
 	m_interactionController.update(g_PlayerData);
 }
 
+// Once per RENDERED frame, from Engine's variable-timestep UI pass — unlike
+// update(), which is inside the fixed-timestep loop and can run zero times in a
+// frame. Every ImGui window the player sees has to be submitted from here, or it
+// vanishes on the zero-step frames and reads as flicker.
 void PlayerController::updateUI(float dt)
 {
+	m_weaponController.updateUI();
 
+#ifndef DISABLE_HUD_AND_INV
+	m_inventoryController.updateUI();
+#endif
 }
 
 void PlayerController::destroy()
@@ -1204,6 +1265,22 @@ bool PlayerController::capturePlayerState(PlayerSaveState& out) const
 		out.items.emplace_back(std::move(record));
 	}
 
+	// Ranks only — the resolved stat and unlock caches are derived and are
+	// rebuilt from these on load.
+	std::vector<std::pair<std::string, int>> ranks;
+	SkillSystem::Get()->captureRanks(ranks);
+
+	out.skillPoints = SkillSystem::Get()->unspentPoints();
+
+	for (auto& entry : ranks)
+	{
+		SkillRankRecord record;
+		record.id   = entry.first;
+		record.rank = entry.second;
+
+		out.skills.emplace_back(std::move(record));
+	}
+
 	return true;
 }
 
@@ -1269,4 +1346,19 @@ void PlayerController::applyPlayerState(const PlayerSaveState& in)
 	}
 
 	m_inventoryController.inventory().load(items);
+
+	// Skills go in LAST, after every weapon has been granted. resolve() seeds
+	// each weapon's starting capability bits from its defaultUnlocks(), so it
+	// has to run once the weapons it asks are actually there — and applyRanks()
+	// ends by resolving, which is what makes this ordering enough.
+	//
+	// A v1/v2 sidecar carries neither field, so this correctly clears the tree
+	// rather than leaving a previous run's skills standing.
+	std::vector<std::pair<std::string, int>> ranks;
+	ranks.reserve(in.skills.size());
+
+	for (auto& record : in.skills)
+		ranks.emplace_back(record.id, record.rank);
+
+	SkillSystem::Get()->applyRanks(ranks, in.skillPoints);
 }

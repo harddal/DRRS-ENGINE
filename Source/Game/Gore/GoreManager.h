@@ -105,7 +105,7 @@ public:
 	int   goreLevel   = 3;
 	float messyRatio  = 0.25f;
 	float gibRatio    = 1.0f;
-	int   gibCount    = 10;    // base count at TIER_GIB, before the overkill scale
+	int   gibCount    = 20;    // base count at TIER_GIB, before the overkill scale
 
 	GORE_TIER tierFor(float overkill) const;
 
@@ -135,9 +135,10 @@ private:
 		bool  physicsActive  = false;
 	};
 
-	// Build the node pool and the tinted stand-in meshes. Deferred rather than
-	// done in precache() because it needs RenderManager, which is not guaranteed
-	// to be up when GameplaySystem::init() runs.
+	// Build the node pool and the tinted meshes. Driven from update() rather
+	// than precache() because it needs RenderManager, which is not guaranteed to
+	// be up when GameplaySystem::init() runs — so it retries until it is, and
+	// lands well before any gore. The gib paths still call it as a safety net.
 	bool ensurePool();
 
 	void updateGibs(float dt);
@@ -190,6 +191,20 @@ private:
 	// directly as MODULATE decals (decal.frag mixes toward white on alpha 0).
 	std::string randomBloodTexture() const;
 
+	// Pull every blood decal texture into the driver's cache up front, so the
+	// first gib does not stall the frame decoding PNGs. Kept out of the
+	// m_precached path and retried from update(), because like ensurePool() it
+	// needs RenderManager, which is not guaranteed to be up when
+	// GameplaySystem::init() runs.
+	void warmBloodTextures();
+
+	// Register blood_spray / blood_mist with ParticleManager. Kept out of the
+	// m_precached path and retried from update() for the same reason as
+	// warmBloodTextures(), plus one of its own: Engine::clearScene() wipes
+	// ParticleManager's whole effect table on every editor<->game switch, so a
+	// one-shot registration only ever survives the first game session.
+	void ensureEffects();
+
 	// Bounding-box centre of the entity in world space, or its transform
 	// position when it has no mesh. The fallback wound position.
 	static irr::core::vector3df bodyCentre(const anax::Entity& entity);
@@ -200,8 +215,15 @@ private:
 	// node alone is undone before it is ever presented.
 	static void removeBody(const anax::Entity& entity);
 
-	bool m_precached = false;
-	bool m_poolReady = false;
+	bool m_precached   = false;
+
+	// Set only when a blood .psys genuinely fails to load, so ensureEffects()
+	// stops retrying a missing file every frame. NOT set when the effects are
+	// simply absent from ParticleManager — that is the case it exists to repair.
+	bool m_effectsUnavailable = false;
+
+	bool m_bloodWarmed = false;
+	bool m_poolReady   = false;
 
 	std::vector<Gib> m_gibs;
 
@@ -209,10 +231,17 @@ private:
 	// assets, which are handed out to every other caller of getMesh().
 	std::vector<irr::scene::IMesh*> m_gibMeshes;
 
-	// Generated meat texture. phong_perpixel takes albedo ONLY from tDiffuse and
-	// never reads vertex colour, so tinting the mesh would have been invisible —
-	// the colour has to arrive as a texture for a lit gib to be red.
+	// The gore material, from content/texture/gib. phong_perpixel takes albedo
+	// ONLY from tDiffuse and never reads vertex colour, so tinting the mesh would
+	// have been invisible — the colour has to arrive as a texture for a lit gib
+	// to be red.
+	//
+	// Borrowed from the driver's texture cache, not owned: never drop or remove
+	// them. m_gibORM is the ao/roughness pair packed into one map by
+	// Tools/generate_gib_meshes.py.
 	irr::video::ITexture* m_gibTexture = nullptr;
+	irr::video::ITexture* m_gibNormal  = nullptr;
+	irr::video::ITexture* m_gibORM     = nullptr;
 
 	static GoreManager* s_Instance;
 };

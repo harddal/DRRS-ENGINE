@@ -37,6 +37,19 @@ class WeaponController
 public:
 	void init();
 	void update();
+
+	// The F2 viewmodel tuner. Split out of update() for the same reason the
+	// inventory's drawing was: update() runs inside Engine's fixed-timestep
+	// loop, which executes zero times on some rendered frames, and an ImGui
+	// window not submitted on a frame is not drawn on that frame. Called once
+	// per rendered frame from PlayerController::updateUI().
+	void updateUI();
+
+	// Whether the F2 tuner is on screen and therefore wants the mouse cursor and
+	// the input lock. It does NOT take them itself — see setViewmodelDebug().
+	// InventoryController::update() is the one writer of those flags and reads
+	// this to fold the tuner into the same calculation as the player's panels.
+	bool isViewmodelDebugOpen() const { return m_showViewmodelDebug; }
 	void destroy();
 
 	// --- Reserve ammunition --------------------------------------------------
@@ -112,6 +125,15 @@ public:
 	// with no ammunition — so the HUD has a single test for "skip the readout".
 	int currentDisplayAmmo() const;
 	int currentReserveAmmo() const;
+
+	// The registered weapon of a given type, or nullptr when this build never
+	// registered one. Searched by reported type rather than indexed by the enum,
+	// for the same reason loadWeaponMagState() searches: the registration order
+	// matches the enum today only by coincidence.
+	//
+	// Used by the skill system to ask a weapon what it supports, and by the
+	// console dumps. Non-const because callers legitimately drive the weapon.
+	PlayerWeapon* weapon(PLAYER_WEAPON type) const;
 
 	// Restores one weapon's magazine. Addressed by enum for the same reason, and
 	// silently ignores a weapon this build never registered, so an old save that

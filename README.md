@@ -71,6 +71,9 @@ A custom 3D game engine for Windows, featuring an integrated level editor, PBR s
 | [Cereal](https://uscilab.github.io/cereal/) | Serialization |
 | [GLM](https://github.com/g-truc/glm) | Math |
 | [FreeType](https://freetype.org/) | Font rasterization |
+| [Boost](https://www.boost.org/) | Header-only utilities |
+| [fastgltf](https://github.com/spnda/fastgltf) | glTF 2.0 import (with [simdjson](https://github.com/simdjson/simdjson)) |
+| [tinyxml2](https://github.com/leethomason/tinyxml2) | XML parsing (entities, brushes, config) |
 
 ---
 
@@ -186,4 +189,13 @@ void update(entityid self)
 
 ## License
 
-This project is released into the public domain under the [Unlicense](LICENSE).
+The Engine's own source code — everything under `Source/`, together with the
+shaders, scripts, and configuration files authored for this project — is
+released into the public domain under the [Unlicense](LICENSE).
+
+That dedication does **not** extend to the third-party libraries the Engine is
+built against, nor to any third-party art, audio, or model assets. Each bundled
+library remains under its own license; the full license texts and the
+attributions they require are collected in
+[`Binaries/THIRD_PARTY_LICENSES.txt`](Binaries/THIRD_PARTY_LICENSES.txt).
+Third-party assets are not distributed in this repository.

@@ -502,6 +502,10 @@ void EditorInterface::draw_menubar_main()
 			if (ImGui::MenuItem("Particle Designer", ""))
 				m_windowData.draw_window_particle_designer = true;
 
+			if (ImGui::MenuItem("Mixamo Importer", ""))
+				m_windowData.draw_window_mixamo_importer = true;
+			ImGui::SetItemTooltip("Merge a folder of Mixamo per-clip FBX exports plus their\nloose PBR textures into one animated GLB + .anim sidecar.");
+
 			bool exportFuncsClicked = ImGui::MenuItem("Export Script Functions");
 			ImGui::SetItemTooltip("Write every engine function exposed to AngelScript into a text file -\na quick API reference for script authors.");
 			if (exportFuncsClicked)

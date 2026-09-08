@@ -603,8 +603,14 @@ void WeaponEffects::explosionAt(const irr::core::vector3df& pos,
 
 	// --- Lingering smoke (asset-gated: drop in explosion_smoke.psys to enable) ---
 	{
+		// 0 means the .psys is genuinely absent — latch that and stop asking.
+		// Anything else re-precaches on every explosion: Engine::clearScene()
+		// wipes ParticleManager's effect table on every editor<->game switch, and
+		// precache() is a no-op on a name it already holds. Latching SUCCESS (the
+		// old `s_smokeAvailable < 0` test) left the smoke registered for the first
+		// game session only, then silently gone for the rest of the process.
 		static int s_smokeAvailable = -1; // -1 unknown, 0 missing, 1 ok
-		if (s_smokeAvailable < 0)
+		if (s_smokeAvailable != 0)
 			s_smokeAvailable = ParticleManager::Get()->precache("explosion_smoke", _asset_psys("explosion_smoke")) ? 1 : 0;
 		if (s_smokeAvailable == 1)
 			ParticleManager::Get()->spawn("explosion_smoke", SPK::IRR::irr2spk(pos));

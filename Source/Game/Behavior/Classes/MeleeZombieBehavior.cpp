@@ -1,69 +1,48 @@
 #include "MeleeZombieBehavior.h"
 
 #include "Engine/Navigation/NavigationManager.h"
-#include "Engine/Physics/PhysicsManager.h"
 #include "Engine/World/WorldManager.h"
 #include "Engine/World/Components/TransformComponent.h"
-#include "Game/Components/BehaviorComponent.h"
-#include "Game/Components/DamageReceiverComponent.h"
 #include "Engine/World/Components/MeshComponent.h"
 #include "Engine/World/Components/SoundComponent.h"
 #include "Engine/World/Components/DescriptorComponent.h"
+#include "Game/Components/DamageReceiverComponent.h"
 #include "Utility/Utility.h"
 
 #include <cmath>
+#include <cstdlib>
 
 using namespace irr::core;
 
-// ---------------------------------------------------------------------------
-
-void MeleeZombieBehavior::playAnim(const std::string& name, MeshComponent& mc)
+namespace
 {
-    if (!mc.node) return;
+    // How fast the zombie turns on the spot while searching, deg/sec. Slow
+    // enough to read as looking around rather than as a spin.
+    const float k_searchTurnRate = 70.0f;
 
-    if (const sAnimationData* a = mc.findAnimation(name))
-    {
-        mc.node->setLoopMode(a->loop);
-        mc.node->setFrameLoop(a->frames.X, a->frames.Y);
-        mc.node->setAnimationSpeed(static_cast<irr::f32>(mc.fps));
-        mc.lastPlayedAnimation = *a;
-    }
-}
+    // Drift direction holds for this long, plus up to k_shuffleFlipJitter more,
+    // before flipping. Randomised per zombie so a ring of them does not sway in
+    // unison, which looks far more mechanical than not moving at all.
+    const float k_shuffleFlipMs     = 600.0f;
+    const float k_shuffleFlipJitter = 800.0f;
 
-// ---------------------------------------------------------------------------
-
-vector3df MeleeZombieBehavior::calcSeparation(const vector3df& myPos, anax::Entity& self)
-{
-    vector3df sep(0.0f, 0.0f, 0.0f);
-    for (auto& other : WorldManager::Get()->world()->getEntities())
-    {
-        if (!other.isValid() || other == self)         continue;
-        if (!other.hasComponent<BehaviorComponent>())  continue;
-        if (!other.hasComponent<TransformComponent>()) continue;
-
-        // Corpses can overlap — only push away from living NPCs
-        if (other.hasComponent<DescriptorComponent>() &&
-            !other.getComponent<DescriptorComponent>().isAlive)
-            continue;
-
-        vector3df diff = myPos - other.getComponent<TransformComponent>().getPosition();
-        diff.Y = 0.0f;
-        const float d = diff.getLength();
-        if (d < m_separationRadius && d > 0.001f)
-        {
-            diff.normalize();
-            sep += diff * ((m_separationRadius - d) / m_separationRadius);
-        }
-    }
-    return sep;
+    // Playback rate for the legs during a flinch. Matches the floor followPath
+    // clamps the walk cycle to, so the stagger reads as the same slowdown
+    // rather than as a separate effect.
+    const float k_staggerAnimRate = 0.35f;
 }
 
 // ---------------------------------------------------------------------------
 
 void MeleeZombieBehavior::init(anax::Entity& entity)
 {
+    // Randomised so a room full of zombies does not all take their first wander
+    // step on the same frame. init() runs AFTER applyPropertiesToBehavior, so
+    // m_wanderDelay is already the .ent's value here and not the default.
+    m_wanderTimer = m_wanderDelay * (static_cast<float>(rand() % 101) * 0.01f);
+
     if (!entity.hasComponent<MeshComponent>()) return;
-    playAnim("idle", entity.getComponent<MeshComponent>());
+    playAnim(entity.getComponent<MeshComponent>(), "idle");
     m_state = State::IDLE;
 }
 
@@ -74,43 +53,80 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
     if (!entity.hasComponent<TransformComponent>()) return;
     auto& tc = entity.getComponent<TransformComponent>();
 
-    // Gravity — pin to floor every frame regardless of state
-    {
-        const vector3df p = tc.getPosition();
-        auto ray = PhysicsManager::Get()->raycast(
-            p + vector3df(0.0f, 1.0f, 0.0f),
-            vector3df(0.0f, -1.0f, 0.0f), 2.0f);
-        if (ray.hit)
-            tc.setPosition({ p.X, ray.data.getAnyHit(0).position.y, p.Z });
-    }
+    // Gravity -- pin to floor every frame regardless of state.
+    //
+    // dt is passed now, which rate-limits the CLIMB. Without it this hard write
+    // would undo followPath's own ground smoothing on the very next frame and
+    // the body would keep popping up stair treads.
+    snapToGround(tc, dt);
 
     if (m_isDead) return;
     if (!entity.hasComponent<MeshComponent>()) return;
 
     auto& mc = entity.getComponent<MeshComponent>();
 
-    auto& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
-    if (!player.isValid()) return;
+    // Flinch. Armed in persist() from the existing didReceiveDamage() read.
+    // Ticked here, before anything else, so every branch below sees it.
+    if (m_staggerTimer > 0.0f)
+    {
+        m_staggerTimer -= dt;
+        m_currentSpeed  = 0.0f;
+        if (mc.node)
+            mc.node->setAnimationSpeed(static_cast<irr::f32>(mc.fps) * k_staggerAnimRate);
+    }
+    const bool staggered = (m_staggerTimer > 0.0f);
+
+    // Nearest hostile, not hardcoded "player". A zombie is UNDEAD, so the
+    // hostility table sends it after the player, a cultist or a civilian alike.
+    //
+    // Acquisition is now LOS-gated in the base, so this only returns something
+    // the zombie has actually seen. Retention is not gated, so it keeps the
+    // target after losing sight of it -- what to DO about that is SEARCH below.
+    const entityid targetId = findTarget(entity, dt);
+    if (targetId == _entity_null_value)
+    {
+        // Nothing hostile left -- the player died, or everything in the level is
+        // pacified. Drop to idle rather than freezing mid-stride in the chase
+        // pose, which is what a bare early-return here would do.
+        if (m_state != State::IDLE)
+        {
+            m_state = State::IDLE;
+            resetMovement();
+            m_hasWanderGoal = false;
+            playAnim(mc, "idle");
+        }
+
+        if (!staggered) updateIdleWander(entity, tc, mc, dt);
+        return;
+    }
+
+    const anax::Entity& target = this->target();
 
     const vector3df myPos     = tc.getPosition();
-    const vector3df playerPos = player.getComponent<TransformComponent>().getPosition();
+    const vector3df targetPos = target.getComponent<TransformComponent>().getPosition();
 
-    vector3df delta = playerPos - myPos;
+    vector3df delta = targetPos - myPos;
     delta.Y = 0.0f;
     const float dist = delta.getLength();
 
     // ---- State transitions ----
     if (m_state == State::IDLE)
     {
-        if (dist <= m_detectionRange)
+        // hasFreshTarget() as well as the range test. Distance alone fired
+        // through solid walls: findTarget only ACQUIRES what it can see, but it
+        // RETAINS a target indefinitely, so a zombie that had once seen you and
+        // dropped back to IDLE would re-engage through a wall on range alone.
+        if (dist <= m_detectionRange && hasFreshTarget())
         {
             m_state = State::CHASE;
-            m_path.clear();
-            m_repathTimer = 99999.0f;
-            playAnim("move", mc);
+            resetMovement();
+            m_hasWanderGoal = false;
+            m_repathTimer   = 99999.0f;
+            playAnim(mc, "move");
         }
         else
         {
+            if (!staggered) updateIdleWander(entity, tc, mc, dt);
             return;
         }
     }
@@ -121,13 +137,49 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
         {
             m_state = State::ATTACK;
             m_attackTimer = m_attackDelay; // allow immediate first bite
-            m_path.clear();
+            resetMovement();
+        }
+        else if (!hasFreshTarget() && timeSinceSeen() > m_searchDelay && hasLastKnown())
+        {
+            // Lost sight of it long enough to stop being a flicker. Go and look
+            // where it was. Checked BEFORE the give-up distance so that walking
+            // out of range behind cover reads as being hunted, not as being
+            // forgotten.
+            m_state        = State::SEARCH;
+            m_searchTimer  = 0.0f;
+            m_searchWalked = false;
+            resetMovement();
+            m_repathTimer  = 99999.0f;
+            playAnim(mc, "move");
         }
         else if (dist > m_chaseRange * 2.0f)
         {
             m_state = State::IDLE;
-            m_path.clear();
-            playAnim("idle", mc);
+            resetMovement();
+            playAnim(mc, "idle");
+            return;
+        }
+    }
+
+    if (m_state == State::SEARCH)
+    {
+        // Seeing it again at any point in the search cancels it outright --
+        // including mid-turn, which is the moment that reads best.
+        if (hasFreshTarget())
+        {
+            m_state = State::CHASE;
+            resetMovement();
+            m_repathTimer = 99999.0f;
+            playAnim(mc, "move");
+        }
+        else if (m_searchWalked && m_searchTimer >= m_searchLookTime)
+        {
+            // m_searchWalked as well as the timer: m_searchTimer accumulates
+            // during the WALK leg too (as its timeout), so without this the
+            // search would give up before it ever arrived.
+            m_state = State::IDLE;
+            resetMovement();
+            playAnim(mc, "idle");
             return;
         }
     }
@@ -137,88 +189,114 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
         if (dist > m_attackRange * 1.25f)
         {
             m_state = State::CHASE;
-            m_path.clear();
+            resetMovement();
             m_repathTimer = 99999.0f;
-            playAnim("move", mc);
+            playAnim(mc, "move");
         }
     }
 
     // ---- CHASE: pathfind and move ----
     if (m_state == State::CHASE)
     {
-        m_repathTimer += dt;
+        if (staggered) return;
 
-        if (m_repathTimer >= 1500.0f || m_path.empty() || m_pathIndex >= static_cast<int>(m_path.size()))
-        {
-            if (NavigationManager::Get() && NavigationManager::Get()->isNavMeshBuilt())
-                m_path = NavigationManager::Get()->findPath(myPos, playerPos);
-            else
-                m_path = { playerPos };
+        // Where the squad wants this one -- the target itself if it holds an
+        // attack token, otherwise its slot on the ring. With Squad Mode set to
+        // 0 this hands back targetPos unchanged and the behaviour is exactly
+        // what it was before squads existed.
+        //
+        // The state machine deliberately keeps measuring 'dist' to the TARGET,
+        // not to the goal: a zombie circling at the ring must still give up at
+        // chase range and still transition to ATTACK when the target closes on
+        // IT, neither of which is a fact about the slot.
+        const SquadOrder order = requestSquadOrder(entity, targetId, targetPos);
 
-            m_pathIndex   = 0;
-            m_repathTimer = 0.0f;
-        }
-
-        // Advance past reached waypoints (XZ only so slope height doesn't stall advancement)
-        while (m_pathIndex < static_cast<int>(m_path.size()))
-        {
-            const vector3df toWp = m_path[m_pathIndex] - myPos;
-            if (std::sqrtf(toWp.X * toWp.X + toWp.Z * toWp.Z) <= 0.5f)
-                ++m_pathIndex;
-            else
-                break;
-        }
-
-        if (m_pathIndex < static_cast<int>(m_path.size()))
-        {
-            vector3df toWpXZ = m_path[m_pathIndex] - myPos;
-            toWpXZ.Y = 0.0f;
-            const float wpDistXZ = toWpXZ.getLength();
-
-            if (wpDistXZ > 0.01f)
-            {
-                const vector3df dir = toWpXZ / wpDistXZ;
-                const vector3df sep = calcSeparation(myPos, entity);
-                vector3df move = dir + sep;
-                const float moveLen = move.getLength();
-                if (moveLen > 0.001f) move /= moveLen;
-
-                vector3df newPos = myPos + move * m_moveSpeed * (dt * 0.001f);
-
-                auto gndRay = PhysicsManager::Get()->raycast(
-                    newPos + vector3df(0.0f, 1.0f, 0.0f),
-                    vector3df(0.0f, -1.0f, 0.0f), 2.0f);
-                newPos.Y = gndRay.hit ? gndRay.data.getAnyHit(0).position.y : myPos.Y;
-
-                tc.setPosition(newPos);
-
-                const vector3df flatMove(move.X, 0.0f, move.Z);
-                if (flatMove.getLength() > 0.001f)
-                    tc.setRotation(vector3df(0.0f, rad2deg(-atan2f(-flatMove.X, flatMove.Z)), 0.0f));
-            }
-        }
-
+        followPath(entity, order.goal, m_moveSpeed, dt);
         return;
     }
 
-    // ---- ATTACK: face player and bite ----
+    // ---- SEARCH: walk to the last known position, then look round ----
+    if (m_state == State::SEARCH)
+    {
+        if (staggered) return;
+
+        if (!m_searchWalked)
+        {
+            m_searchTimer += dt;
+
+            // followPath returns false on arrival AND on a route it cannot
+            // walk. Both mean the walk leg is over -- standing on an
+            // unreachable last-known position forever would be worse than
+            // having a look from wherever it got to.
+            //
+            // The timeout is there because followPath returning TRUE only means
+            // "it moved". An agent being nudged back and forth against a corner
+            // it cannot get past reports movement every frame and would never
+            // reach the look phase, or the give-up that follows it.
+            //
+            // NOTE it walks at full m_moveSpeed. A slower search gait would
+            // desynchronise the walk cycle, because followPath scales playback
+            // by m_currentSpeed / the speed it was PASSED -- a shamble would
+            // need its own clip, not a smaller number here.
+            if (m_searchTimer >= m_searchLookTime * 3.0f ||
+                !followPath(entity, lastKnownPos(), m_moveSpeed, dt))
+            {
+                m_searchWalked = true;
+                m_searchTimer  = 0.0f;
+                resetMovement();
+                playAnim(mc, "idle");
+            }
+            return;
+        }
+
+        // Turn on the spot. m_heading is the base's own travel heading, so
+        // writing it here (rather than the node rotation directly) keeps a
+        // following followPath from snapping back the moment the search ends.
+        m_searchTimer += dt;
+        m_heading     += k_searchTurnRate * (dt * 0.001f);
+        while (m_heading >  180.0f) m_heading -= 360.0f;
+        while (m_heading < -180.0f) m_heading += 360.0f;
+        tc.setRotation(vector3df(0.0f, m_heading + m_yawOffset, 0.0f));
+        return;
+    }
+
+    // ---- ATTACK: face target and bite ----
     if (m_state == State::ATTACK)
     {
         if (dist > 0.01f)
-        {
-            const vector3df dir = delta / dist;
-            tc.setRotation(vector3df(0.0f, rad2deg(-atan2f(-dir.X, dir.Z)), 0.0f));
-        }
+            faceTowards(tc, delta / dist);
 
-        const vector3df sep = calcSeparation(myPos, entity);
-        if (sep.getLength() > 0.001f)
+        if (!staggered)
         {
-            vector3df newPos = myPos + sep * m_moveSpeed * 0.5f * (dt * 0.001f);
-            auto gndRay = PhysicsManager::Get()->raycast(
-                newPos + vector3df(0.0f, 1.0f, 0.0f),
-                vector3df(0.0f, -1.0f, 0.0f), 2.0f);
-            newPos.Y = gndRay.hit ? gndRay.data.getAnyHit(0).position.y : myPos.Y;
-            tc.setPosition(newPos);
+            vector3df drift = calcSeparation(myPos, entity);
+
+            // Lateral shuffle between bites. Without it a ring of zombies
+            // waiting on the attack tokens is a ring of statues, which is more
+            // noticeable than the crowding it replaced.
+            if (dist > 0.01f && m_shuffleAmount > 0.0f)
+            {
+                m_shuffleTimer -= dt;
+                if (m_shuffleTimer <= 0.0f)
+                {
+                    m_shuffleDir   = (rand() % 2) ? 1.0f : -1.0f;
+                    m_shuffleTimer = k_shuffleFlipMs +
+                                     static_cast<float>(rand() % static_cast<int>(k_shuffleFlipJitter));
+                }
+
+                // Perpendicular to the bearing, in XZ. (fwd.Z, 0, -fwd.X) is the
+                // right-hand normal of the flat facing.
+                const vector3df fwd = delta / dist;
+                drift += vector3df(fwd.Z, 0.0f, -fwd.X) * (m_shuffleDir * m_shuffleAmount);
+            }
+
+            if (drift.getLength() > 0.001f)
+            {
+                // Wall-slid: the drift is written straight to the transform and
+                // nothing else stops it walking a zombie into geometry.
+                const vector3df step = slideAlongWall(myPos, drift);
+                tc.setPosition(myPos + step * m_moveSpeed * 0.5f * (dt * 0.001f));
+                snapToGround(tc, dt);
+            }
         }
 
         m_attackTimer += dt;
@@ -226,15 +304,70 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
         {
             m_attackTimer = 0.0f;
 
-            entityid playerId = WorldManager::Get()->managerSystem()->getIDByName("player");
-            if (playerId >= 0)
-                WorldManager::Get()->gameplaySystem()->damageEntity(playerId, static_cast<unsigned int>(m_attackDamage));
+            WorldManager::Get()->gameplaySystem()->damageEntity(
+                targetId, static_cast<unsigned int>(m_attackDamage));
 
-            playAnim("melee", mc);
+            playAnim(mc, "melee");
 
             if (entity.hasComponent<SoundComponent>())
                 entity.getComponent<SoundComponent>().play("attack");
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Idle wander
+//
+// Only ever called with no live target. A zombie that stands perfectly still
+// until something walks into its detection range reads as a spawner prop; one
+// that shuffles a few metres and stops reads as something that was already
+// there.
+// ---------------------------------------------------------------------------
+
+void MeleeZombieBehavior::updateIdleWander(anax::Entity& entity, TransformComponent& tc,
+                                           MeshComponent& mc, float dt)
+{
+    if (m_wanderRadius <= 0.0f)
+    {
+        playAnim(mc, "idle");
+        return;
+    }
+
+    if (!m_hasWanderGoal)
+    {
+        playAnim(mc, "idle");
+
+        m_wanderTimer -= dt;
+        if (m_wanderTimer > 0.0f) return;
+
+        vector3df goal;
+        if (NavigationManager::Get() &&
+            NavigationManager::Get()->randomPointNear(tc.getPosition(), m_wanderRadius, goal))
+        {
+            m_wanderGoal    = goal;
+            m_hasWanderGoal = true;
+            resetMovement();
+            m_repathTimer   = 99999.0f;
+            playAnim(mc, "move");
+        }
+        else
+        {
+            // No navmesh, or this zombie is standing off it. Re-arm the timer
+            // rather than retrying the query every frame for the rest of the
+            // level -- an unbaked scene is a supported configuration.
+            m_wanderTimer = m_wanderDelay;
+        }
+        return;
+    }
+
+    // Arrival or an unwalkable leg; both end it. Jittered so a group placed
+    // together does not step off in unison.
+    if (!followPath(entity, m_wanderGoal, m_moveSpeed, dt))
+    {
+        m_hasWanderGoal = false;
+        m_wanderTimer   = m_wanderDelay * (0.5f + static_cast<float>(rand() % 101) * 0.01f);
+        resetMovement();
+        playAnim(mc, "idle");
     }
 }
 
@@ -247,30 +380,24 @@ void MeleeZombieBehavior::persist(anax::Entity& entity, float dt)
     if (!entity.hasComponent<DamageReceiverComponent>()) return;
     auto& drc = entity.getComponent<DamageReceiverComponent>();
 
-    // Hit reaction sounds
-    if (drc.didReceiveDamage() && entity.hasComponent<SoundComponent>())
+    // Hit reaction. This stays HERE and not in the base: didReceiveDamage() is a
+    // CONSUMING read (DamageReceiverComponent.h clears the flag as it returns
+    // it), and a second caller would silently take the flag away from this one.
+    //
+    // The stagger is armed from this SAME call site for exactly that reason. A
+    // second `if (drc.didReceiveDamage())` for the flinch would race this one
+    // and the symptom would be "the hit sounds stopped working sometimes".
+    if (drc.didReceiveDamage())
     {
-        m_dmgToggle = !m_dmgToggle;
-        entity.getComponent<SoundComponent>().play(m_dmgToggle ? "damage_1" : "damage_2");
-    }
-
-    // Death
-    if (drc.health <= 0)
-    {
-        m_isDead = true;
-        m_state  = State::DEAD;
-        m_path.clear();
-
-        // A gibbed body is already hidden and queued for removal — playing a
-        // death animation and a death cry over the top would be a corpse
-        // performing for a frame after it stopped existing.
-        if (drc.gibbed)
-            return;
-
-        if (entity.hasComponent<MeshComponent>())
-            playAnim("die", entity.getComponent<MeshComponent>());
+        m_staggerTimer = m_staggerTime;
 
         if (entity.hasComponent<SoundComponent>())
-            entity.getComponent<SoundComponent>().play("die");
+        {
+            m_dmgToggle = !m_dmgToggle;
+            entity.getComponent<SoundComponent>().play(m_dmgToggle ? "damage_1" : "damage_2");
+        }
     }
+
+    if (handleDeath(entity, "die", "die"))
+        m_state = State::DEAD;
 }

@@ -281,13 +281,27 @@ void main()
         vec3  dp2 = dFdy(vViewPos);
         vec2 duv1 = dFdx(animUV);
         vec2 duv2 = dFdy(animUV);
-        float det = duv1.x * duv2.y - duv1.y * duv2.x;
-        if (abs(det) > 1e-6)
+
+        // Cotangent frame (Schueler) — no division by the UV determinant.
+        // The previous form divided by det and skipped the whole branch when
+        // abs(det) <= 1e-6.  det is a UV-space AREA, so it shrinks with the
+        // SQUARE of the texel-to-pixel ratio: walking towards a 1k-2k texture
+        // drops it under that threshold, the branch is skipped, and the
+        // surface silently reverts to its flat interpolated normal.  That is
+        // what read as normal-map detail DISAPPEARING as the camera closed in
+        // (reverse LOD).  This form is scale-invariant instead — invmax
+        // renormalises whatever magnitude the derivatives happen to have — so
+        // the frame is identical at one metre and at one hundred.
+        vec3 dp2perp = cross(dp2, N);
+        vec3 dp1perp = cross(N, dp1);
+        vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+        vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+        float maxSq = max(dot(T, T), dot(B, B));
+        if (maxSq > 0.0)
         {
-            float inv = 1.0 / det;
-            vec3 T = normalize((dp1 * duv2.y - dp2 * duv1.y) * inv);
-            vec3 B = normalize((dp2 * duv1.x - dp1 * duv2.x) * inv);
-            N = normalize(mat3(T, B, N) * (texture2D(tNormalMap, animUV).rgb * 2.0 - 1.0));
+            float invmax = inversesqrt(maxSq);
+            N = normalize(mat3(T * invmax, B * invmax, N)
+                          * (texture2D(tNormalMap, animUV).rgb * 2.0 - 1.0));
         }
     }
 

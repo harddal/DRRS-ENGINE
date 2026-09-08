@@ -1,4 +1,5 @@
 #include "Engine/Engine.h"
+#include "Game/AI/AICoordinator.h"
 
 #include <IMGUI/imgui.h>
 
@@ -134,10 +135,38 @@ void Engine::update()
 			effectiveScale = m_hitStopScale < m_timeScale ? m_hitStopScale : m_timeScale;
 		}
 
-		// Add (scaled) frame time to accumulator — fewer fixed steps per real
-		// second slows logic + PhysX + simulation time coherently; rendering
-		// below stays at full rate
-		m_accumulator += frameTime * effectiveScale;
+		// Skeletal animation rides Irrlicht's VIRTUAL timer, not our clock:
+		// CSceneManager::drawAll() calls OnAnimate(os::Timer::getTime()), and
+		// CAnimatedMeshSceneNode::OnAnimate advances the frame by the delta
+		// between successive values. Left alone that is the real wall clock,
+		// so every Irrlicht-driven animation kept playing at 100% speed while
+		// the world crawled. Scaling the virtual timer slows them coherently.
+		//
+		// ONLY on change. setSpeed() rebases via setTime(getTime()), and the
+		// virtual time it recomputes is truncated to whole u32 milliseconds —
+		// rebasing every frame would discard the sub-millisecond remainder 60
+		// times a second. At scale 0.1 a frame is worth 1.67ms of virtual
+		// time, so that truncation would lose ~40% of it on every frame and
+		// animation would run far slower than the world. Rebased once, the
+		// multiply happens against a large accumulated real delta and the
+		// error stays bounded at a single millisecond.
+		if (effectiveScale != m_appliedTimerSpeed)
+		{
+			m_renderManager.device()->getTimer()->setSpeed(effectiveScale);
+			m_appliedTimerSpeed = effectiveScale;
+		}
+
+		// Accumulate RAW real time — the scale is applied to the SIZE of each
+		// step below, not to how often we step.
+		//
+		// This used to be `frameTime * effectiveScale`, which slowed the world
+		// by running fewer 16.67ms steps per real second: at scale 0.25 logic
+		// advanced 15 times a second while draw() kept presenting 60, so the
+		// same world state was re-presented four times and then snapped. That
+		// read as an artificially lowered framerate, not as slow motion.
+		// Feeding real time keeps ~60 steps per real second at every scale, so
+		// every rendered frame gets a fresh state.
+		m_accumulator += frameTime;
 		
 		// Initialization queue for new states
 		if (m_stateManager.isNewState())
@@ -199,34 +228,59 @@ void Engine::update()
 		
 		// Fixed timestep loop for physics and game logic
 		const float fixedDeltaMs = static_cast<float>(m_fixedTimeStep * 1000.0);
+
+		// Never let one simulation step advance more than the 60Hz baseline.
+		// Below 1.0 the step just shrinks (that IS the slow motion). Above it,
+		// a single step would be up to 33ms, which halves solver accuracy and
+		// invites tunnelling — so we run extra substeps at <=16.67ms instead.
+		// The loop is a cheap integer ceil(effectiveScale); the 8 is a guard,
+		// setTimeScale clamps to 2.0 so it never bites.
+		int substeps = 1;
+		while (effectiveScale > static_cast<float>(substeps) && substeps < 8)
+			++substeps;
+
+		const float subDeltaMs = fixedDeltaMs * effectiveScale / static_cast<float>(substeps);
+
 		while (m_accumulator >= m_fixedTimeStep)
 		{
 			logicUpdated = true;
-			
-			// Set delta time to fixed timestep so all game logic (weapons, scripts, etc.)
-			// gets the correct fixed dt via getDeltaTime()
-			m_deltaTime = fixedDeltaMs;
-			
-			// Increment simulation time for this fixed step
-			m_simulationTime += fixedDeltaMs;
-			
-			// Update input at fixed timestep to match game logic sampling rate
+
+			// Input is sampled once per REAL tick and is NOT scaled — mouse
+			// look and key edges stay responsive at 60Hz however slow the
+			// world clock is running. (Polling it per substep would re-read
+			// the same OS state and double-consume press/release edges.)
 			// Block keyboard input when ImGui has a text widget focused or console is open
 			bool consoleBlocking = m_isGameMode && m_drawConsole;
 			m_inputManager.update(!ImGui::GetIO().WantTextInput && !consoleBlocking);
-			
-			// Update world and game logic at fixed timestep
-			m_worldManager.update(fixedDeltaMs);
-			m_stateManager.update(fixedDeltaMs);
-			
-			// Physics update at fixed timestep
-			if (m_isGameMode)
+
+			irr::f32 physicsMs = 0.0f;
+
+			for (int s = 0; s < substeps; ++s)
 			{
-				m_currentPhysicsTick = GetCounter();
-				m_physicsManager.update(fixedDeltaMs);
-				m_physicsTime = static_cast<irr::f32>(GetCounter() - m_currentPhysicsTick);
+				// Scaled step size: all game logic (weapons, scripts, etc.)
+				// gets it via getDeltaTime(). Uniform while the scale holds,
+				// so the fixed-step guarantee still stands.
+				m_deltaTime = subDeltaMs;
+
+				// Increment simulation time for this step
+				m_simulationTime += subDeltaMs;
+
+				// Update world and game logic
+				m_worldManager.update(subDeltaMs);
+				m_stateManager.update(subDeltaMs);
+
+				// Physics update
+				if (m_isGameMode)
+				{
+					m_currentPhysicsTick = GetCounter();
+					m_physicsManager.update(subDeltaMs);
+					physicsMs += static_cast<irr::f32>(GetCounter() - m_currentPhysicsTick);
+				}
 			}
-			
+
+			if (m_isGameMode)
+				m_physicsTime = physicsMs;
+
 			m_accumulator -= m_fixedTimeStep;
 		}
 		
@@ -236,7 +290,15 @@ void Engine::update()
 			m_renderManager.swapGameBuffers();
 		}
 		
-		// Calculate interpolation alpha for smooth rendering
+		// Calculate interpolation alpha for smooth rendering.
+		//
+		// STILL NOT CONSUMED by anything. Since the accumulator now holds real
+		// time, this is the fraction of a real 60Hz tick elapsed — the correct
+		// factor to lerp render transforms by, whatever the time scale.
+		// Wiring it up matters on high-refresh displays: at timescale 1.0 on a
+		// 144Hz monitor the sim still produces only 60 distinct states/second,
+		// so two frames in three re-present the previous one. Design notes,
+		// traps and a suggested order in "To Do Lists/render_interpolation_plan.md".
 		m_interpolationAlpha = static_cast<float>(m_accumulator / m_fixedTimeStep);
 		
 		// Restore variable frame time for UI updates and rendering
@@ -461,6 +523,11 @@ void Engine::clearScene()
 	// the same reason.
 	if (FractureManager::Get())
 		FractureManager::Get()->clearScene();
+
+	// Squads hold anax handles into the scene being torn down. They would prune
+	// themselves as members stopped asking, but there is no reason to carry a
+	// level's worth of them across a mode switch.
+	AICoordinator::Get()->clear();
 
 	WorldManager::Get()->killAllEntities();
 

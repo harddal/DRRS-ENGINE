@@ -127,7 +127,31 @@ public:
 
     void centerMouse();
 
-	irr::core::vector2df getMouseDelta();
+	irr::core::vector2df getMouseDelta(bool ignore_process_flag = false);
+
+	// --- Relative mouse look (WM_INPUT) --------------------------------------
+	// Motion is accumulated from raw input rather than measured by warping the
+	// cursor back to a fixed point every frame. See InputManager.cpp for why.
+	//
+	// hwnd / rawInputHandle are void* so this header stays free of <Windows.h>.
+	void registerRawMouseInput(void* hwnd);
+	void onRawMouseInput(void* rawInputHandle);   // WM_INPUT lParam
+	void onFocusChanged(bool focused);            // WM_ACTIVATEAPP
+
+	// Where the cursor is parked while looking, in DESKTOP coordinates. Only holds
+	// for the current look; it falls back to the window centre once released. The
+	// editor uses it to pin to its viewport panel rather than the window centre.
+	void setMouseLookAnchor(irr::core::vector2df desktopPos)
+	{
+		m_mouseLookAnchor = desktopPos;
+		m_hasCustomAnchor = true;
+	}
+
+	// Unpin the cursor immediately instead of waiting for the next update() to notice
+	// that nobody is asking for deltas any more. Call this before warping the cursor
+	// somewhere on the way out of a look — while the pin is up, setMousePosition is
+	// clamped into it and the warp is silently lost.
+	void releaseMouseLook();
 
 	float getMouseWheelDelta() const { return m_frameWheelDelta; }
 	void  accumulateWheelDelta(float delta) { m_wheelDelta += delta; }
@@ -165,5 +189,20 @@ private:
 	double m_xSensitivity, m_ySensitivity;
 
 	irr::core::vector2df m_fixedMousePosition;
+
+	// Raw-input mouse look state
+	irr::core::vector2df m_rawMouseAccum;      // pixels, already in the legacy sign convention
+	irr::core::vector2df m_mouseLookAnchor;
+
+	bool m_rawInputRegistered = false;
+	bool m_rawInputAttempted  = false;
+	bool m_hasAbsoluteBaseline = false;        // seen an absolute packet to difference against
+	long m_lastAbsX = 0, m_lastAbsY = 0;
+
+	bool m_mouseLookDemanded = false;          // getMouseDelta() served a delta this step
+	bool m_mouseLookEngaged  = false;          // cursor is currently parked and clipped
+	bool m_hasCustomAnchor   = false;
+
+	void engageMouseLook();
 
 };

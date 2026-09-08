@@ -36,7 +36,7 @@ private:
 	float m_pointDamage  = 70.0f;
 	float m_splashDamage = 60.0f;
 	float m_splashRadius = 4.0f;
-	float m_splashForce  = 0.8f;
+	float m_splashForce  = 1.6f; // x2 for real-time physics, see PHYSX_DEFAULT_GRAVITY
 
 	// Shared muzzle flash VFX (flash-only desc — trails/explosions stay bespoke)
 	WeaponEffects m_effects;

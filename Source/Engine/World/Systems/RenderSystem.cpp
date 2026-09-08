@@ -118,22 +118,20 @@ void RenderSystem::setMeshComponentData(Entity& entity)
     }
 
     // PBR texture maps — fixed slots, independent of the textures[] vector.
-    // Normal maps are loaded without mipmaps: the derivative-based TBN uses dFdx/dFdy
-    // to reconstruct the tangent frame, and at distance (low mip levels) those gradients
-    // become large and ill-conditioned, producing incorrect normals. No mipmaps = always
-    // full-resolution sampling = stable TBN at any distance.
+    // Normal maps used to be uploaded with ETCF_CREATE_MIP_MAPS off, on the
+    // theory that the derivative-based TBN went ill-conditioned at low mip
+    // levels. That was a misdiagnosis of the determinant guard in
+    // phong_perpixel.frag: the guarded quantity is a UV-space pixel AREA, so it
+    // collapses as the camera CLOSES IN, not at distance. The guard is gone, so
+    // normal maps are mipmapped like every other map — which is what keeps
+    // minified detail from aliasing into specular shimmer.
     {
         auto* drv = RenderManager::Get()->driver();
         auto loadPBR = [&](const std::string& path, int slot)
         {
             if (path.empty()) return;
-            bool noMip = (slot == SLOT_NORMAL);
-            if (noMip)
-                drv->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, false);
             if (auto* t = drv->getTexture(path.c_str()))
                 meshComponent.node->setMaterialTexture(slot, t);
-            if (noMip)
-                drv->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, true);
         };
         loadPBR(meshComponent.texNormal,    SLOT_NORMAL);
         loadPBR(meshComponent.texRoughness, SLOT_ROUGHNESS);

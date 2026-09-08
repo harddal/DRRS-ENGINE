@@ -22,6 +22,12 @@
 #define _entity_script_can_use_event     "bool canUse(int)"
 #define _entity_script_on_logic_event    "void onLogicEvent(int)"
 #define _entity_script_on_player_collide "void onPlayerCollide(int)"
+// DEAD HOOK. NPCSystem was the only dispatcher of this callback and it has been
+// deleted; the plumbing below still binds the function but nothing ever calls it.
+// A script declaring npcUpdate() will silently never run. Behaviour-driven NPCs
+// own their own update loops (see CharacterBehavior). Left in place rather than
+// ripped out so the binding does not have to be re-derived if a script-driven
+// NPC hook is ever wanted again.
 #define _entity_script_npc_update        "void npcUpdate(int)"
 
 enum class AS_DATA_TYPE

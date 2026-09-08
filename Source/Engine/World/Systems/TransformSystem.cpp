@@ -21,9 +21,9 @@ void TransformComponent::addChild(irr::scene::ISceneNode* child_node)
 		node->addChild(child_node);
 		children.push_back(child_node->getID());
 
-		child_ent.getComponent<TransformComponent>().parent = node->getID();
-
-		populateParentChildNamesForExport();
+		auto &child_tc = child_ent.getComponent<TransformComponent>();
+		child_tc.parent  = node->getID();
+		child_tc.isChild = true;
 
 		isParent = true;
 	}
@@ -52,49 +52,16 @@ void TransformComponent::removeChild(irr::scene::ISceneNode* child_node)
 			children.erase(children.begin() + iter);
 		}
 
-		WorldManager::Get()->managerSystem()->getEntityByID(child_node->getID()).getComponent<TransformComponent>().parent = _entity_null_value;
+		auto &child_tc = WorldManager::Get()->managerSystem()->getEntityByID(child_node->getID())
+		                     .getComponent<TransformComponent>();
+		child_tc.parent  = _entity_null_value;
+		child_tc.isChild = false;
 
 		node->removeChild(child_node);
 
 		if (children.empty())
 		{
 			isParent = false;
-		}
-	}
-}
-
-void TransformComponent::populateParentChildNamesForExport()
-{
-	auto &parent_entity = WorldManager::Get()->managerSystem()->getEntityByID(node->getID());
-
-	if (parent_entity.isValid())
-	{
-		auto &parent_desc = parent_entity.getComponent<DescriptorComponent>();
-
-		// BUG: Changing the players name causes anax to freak out when it can't reference the player by name
-		// Might have to make this a special case when loading parent/child lists
-		//parent_name = parent_desc.name = parent_desc.name + std::to_string(parent_desc.id);
-		// FIX
-		if (parent_desc.name == "player" || parent_desc.name == "freecamera")
-		{
-			parent_name = parent_desc.name;
-		}
-		else
-		{
-			parent_name = parent_desc.name = parent_desc.name + std::to_string(parent_desc.id);
-		}
-
-		for (auto id : children)
-		{
-			auto &child_entity = WorldManager::Get()->managerSystem()->getEntityByID(id);
-
-			if (child_entity.isValid())
-			{
-				auto &child_desc = child_entity.getComponent<DescriptorComponent>();
-
-				// DEBUG: Consider shortening the string for performance, destroys speed for string based entity name searches
-				child_desc.name = child_desc.name + std::to_string(child_desc.id) + parent_desc.name + std::to_string(parent_desc.id);
-			}
 		}
 	}
 }
@@ -116,18 +83,12 @@ void TransformSystem::onEntityAdded(anax::Entity& entity)
     transform.node->setRotation(Math::ConstrainAngleVector3(transform.rotation));
     transform.node->setScale(transform.scale);
 
-    if (transform.isChild) 
-    {
-		auto &parent_entity = WorldManager::Get()->managerSystem()->getEntityByID(transform.parent);
-
-		if (parent_entity.isValid())
-		{
-			if (parent_entity.hasComponent<TransformComponent>())
-			{
-				parent_entity.getComponent<TransformComponent>().addChild(transform.node);
-			}
-		}
-    }
+    // No re-parenting on load: isChild/parent are runtime-only now.  A parent
+    // link cannot be restored from a file here anyway - onEntityAdded runs while
+    // the archive is still being read, so a forward reference to a sibling later
+    // in the file does not exist yet.  Persisting a hierarchy needs a name-based
+    // link resolved in a post-load fixup pass once every entity exists; see
+    // "To Do Lists/prefab_system_plan.md", section 3 (P2).
 }
 
 

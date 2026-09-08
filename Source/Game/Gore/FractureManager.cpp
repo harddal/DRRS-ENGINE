@@ -21,13 +21,13 @@ FractureManager* FractureManager::s_Instance = nullptr;
 
 namespace
 {
-	constexpr size_t _shard_pool_size = 64;
+	constexpr size_t _shard_pool_size = 1024;
 	constexpr float  _shard_lifetime  = 20000.0f;  // ms before a settled shard is recycled
 
 	// Never generate fewer than a break's worth or more than the pool can hold
 	// in one go — a 200-cell crate would evict its own shards mid-flight.
 	constexpr int _min_cells = 2;
-	constexpr int _max_cells = 32;
+	constexpr int _max_cells = 128;
 
 	constexpr float _shard_surface_clear = 0.03f;
 

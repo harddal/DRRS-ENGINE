@@ -1,20 +1,24 @@
 #include "Engine/Interface/GameConsole.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <sstream>
 
 #include "Engine/Brush/BrushGeometry.h"
 #include "Engine/Engine.h"
+#include "Engine/Navigation/CrowdManager.h"
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/Script/ScriptManager.h"
 #include "Editor/ImGuiLogSink.h"
 
+#include "Game/AI/AICoordinator.h"
 #include "Game/Components.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Gore/FractureManager.h"
 #include "Game/Gore/FractureGeometry.h"
+#include "Game/Skill/SkillSystem.h"
 
 #include "angelscript.h"
 #include "angelscript/sdk/add_on/scripthelper/scripthelper.h"
@@ -271,6 +275,48 @@ void GameConsole::registerBuiltins()
 		Engine::Get()->requestHitStop(static_cast<float>(atof(args[0].c_str())));
 	});
 
+	// --- NPC AI ------------------------------------------------------------
+	// The bisect switch. Crowd steering off sends every NPC back through the
+	// original waypoint walker, so "is this the crowd or the behaviour" is one
+	// command away.
+	registerCommand("ai_crowd", "[0|1] dtCrowd steering for NPCs; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!CrowdManager::Get())
+		{
+			printLine(kColError, "no CrowdManager");
+			return;
+		}
+
+		if (!args.empty())
+			CrowdManager::Get()->setEnabled(atoi(args[0].c_str()) != 0);
+
+		print(std::string("ai_crowd: ") +
+		      (CrowdManager::Get()->isEnabled() ? "on" : "off") +
+		      "  (agents: " + std::to_string(CrowdManager::Get()->agentCount()) +
+		      ", ready: " + (CrowdManager::Get()->isReady() ? "yes" : "no") + ")");
+	});
+
+	registerCommand("ai_tokens", "<n> override every squad's attack-token cap; -1 restores per-NPC values",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			AICoordinator::Get()->setTokenOverride(atoi(args[0].c_str()));
+
+		const int n = AICoordinator::Get()->tokenOverride();
+		print("ai_tokens: " + (n < 0 ? std::string("per-NPC") : std::to_string(n)) +
+		      "  (squads: " + std::to_string(AICoordinator::Get()->squadCount()) + ")");
+	});
+
+	registerCommand("ai_debug", "[0-3] draw squad slots/tokens; 2 adds LOS rays; 3 adds crowd corridors + nvel",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			AICoordinator::Get()->setDebugLevel(atoi(args[0].c_str()));
+
+		print("ai_debug: " + std::to_string(AICoordinator::Get()->debugLevel()));
+	});
+
 	registerCommand("give", "<weapon|all> arm the player; 'ammo' fills every pool",
 		[this](const std::vector<std::string>& args, const std::string&)
 	{
@@ -322,6 +368,247 @@ void GameConsole::registerBuiltins()
 		                 static_cast<unsigned int>(weaponPickupAmmo(weapon)));
 
 		print("Given weapon " + std::to_string(slot) + ".");
+	});
+
+	// --- Skills -------------------------------------------------------------
+	//
+	// skill_stats and skill_unlocks are the ACCEPTANCE TEST for this system, not
+	// a convenience. A skill row that compiles and shows up in a menu is not
+	// evidence the modifier reaches the gun; the dump before and after a
+	// skill_unlock, followed by actually firing the weapon, is.
+
+	registerCommand("skill_list", "[tree] list skills, their ranks and their cost",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		SkillSystem* skills = SkillSystem::Get();
+
+		const std::string filter = args.empty() ? "" : args[0];
+
+		print("points: " + std::to_string(skills->unspentPoints()) + " unspent, " +
+		      std::to_string(skills->spentPoints()) + " spent");
+
+		SKILL_TREE lastTree = STREE_COUNT;
+
+		for (int i = 0; i < SkillSystem::defCount(); ++i)
+		{
+			const SkillDef& def = SkillSystem::defs()[i];
+
+			if (!filter.empty() && filter != skillTreeName(def.tree))
+				continue;
+
+			if (def.tree != lastTree)
+			{
+				lastTree = def.tree;
+				printLine(kColAccent, std::string("[") + skillTreeName(def.tree) +
+				          "]  " + std::to_string(skills->spentInTree(def.tree)) +
+				          " points spent");
+			}
+
+			const int have = skills->rank(def.id);
+
+			std::string line = "  " + std::string(def.id) +
+			                   "  t" + std::to_string(def.tier) +
+			                   "  " + std::to_string(have) + "/" + std::to_string(def.maxRank) +
+			                   "  " + std::to_string(def.costPerRank) + "pt";
+
+			std::string why;
+			if (have >= def.maxRank)
+				line += "  (max)";
+			else if (!skills->canBuy(def.id, &why))
+				line += "  (" + why + ")";
+
+			printLine(have > 0 ? kColCVar : kColOutput, line);
+		}
+	});
+
+	registerCommand("skill_give", "<n> award skill points",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (args.empty())
+		{
+			printLine(kColError, "usage: skill_give <n>");
+			return;
+		}
+
+		const int n = atoi(args[0].c_str());
+		SkillSystem::Get()->awardPoints(n);
+
+		print("Awarded " + std::to_string(n) + " point(s); " +
+		      std::to_string(SkillSystem::Get()->unspentPoints()) + " unspent.");
+	});
+
+	registerCommand("skill_unlock", "<id> [rank] buy a skill, or set its rank outright",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (args.empty())
+		{
+			printLine(kColError, "usage: skill_unlock <id> [rank]   (skill_list for ids)");
+			return;
+		}
+
+		SkillSystem* skills = SkillSystem::Get();
+
+		if (!skills->findDef(args[0].c_str()))
+		{
+			printLine(kColError, "no such skill: " + args[0]);
+			return;
+		}
+
+		// With an explicit rank this bypasses cost and prerequisites — it is the
+		// debug path, for putting the weapon into a state to test without
+		// grinding the points for it first.
+		if (args.size() >= 2)
+		{
+			const int want = atoi(args[1].c_str());
+			skills->setRank(args[0].c_str(), want);
+			print(args[0] + " set to rank " + std::to_string(skills->rank(args[0].c_str())) + ".");
+			return;
+		}
+
+		std::string why;
+		if (!skills->canBuy(args[0].c_str(), &why))
+		{
+			printLine(kColError, "cannot buy " + args[0] + ": " + why);
+			return;
+		}
+
+		skills->buy(args[0].c_str());
+		print(args[0] + " -> rank " + std::to_string(skills->rank(args[0].c_str())) + ".");
+	});
+
+	registerCommand("skill_reset", "clear every rank and every point",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		SkillSystem::Get()->resetAll(true);
+		print("Skills cleared.");
+	});
+
+	registerCommand("skill_stats", "[weapon] dump base -> effective for every stat",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!g_PlayerController || !g_PlayerController->weaponController())
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		auto* weapons = g_PlayerController->weaponController();
+
+		const PLAYER_WEAPON type = args.empty()
+			? weapons->currentWeaponType()
+			: static_cast<PLAYER_WEAPON>(atoi(args[0].c_str()));
+
+		if (type <= WEAP_NONE || type >= WEAP_COUNT)
+		{
+			printLine(kColError, "skill_stats: weapon must be 1.." + std::to_string(WEAP_COUNT - 1));
+			return;
+		}
+
+		PlayerWeapon* weapon = weapons->weapon(type);
+		if (!weapon)
+		{
+			printLine(kColError, "that weapon is not registered in this build");
+			return;
+		}
+
+		SkillSystem* skills = SkillSystem::Get();
+
+		printLine(kColAccent, std::string(weaponDisplayName(type)) + "  [tree: " +
+		          skillTreeName(weaponSkillTree(type)) + "]");
+
+		const unsigned int supported = weapon->supportedStats();
+
+		if (supported == 0)
+		{
+			print("  reads no stats through the skill system (not converted yet)");
+			return;
+		}
+
+		for (int i = 0; i < WSTAT_COUNT; ++i)
+		{
+			const WEAPON_STAT stat = static_cast<WEAPON_STAT>(i);
+
+			if ((supported & WSTAT_BIT(stat)) == 0)
+				continue;
+
+			const float mul = skills->statMul(type, stat);
+			const float add = skills->statAdd(type, stat);
+
+			// Shown as the transform rather than as a concrete number: the base
+			// lives in the weapon's own member and is not reachable from here.
+			// x1.00 +0 means no skill is touching it.
+			char buf[160];
+			snprintf(buf, sizeof(buf), "  %-18s  x%.3f  %+.2f%s",
+			         weaponStatName(stat), mul, add,
+			         (mul != 1.0f || add != 0.0f) ? "   <-- modified" : "");
+
+			printLine((mul != 1.0f || add != 0.0f) ? kColCVar : kColOutput, buf);
+		}
+	});
+
+	registerCommand("skill_unlocks", "[weapon] list a weapon's capability bits and their state",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!g_PlayerController || !g_PlayerController->weaponController())
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		auto* weapons = g_PlayerController->weaponController();
+
+		const PLAYER_WEAPON type = args.empty()
+			? weapons->currentWeaponType()
+			: static_cast<PLAYER_WEAPON>(atoi(args[0].c_str()));
+
+		PlayerWeapon* weapon = (type > WEAP_NONE && type < WEAP_COUNT)
+			? weapons->weapon(type) : nullptr;
+
+		if (!weapon)
+		{
+			printLine(kColError, "skill_unlocks: no such registered weapon");
+			return;
+		}
+
+		printLine(kColAccent, std::string(weaponDisplayName(type)) + " capabilities:");
+
+		bool any = false;
+
+		for (int bit = 0; bit < 32; ++bit)
+		{
+			const char* name = weapon->unlockName(bit);
+			if (!name)
+				continue;
+
+			any = true;
+
+			const bool on = SkillSystem::Get()->hasUnlock(type, bit);
+
+			printLine(on ? kColCVar : kColOutput,
+			          std::string("  bit ") + std::to_string(bit) + "  " +
+			          (on ? "[UNLOCKED] " : "[  locked ] ") + name);
+		}
+
+		if (!any)
+			print("  this weapon names no capability bits");
+	});
+
+	registerCommand("skill_validate", "flag skill rows that can never do anything",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		std::vector<std::string> problems;
+		const int count = SkillSystem::Get()->validate(problems);
+
+		if (count == 0)
+		{
+			print("All " + std::to_string(SkillSystem::defCount()) + " skill rows check out.");
+			return;
+		}
+
+		for (auto& problem : problems)
+			printLine(kColWarn, "  " + problem);
+
+		printLine(kColError, std::to_string(count) + " problem(s).");
 	});
 
 	registerCommand("ammo", "[type] [n] set a reserve pool; no args lists them",
@@ -734,6 +1021,46 @@ void GameConsole::registerBuiltins()
 			entity.getComponent<DescriptorComponent>().id,
 			static_cast<unsigned int>(atoi(args[1].c_str())));
 		print("healed '" + args[0] + "' for " + args[1]);
+	});
+
+	registerCommand("god", "[0|1|on|off] toggle player invulnerability; no arg flips it",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		anax::Entity& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
+		if (!player.isValid() || !player.hasComponent<DescriptorComponent>() ||
+			!player.hasComponent<DamageReceiverComponent>())
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		auto& dcomp = player.getComponent<DamageReceiverComponent>();
+
+		bool on = !dcomp.invulnerable;
+		if (!args.empty())
+			on = (args[0] != "0" && args[0] != "off" && args[0] != "false");
+
+		WorldManager::Get()->gameplaySystem()->setInvulnerable(
+			player.getComponent<DescriptorComponent>().id, on);
+
+		print(std::string("god mode ") + (on ? "on" : "off"));
+	});
+
+	registerCommand("noclip", "[0|1|on|off] free-fly through geometry; no arg flips it",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!g_PlayerController)
+		{
+			printLine(kColError, "no player");
+			return;
+		}
+
+		bool on = !g_PlayerController->isNoclip();
+		if (!args.empty())
+			on = (args[0] != "0" && args[0] != "off" && args[0] != "false");
+
+		g_PlayerController->setNoclip(on);
+		print(std::string("noclip ") + (on ? "on" : "off"));
 	});
 }
 

@@ -83,6 +83,24 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 static LRESULT CALLBACK CloseInterceptWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	// Raw mouse input, handled ahead of ImGui: it is ours alone, and WM_INPUT must
+	// still reach DefWindowProc afterwards so the system can retire the buffered
+	// packet. See InputManager::onRawMouseInput for why mouse look reads this rather
+	// than polling the cursor position.
+	if (msg == WM_INPUT)
+	{
+		if (InputManager* input = InputManager::Get())
+			input->onRawMouseInput(reinterpret_cast<void*>(lParam));
+	}
+	else if (msg == WM_ACTIVATEAPP)
+	{
+		// Releases the mouse-look cursor clip and re-baselines the absolute-position
+		// tracking, so alt-tabbing away frees the cursor and coming back does not
+		// snap the camera by however far the pointer moved meanwhile.
+		if (InputManager* input = InputManager::Get())
+			input->onFocusChanged(wParam != 0);
+	}
+
 	// ImGui gets first look. It returns nonzero when it has fully handled a message.
 	//
 	// WM_SETCURSOR is deliberately excluded from the early-out: ImGui claims it
@@ -1348,6 +1366,26 @@ void RenderManager::drawPrePassDebugOverlay()
     drawFullscreenQuad();
 }
 
+// Post-process filter kernels tap outside the frame at the screen border: FXAA
+// walks up to ~28 texels along an edge, sharpen and the bloom blurs reach one to
+// several. SMaterialLayer defaults TextureWrapU/V to ETC_REPEAT, so those taps
+// wrapped around and pulled in pixels from the OPPOSITE edge of the screen --
+// visible as a thin band of foreign colour bleeding along all four borders.
+// Clamp instead so an out-of-range tap repeats the edge texel.
+//
+// Bilinear filtering is left on deliberately: FXAA resolves its edge by sampling
+// at a fractional texel offset, and point sampling would silently reduce the
+// whole pass to a no-op.
+static void clampPostProcessSampling(irr::video::SMaterial& mat)
+{
+    for (irr::u32 i = 0; i < irr::video::MATERIAL_MAX_TEXTURES; ++i)
+    {
+        mat.TextureLayer[i].TextureWrapU = irr::video::ETC_CLAMP_TO_EDGE;
+        mat.TextureLayer[i].TextureWrapV = irr::video::ETC_CLAMP_TO_EDGE;
+        mat.TextureLayer[i].BilinearFilter = true;
+    }
+}
+
 void RenderManager::runPostProcessChain()
 {
     if (!m_sceneRTT)
@@ -1388,6 +1426,7 @@ void RenderManager::runPostProcessChain()
         mat.ZWriteEnable     = false;
         mat.Lighting         = false;
         mat.BackfaceCulling  = false;
+        clampPostProcessSampling(mat);
         m_driver->setMaterial(mat);
 
         drawFullscreenQuad();
@@ -1756,7 +1795,12 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 	RenderManager::Get()->tonemapCallback()->exposure = 10.0f;  // brighter scene
 	RenderManager::Get()->tonemapCallback()->whitePoint = 11.2f;
 	RenderManager::Get()->setSharpenEnabled(true);
-	RenderManager::Get()->sharpenCallback()->strength = 0.6f;  // more aggressive
+	// CAS sharpness, 0..1 (0 is the gentlest curve, not "off" — disable the pass
+	// for none). Not comparable to the old unsharp-mask strength: 0.6 there was a
+	// flat gain applied everywhere, which fought the FXAA pass immediately before
+	// it. CAS backs itself off on high-contrast neighbourhoods, so a mid value
+	// reads sharper than the old 0.6 while leaving antialiased edges intact.
+	RenderManager::Get()->sharpenCallback()->strength = 0.5f;
 	RenderManager::Get()->setAutoExposure(false);
 	RenderManager::Get()->setPixelateEnabled(false);
 	RenderManager::Get()->pixelateCallback()->pixelSize = 4.0f;
@@ -2480,6 +2524,7 @@ void RenderManager::draw(f32 dt)
             mat.ZWriteEnable    = false;
             mat.Lighting        = false;
             mat.BackfaceCulling = false;
+            clampPostProcessSampling(mat);
             m_driver->setMaterial(mat);
             drawFullscreenQuad();
             preSrc = dst;
@@ -2499,6 +2544,7 @@ void RenderManager::draw(f32 dt)
             mat.ZWriteEnable    = false;
             mat.Lighting        = false;
             mat.BackfaceCulling = false;
+            clampPostProcessSampling(mat);
             m_driver->setMaterial(mat);
             drawFullscreenQuad();
         }

@@ -35,7 +35,7 @@ private:
 	float m_pointDamage = 100.0f;
 	float m_splashDamage = 80.0f;     // Maximum splash damage at the epicentre
 	float m_splashRadius = 5.0f;      // Radius in world units for the splash damage falloff
-	float m_splashForce  = 1.0f;      // Peak impulse magnitude applied to dynamic PhysX objects at the epicentre
+	float m_splashForce  = 2.0f;      // Peak impulse magnitude applied to dynamic PhysX objects at the epicentre (x2 for real-time physics, see PHYSX_DEFAULT_GRAVITY)
 	float m_projectileSpeed = 35.0f;
 
 	// Shared muzzle flash VFX (flash-only desc — trails/explosions stay bespoke)

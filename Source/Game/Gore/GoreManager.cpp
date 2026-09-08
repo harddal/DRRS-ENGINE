@@ -7,6 +7,7 @@
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Renderer/DecalManager.h"
 #include "Engine/Renderer/Particle/ParticleManager.h"
+#include "Engine/Sound/SoundManager.h"
 #include "Engine/World/WorldManager.h"
 #include "Engine/World/Components/TransformComponent.h"
 #include "Engine/World/Components/MeshComponent.h"
@@ -21,9 +22,16 @@ namespace
 {
 	// Blood sprites already in the tree. They are RGBA dark-red blobs, which is
 	// exactly the format decal.frag wants — it mixes toward white where alpha is
-	// 0 — so the same five files serve as both particle sprites and decals.
-	constexpr int   _blood_texture_count = 5;
-	constexpr float _splatter_ray_length = 10.0f;
+	// 0 — so the same files serve as both particle sprites and decals.
+	constexpr int   _blood_texture_count = 7;
+	constexpr float _splatter_ray_length = 8.0f;
+
+	// One place both the random pick and the warm-up build the path, so a
+	// warmed set can never drift out of step with the set actually spawned.
+	std::string bloodTexturePath(int n)
+	{
+		return g_texture_path + "particle/blood" + std::to_string(n) + ".png";
+	}
 
 	// How far past the wound to start the through-ray. A body is roughly half a
 	// unit deep; starting inside it would just hit the target's own back faces.
@@ -34,7 +42,7 @@ namespace
 	// A pool is several overlapping decals scattered around the drop point
 	// rather than one disc — a single decal reads as a sticker, a cluster
 	// reads as something that spread.
-	constexpr int   _pool_decal_count  = 5;
+	constexpr int   _pool_decal_count  = 7;
 	constexpr float _pool_spread       = 0.55f;   // world units around the centre
 
 	// Radial fan: how far out from the body a ray starts. Must clear the
@@ -55,10 +63,10 @@ namespace
 	// by the splatter counts below.
 	constexpr float _spray_scale_master = 1.0f;
 
-	constexpr float _decal_lifetime = 90.0f;   // seconds; blood outlives bullet holes
+	constexpr float _decal_lifetime = 180.0f;   // seconds; blood outlives bullet holes
 
 	// --- Gib pool ----------------------------------------------------------
-	constexpr size_t _gib_pool_size = 48;
+	constexpr size_t _gib_pool_size = 256;
 	constexpr float  _gib_lifetime  = 25000.0f;  // ms before a settled gib is recycled
 
 	// Meat, not brass. WeaponEffects bounces casings at 0.45 and lets them ring;
@@ -76,18 +84,78 @@ namespace
 
 	const irr::video::SColor _gib_tint(255, 96, 12, 12);
 
-	const char* _gib_primitives[] = {
-		"content/mesh/primitive/cube.obj",
-		"content/mesh/primitive/sphere.obj",
-		"content/mesh/primitive/double_tetrahedron.obj"
+	// Low-poly meat chunks from Tools/generate_gib_meshes.py — convex hulls,
+	// flat-shaded, authored at unit extent so the scale range above still holds.
+	// Eight silhouettes because a gib burst throws ten at once and repeats in a
+	// single burst are what make a pool read as a pool.
+	const char* _gib_meshes[] = {
+		"content/mesh/gib/gib_chunk1.obj",
+		"content/mesh/gib/gib_chunk2.obj",
+		"content/mesh/gib/gib_chunk3.obj",
+		"content/mesh/gib/gib_lump.obj",
+		"content/mesh/gib/gib_sliver1.obj",
+		"content/mesh/gib/gib_sliver2.obj",
+		"content/mesh/gib/gib_slab.obj",
+		"content/mesh/gib/gib_shard.obj"
 	};
+
+	// The gore material. ORM is generated from the ao/roughness pair by the same
+	// script; see applyGibMaterial() for why it binds to two slots.
+	const char* _gib_tex_colour = "content/texture/gib/others_0001_color_1k.jpg";
+	const char* _gib_tex_normal = "content/texture/gib/others_0001_normal_opengl_1k.png";
+	const char* _gib_tex_orm    = "content/texture/gib/others_0001_orm_1k.png";
+
+	// --- Sound -------------------------------------------------------------
+	// Extensionless bases for playRandomized3D's contiguous scan: gib_1..gib_2
+	// is the body coming apart, impact_1..impact_3 is a chunk landing.
+	const char* _snd_gib    = "content/sound/effect/gore/gib_";
+	const char* _snd_impact = "content/sound/effect/gore/impact_";
+
+	// A burst throws up to eighteen chunks that all land within a second or so.
+	// Every one of them playing is a wall of noise and clips SoLoud's additive
+	// mixer, so impacts share one pool: at most three at a time, cut in volume,
+	// and only the first bounce of any given gib is heard.
+	constexpr int   _snd_impact_max_voices = 3;
+	constexpr float _snd_impact_volume     = 0.5f;
+	const char*     _snd_impact_pool       = "gore_impact";
+
+	// Below this the gib is settling rather than hitting, and a slap would read
+	// as a glitch. World units/second.
+	constexpr float _snd_impact_min_speed = 2.2f;
+
+	// Radius of full volume before inverse-distance rolloff begins.
+	//
+	// loadOrGetSource() defaults every source to 30, which at this world scale
+	// is most of a level — gore would play flat-out loud at any combat range,
+	// panned but with no distance cue at all. The placed ambients in content
+	// sit at 1.5; gunfire keeps the 30 default. Gore belongs in between: a body
+	// coming apart should carry across a room, a single chunk landing should
+	// not.
+	constexpr float _snd_gib_min_dist    = 10.0f;
+	constexpr float _snd_impact_min_dist = 4.0f;
 }
 
 // ---------------------------------------------------------------------------
 
-void GoreManager::precache()
+// Register the blood effects with ParticleManager, re-registering them whenever
+// they have gone away.
+//
+// This deliberately sits OUTSIDE the m_precached guard, and is retried from
+// update(). Engine::clearScene() calls ParticleManager::clear(), which erases
+// the entire effect table, and it runs on every editor<->game transition —
+// while precache() is only ever reached once, from GameplaySystem::init() in
+// the WorldManager constructor. A one-shot flag around these two calls meant
+// the blood effects survived exactly one game session: every session after the
+// first logged "spawn: unknown effect 'blood_spray'" and silently produced no
+// blood until the process was restarted.
+//
+// ParticleManager::precache() returns early on a name it already holds, so the
+// steady-state cost of calling this every frame is two hash lookups.
+void GoreManager::ensureEffects()
 {
-	if (m_precached)
+	// A load failure means the .psys is genuinely absent — latch off rather than
+	// re-reading a missing file (and re-logging it) once per frame forever.
+	if (m_effectsUnavailable)
 		return;
 
 	auto* pm = ParticleManager::Get();
@@ -96,11 +164,69 @@ void GoreManager::precache()
 
 	// A missing effect is survivable — spray() checks the spawn handle — so log
 	// and carry on rather than refusing to arm the whole system.
+	bool ok = true;
+
 	if (!pm->precache("blood_spray", _asset_psys("blood_spray")))
+	{
 		spdlog::warn("GoreManager: blood_spray.psys failed to load; wounds will be decal-only");
+		ok = false;
+	}
 
 	if (!pm->precache("blood_mist", _asset_psys("blood_mist")))
+	{
 		spdlog::warn("GoreManager: blood_mist.psys failed to load; gib bursts lose their cloud");
+		ok = false;
+	}
+
+	m_effectsUnavailable = !ok;
+}
+
+void GoreManager::precache()
+{
+	// Ahead of the guard below: these have their own flags, so a precache() on a
+	// later scene load still gets a chance to warm textures that could not be
+	// fetched the first time round, and to re-register the particle effects that
+	// the last clearScene() destroyed.
+	warmBloodTextures();
+	ensureEffects();
+
+	if (m_precached)
+		return;
+
+	// Warm the gore samples and set their 3D falloff. playRandomized3D would
+	// load them lazily, but the first gib burst is exactly the frame that can
+	// least afford a decode — and it is the frame that plays all five at once.
+	//
+	// The min-distance pass has to happen here rather than at the call site:
+	// it is a property of the SOURCE, not the voice, and playRandomized3D
+	// exposes no way to reach the source it picked. Doing it once on the
+	// preloaded pointers covers every later variant roll, since the variant
+	// scan resolves through the same m_sources cache.
+	if (auto* sm = SoundManager::Get())
+	{
+		if (auto* snd = sm->sound())
+		{
+			for (int i = 1; i <= 2; ++i)
+			{
+				const std::string file = std::string(_snd_gib) + std::to_string(i) + ".wav";
+
+				if (SoundSource* src = snd->getSoundSource(file.c_str(), true))
+					src->setDefaultMinDistance(_snd_gib_min_dist);
+				else
+					spdlog::warn("GoreManager: missing gore sample '{}'", file);
+			}
+
+			for (int i = 1; i <= 3; ++i)
+			{
+				const std::string file = std::string(_snd_impact) + std::to_string(i) + ".wav";
+
+				if (SoundSource* src = snd->getSoundSource(file.c_str(), true))
+					src->setDefaultMinDistance(_snd_impact_min_dist);
+				else
+					spdlog::warn("GoreManager: missing gore sample '{}'", file);
+			}
+		}
+	}
 
 	m_precached = true;
 }
@@ -117,45 +243,35 @@ bool GoreManager::ensurePool()
 	auto* smgr = rm->sceneManager();
 	auto* manip = smgr->getMeshManipulator();
 
-	// --- Meat texture -------------------------------------------------------
-	// Generated rather than authored so the stand-in gibs need no art at all.
-	// A little per-texel variation keeps them from reading as flat plastic.
-	if (!m_gibTexture && rm->driver())
+	// --- Meat material ------------------------------------------------------
+	// A missing map is survivable — applyGibMaterial() binds only what loaded,
+	// and the shader's uHas* gates fall back to the scalar uniforms — so a
+	// warning is enough. Losing the colour map is what actually hurts, since
+	// phong_perpixel takes albedo from tDiffuse alone and never reads vertex
+	// colour; without it a gib renders in the flat material colour.
+	if (rm->driver())
 	{
-		const irr::core::dimension2du size(16, 16);
+		if (!m_gibTexture)
+			m_gibTexture = rm->driver()->getTexture(_gib_tex_colour);
 
-		m_gibTexture = rm->driver()->addTexture(size, "gore_meat", irr::video::ECF_A8R8G8B8);
+		if (!m_gibNormal)
+			m_gibNormal = rm->driver()->getTexture(_gib_tex_normal);
 
-		if (m_gibTexture)
-		{
-			auto* px = static_cast<irr::u32*>(m_gibTexture->lock());
+		if (!m_gibORM)
+			m_gibORM = rm->driver()->getTexture(_gib_tex_orm);
 
-			if (px)
-			{
-				auto* rng = Engine::Get()->rng();
-
-				for (irr::u32 i = 0; i < size.Width * size.Height; ++i)
-				{
-					const irr::u32 r = static_cast<irr::u32>(rng->getInt(70, 120));
-					const irr::u32 g = static_cast<irr::u32>(rng->getInt(8,  22));
-					const irr::u32 b = static_cast<irr::u32>(rng->getInt(8,  22));
-
-					px[i] = (0xFFu << 24) | (r << 16) | (g << 8) | b;
-				}
-
-				m_gibTexture->unlock();
-			}
-		}
+		if (!m_gibTexture)
+			spdlog::warn("GoreManager: gib colour map '{}' missing", _gib_tex_colour);
 	}
 
-	// Private copies of the stand-in primitives. Vertex colours are set too, so
-	// the gibs still read as meat if anything ever falls back to fixed-function.
-	for (const char* path : _gib_primitives)
+	// Private copies of the chunk meshes. Vertex colours are set too, so the
+	// gibs still read as meat if anything ever falls back to fixed-function.
+	for (const char* path : _gib_meshes)
 	{
 		auto* src = smgr->getMesh(path);
 		if (!src)
 		{
-			spdlog::warn("GoreManager: gib primitive '{}' missing", path);
+			spdlog::warn("GoreManager: gib mesh '{}' missing", path);
 			continue;
 		}
 
@@ -203,7 +319,22 @@ void GoreManager::applyGibMaterial(irr::scene::IMeshSceneNode* node) const
 		node->setMaterialType(perpixel);
 
 	if (m_gibTexture)
-		node->setMaterialTexture(0, m_gibTexture);
+		node->setMaterialTexture(SLOT_DIFFUSE, m_gibTexture);
+
+	if (m_gibNormal)
+		node->setMaterialTexture(SLOT_NORMAL, m_gibNormal);
+
+	// ORM goes into BOTH slots on purpose. RenderManager decides whether the R
+	// channel is real ambient occlusion by testing whether the roughness and
+	// metallic slots hold the SAME texture pointer — a standalone greyscale
+	// roughness map has R == G, so reading AO from one unconditionally would
+	// darken every rough surface in the game. Binding one texture twice is the
+	// signal, and it is what GltfImport does for every imported material.
+	if (m_gibORM)
+	{
+		node->setMaterialTexture(SLOT_ROUGHNESS, m_gibORM);
+		node->setMaterialTexture(SLOT_METALLIC,  m_gibORM);
+	}
 
 	node->setMaterialFlag(irr::video::EMF_LIGHTING, true);
 	node->setMaterialFlag(irr::video::EMF_BACK_FACE_CULLING, true);
@@ -222,6 +353,10 @@ void GoreManager::applyGibMaterial(irr::scene::IMeshSceneNode* node) const
 	//
 	// RenderSystem does this for every entity mesh; raw pooled nodes never pass
 	// through it, so it has to be done by hand here.
+	//
+	// These are the FALLBACK values now: with the ORM map bound the shader takes
+	// roughness and metallic per-texel and ignores both fields. They still have
+	// to be right, because a missing texture file drops straight back to them.
 	for (irr::u32 i = 0; i < node->getMaterialCount(); ++i)
 	{
 		auto& mat = node->getMaterial(i);
@@ -376,6 +511,21 @@ void GoreManager::updateGibs(float dt)
 
 				newPos = hit.point + n * _gib_surface_clear;
 
+				// Slap on the FIRST bounce only, and only if it arrived with
+				// some speed behind it. Later bounces are the chunk settling;
+				// eighteen of those overlapping is mush, not impact.
+				if (gib.bounceCount == 0 && speed >= _snd_impact_min_speed)
+				{
+					if (auto* sm = SoundManager::Get())
+					{
+						if (auto* snd = sm->sound())
+						{
+							snd->playRandomized3D(_snd_impact, hit.point, 0.12f,
+								_snd_impact_max_voices, _snd_impact_volume, _snd_impact_pool);
+						}
+					}
+				}
+
 				// Leave blood where it struck, throttled per gib.
 				if (now - gib.lastTrailDecal >= _gib_decal_interval && rm->decals())
 				{
@@ -403,6 +553,22 @@ void GoreManager::updateGibs(float dt)
 
 void GoreManager::update(float dt)
 {
+	// Build everything on the first frame the renderer is up rather than on the
+	// first gib. ensurePool() alone loads eight meshes and three maps and builds
+	// 128 scene nodes; paying that mid-fight is a visible hitch, and the first
+	// gib is the worst possible frame to pay it in.
+	//
+	// All three calls are self-guarding, so this costs a couple of bool tests and
+	// two hash lookups per frame afterwards. The texture warm and the pool build
+	// are not per-scene in practice either: the pool nodes are raw nodes owned by
+	// no entity, so Engine::clearScene() retires them (GoreManager::clearScene())
+	// instead of destroying them, and m_poolReady only resets in clear() at
+	// shutdown. ensureEffects() IS per-scene — clearScene() destroys the particle
+	// effects outright — which is exactly why it is retried here.
+	warmBloodTextures();
+	ensureEffects();
+	ensurePool();
+
 	updateGibs(dt);
 }
 
@@ -439,12 +605,13 @@ void GoreManager::clear()
 	}
 	m_gibMeshes.clear();
 
-	// The driver owns textures added through addTexture; removing it here keeps
-	// a scene reload from accumulating one 'gore_meat' per load.
-	if (m_gibTexture && RenderManager::Get() && RenderManager::Get()->driver())
-		RenderManager::Get()->driver()->removeTexture(m_gibTexture);
-
+	// The maps are file textures out of the driver's cache, not something this
+	// manager created, so they are shared and must NOT be removed here — the
+	// driver frees the cache at shutdown. Dropping the pointers is the whole job;
+	// ensurePool() re-fetches them and the cache hands back the same objects.
 	m_gibTexture = nullptr;
+	m_gibNormal  = nullptr;
+	m_gibORM     = nullptr;
 	m_poolReady  = false;
 }
 
@@ -481,9 +648,34 @@ irr::core::vector3df GoreManager::bodyCentre(const anax::Entity& entity)
 
 std::string GoreManager::randomBloodTexture() const
 {
-	const int n = Engine::Get()->rng()->getInt(1, _blood_texture_count);
+	return bloodTexturePath(Engine::Get()->rng()->getInt(1, _blood_texture_count));
+}
 
-	return g_texture_path + "particle/blood" + std::to_string(n) + ".png";
+void GoreManager::warmBloodTextures()
+{
+	if (m_bloodWarmed)
+		return;
+
+	auto* rm = RenderManager::Get();
+
+	// Not an error — the renderer may simply not be up yet. update() calls back
+	// every frame until it is, which is still long before any gore can happen.
+	if (!rm || !rm->driver())
+		return;
+
+	// DecalManager::spawn() resolves its texture from the PATH on every call and
+	// the driver caches by name, so one getTexture() per file is the whole job:
+	// every later spawn hits that cache. Without it the first gib burst pays for
+	// up to seven PNG decodes in the one frame it can least afford them.
+	for (int n = 1; n <= _blood_texture_count; ++n)
+	{
+		const std::string path = bloodTexturePath(n);
+
+		if (!rm->driver()->getTexture(path.c_str()))
+			spdlog::warn("GoreManager: blood decal texture '{}' missing", path);
+	}
+
+	m_bloodWarmed = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +898,14 @@ GORE_TIER GoreManager::kill(const anax::Entity& entity, const DamageContext& ctx
 
 		const irr::core::vector3df centre = bodyCentre(entity);
 
+		// The wet pop. burst() plays its own, and this path does not route
+		// through burst(), so there is no double-up.
+		if (auto* sm = SoundManager::Get())
+		{
+			if (auto* snd = sm->sound())
+				snd->playRandomized3D(_snd_gib, centre, 0.08f);
+		}
+
 		spray("blood_mist", centre, irr::core::vector3df(0.0f, 1.0f, 0.0f),
 			irr::core::clamp(1.0f + overkill, 1.0f, 3.0f));
 
@@ -786,6 +986,12 @@ void GoreManager::burst(const irr::core::vector3df& pos,
 	if (d.getLengthSQ() < 0.0001f)
 		d.set(0.0f, 1.0f, 0.0f);
 	d.normalize();
+
+	if (auto* sm = SoundManager::Get())
+	{
+		if (auto* snd = sm->sound())
+			snd->playRandomized3D(_snd_gib, pos, 0.08f);
+	}
 
 	spray("blood_spray", pos, -d, irr::core::clamp(power * 1.5f, 1.0f, 4.0f));
 	spray("blood_mist", pos, irr::core::vector3df(0.0f, 1.0f, 0.0f), irr::core::clamp(power, 1.0f, 3.0f));

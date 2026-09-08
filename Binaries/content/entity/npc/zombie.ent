@@ -58,6 +58,13 @@
                 <navCookable>false</navCookable>
             </value0>
         </mesh>
+        <npcinfo>
+            <value0>
+                <displayName>Zombie</displayName>
+                <faction>2</faction>
+                <pacified>false</pacified>
+            </value0>
+        </npcinfo>
         <behavior>
             <value0>
                 <behaviorType>MeleeZombie</behaviorType>

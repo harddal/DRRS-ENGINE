@@ -62,6 +62,26 @@ struct ItemStackRecord
 	}
 };
 
+// One bought skill. Keyed by the definition's STRING id, like ItemStackRecord
+// and for the same reason: the skill table's row order must be free to change
+// without silently reassigning every rank in every existing save.
+//
+// Only the RANK is stored. Every stat modifier and unlock bit is derived from
+// it on load, so the resolved caches can never drift out of step with the table
+// — and a skill removed from the table simply drops out with a warning rather
+// than corrupting the rest.
+struct SkillRankRecord
+{
+	std::string id;
+	int         rank = 0;
+
+	template <class Archive>
+	void serialize(Archive& ar)
+	{
+		ar(CEREAL_NVP(id), CEREAL_NVP(rank));
+	}
+};
+
 struct PlayerSaveState
 {
 	// Bumped whenever the meaning of a field changes or AMMO_TYPE gains a
@@ -71,7 +91,10 @@ struct PlayerSaveState
 	// v2: + carried items. A v1 sidecar loads with an empty pouch rather than
 	//     being refused — the version check exists to reject sidecars from a
 	//     NEWER build, not to reject older ones.
-	static const int CURRENT_VERSION = 2;
+	// v3: + skill points and bought ranks. A v1/v2 sidecar loads with an empty
+	//     tree and no points, which is the correct reading of a save taken
+	//     before the system existed.
+	static const int CURRENT_VERSION = 3;
 
 	int version = CURRENT_VERSION;
 
@@ -101,6 +124,12 @@ struct PlayerSaveState
 	// drag the renderer and the script system into the engine's world header.
 	std::vector<ItemStackRecord> items;
 
+	// Unspent points, and one record per skill with a rank above zero. Skills
+	// live in the run's sidecar rather than in a separate profile file: they
+	// rewind with a reload exactly as ammunition and weapons do.
+	int                          skillPoints = 0;
+	std::vector<SkillRankRecord> skills;
+
 	// SPLIT, not a single serialize(), so an older sidecar still loads: cereal's
 	// XML archive throws on a named node that is not there, so a v1 file — which
 	// has no <items> — would be rejected outright by a symmetric serialize().
@@ -115,7 +144,9 @@ struct PlayerSaveState
 		   CEREAL_NVP(owned),
 		   CEREAL_NVP(currentWeapon),
 		   CEREAL_NVP(mags),
-		   CEREAL_NVP(items));
+		   CEREAL_NVP(items),
+		   CEREAL_NVP(skillPoints),
+		   CEREAL_NVP(skills));
 	}
 
 	template <class Archive>
@@ -130,5 +161,8 @@ struct PlayerSaveState
 
 		if (version >= 2)
 			ar(CEREAL_NVP(items));
+
+		if (version >= 3)
+			ar(CEREAL_NVP(skillPoints), CEREAL_NVP(skills));
 	}
 };

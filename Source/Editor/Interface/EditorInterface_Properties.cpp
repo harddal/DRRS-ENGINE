@@ -602,12 +602,6 @@ void EditorInterface::draw_window_prop_ent(bool display_override)
 				}
 
 				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-				if (entity.hasComponent<PrefabComponent>() && ImGui::CollapsingHeader("Prefab"))
-				{
-					draw_component_properties(ENTITY_COMPONENT::PREFAB, entity);
-				}
-
-				ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 				if (entity.hasComponent<NPCComponent>() && ImGui::CollapsingHeader("NPC"))
 				{
 					draw_component_properties(ENTITY_COMPONENT::NPC, entity);

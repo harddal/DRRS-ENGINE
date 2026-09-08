@@ -403,8 +403,12 @@ void PhysicsSystem::update(float dt)
 				{
 					if (physics.actor && !physics.kinematic)
 					{
-						physics.actor->setLinearDamping(.5);
-						physics.actor->addForce(PxVec3(0.0, 20, 0.0));
+						// Both scaled for the move to real-time physics (see
+						// PHYSX_DEFAULT_GRAVITY). Damping is a per-simulated-second
+						// decay rate, so it doubles (was .5); buoyancy is balanced
+						// against actor weight, so it tracks gravity x4 (was 20).
+						physics.actor->setLinearDamping(1.0);
+						physics.actor->addForce(PxVec3(0.0, 80, 0.0));
 					}
 				}
 			}

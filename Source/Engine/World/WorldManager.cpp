@@ -3,6 +3,7 @@
 #include "Engine/Brush/BrushManager.h"
 #include "Engine/Script/Bindings.h"
 #include "Engine/Navigation/NavigationManager.h"
+#include "Engine/Navigation/CrowdManager.h"
 #include "Engine/Physics/PhysicsManager.h"
 #include "Engine/Renderer/Lightmapper/LightmapBaker.h"
 #include "Engine/Renderer/RenderManager.h"
@@ -25,11 +26,13 @@
 
 #include "Editor/SceneInteractionManager.h"
 
+#include "Game/AI/AICoordinator.h"
 #include "Game/Behavior/BehaviorFactory.h"
 #include "Game/Behavior/Classes/PickupBehavior.h"
 #include "Game/Player/PlayerController.h"
 #include "Game/Behavior/Classes/TurretBehavior.h"
 #include "Game/Behavior/Classes/MeleeZombieBehavior.h"
+#include "Game/Behavior/Classes/SuicideBomberBehavior.h"
 
 using namespace anax;
 using namespace cereal;
@@ -56,7 +59,6 @@ WorldManager::WorldManager()
     m_gameWorld.addSystem(m_soundSystem);
 	m_gameWorld.addSystem(m_navigationSystem);
 	m_gameWorld.addSystem(m_gameplaySystem);
-	m_gameWorld.addSystem(m_npcSystem);
 	m_gameWorld.addSystem(m_particleSystem);
 	m_gameWorld.addSystem(m_behaviorSystem);
 
@@ -71,6 +73,8 @@ WorldManager::WorldManager()
         [] { return std::make_unique<TurretBehavior>(); });
     BehaviorFactory::Get().registerBehavior("MeleeZombie",
         [] { return std::make_unique<MeleeZombieBehavior>(); });
+    BehaviorFactory::Get().registerBehavior("SuicideBomber",
+        [] { return std::make_unique<SuicideBomberBehavior>(); });
 
     m_physicsSystem.init();
     m_cctSystem.init(PhysicsManager::Get()->scene());
@@ -103,6 +107,7 @@ void WorldManager::update(irr::f32 dt)
 
 	// Runs outside the game-mode gate so the F8 link view works in the editor
 	m_gameplaySystem.drawEntityLinkDebug();
+	AICoordinator::Get()->drawDebug();
 
 	if (Engine::Get()->isGameMode())
 	{
@@ -111,7 +116,15 @@ void WorldManager::update(irr::f32 dt)
 		m_navigationSystem.update(dt);
 		m_physicsSystem.update(dt);
 		m_cctSystem.update(dt);
-		m_npcSystem.update(dt);
+
+		// Both run BEFORE the behaviours, and in this order. CrowdManager syncs
+		// every agent from its transform and ticks dtCrowd once for the whole
+		// world; AICoordinator then arbitrates slots and tokens. A behaviour's
+		// steer() and requestSquadOrder() calls below therefore read state
+		// computed this frame rather than last.
+		if (CrowdManager::Get())   CrowdManager::Get()->update(dt);
+		AICoordinator::Get()->update(dt);
+
 		m_behaviorSystem.update(dt);
 		m_behaviorSystem.persist(dt);
 		m_particleSystem.update(dt);
@@ -145,6 +158,7 @@ void WorldManager::update(irr::f32 dt)
 
 	// Runs outside the game-mode gate so the F8 link view works in the editor
 	m_gameplaySystem.drawEntityLinkDebug();
+	AICoordinator::Get()->drawDebug();
 
     if (Engine::Get()->isGameMode())
     {
@@ -161,11 +175,15 @@ void WorldManager::update(irr::f32 dt)
 
         m_cctSystem.update(dt);
 
+		// See the NDEBUG branch: crowd first, coordinator second, behaviours
+		// third. The old NPCSystem timer bracket is reused to measure them.
 		m_npcCurrent = Engine::Get()->GetCounter();
-		m_npcSystem.update(dt);
+		if (CrowdManager::Get())   CrowdManager::Get()->update(dt);
+		AICoordinator::Get()->update(dt);
 		m_npcTime = Engine::Get()->GetCounter() - m_npcCurrent;
 
 		m_behaviorSystem.update(dt);
+		m_behaviorSystem.persist(dt);
 
 		m_particleCurrent = Engine::Get()->GetCounter();
 		m_particleSystem.update(dt);

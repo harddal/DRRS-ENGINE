@@ -2,6 +2,8 @@
 
 #include "spdlog/spdlog.h"
 
+#include "Game/Skill/SkillSystem.h"
+
 #include "Engine/Engine.h"
 
 #include <IMGUI/imgui.h>
@@ -73,6 +75,15 @@ void WeaponController::init()
 	m_owned.assign(m_player_weapon.size(), false);
 	if (!m_owned.empty())
 		m_owned[WEAP_NONE] = true;
+
+	// First resolve, now that the weapons exist to be asked.
+	//
+	// SkillSystem's constructor deliberately does NOT do this — it runs during
+	// static initialisation, before any of the above. resolve() seeds each
+	// weapon's starting capability bits from its defaultUnlocks(), so it has to
+	// happen here, after registration, or every weapon would start with a zeroed
+	// capability mask regardless of what it ships with.
+	SkillSystem::Get()->resolve();
 }
 
 bool WeaponController::hasWeapon(PLAYER_WEAPON type) const
@@ -286,6 +297,11 @@ void WeaponController::update()
 		current_weapon->reload();
 	}
 
+}
+
+// Once per rendered frame; see the note in the header.
+void WeaponController::updateUI()
+{
 	drawViewmodelDebugUI();
 }
 
@@ -382,6 +398,17 @@ int WeaponController::currentReserveAmmo() const
 		return -1;
 
 	return static_cast<int>(reserveAmmo(type));
+}
+
+PlayerWeapon* WeaponController::weapon(PLAYER_WEAPON type) const
+{
+	for (const auto& entry : m_player_weapon)
+	{
+		if (entry && entry->weaponType() == type)
+			return entry.get();
+	}
+
+	return nullptr;
 }
 
 void WeaponController::loadWeaponMagState(PLAYER_WEAPON type, const WeaponMagState& state)
@@ -750,12 +777,24 @@ void WeaponController::unequipWeapon()
 	m_current_weapon = WEAP_NONE;
 }
 
+// A PLAIN SETTER, deliberately.
+//
+// This used to also write ImGui's MouseDrawCursor, InputManager's
+// canProcessInput() and g_PlayerInventoryIsDisplaying. That made it a second
+// writer of three flags InventoryController::update() already writes every fixed
+// step from its own panel state — and because those flags are level-triggered
+// rather than requests, the inventory simply overwrote this window's lock on the
+// very next tick. F2 opened a window you could not click into: the cursor
+// vanished again and mouse-look came straight back.
+//
+// The fix is not to fight over them. There is now exactly one writer, in
+// InventoryController::update(), which asks isViewmodelDebugOpen() and folds it
+// into the same anyPanelOpen calculation as the pouch and the skill tree. Any
+// future window that needs the cursor joins that calculation; it does not get
+// its own copy of these three lines.
 void WeaponController::setViewmodelDebug(bool open)
 {
 	m_showViewmodelDebug = open;
-	ImGui::GetIO().MouseDrawCursor  = open;
-	InputManager::Get()->canProcessInput(!open);
-	g_PlayerInventoryIsDisplaying   = open;
 }
 
 void WeaponController::drawViewmodelDebugUI()
@@ -778,10 +817,12 @@ void WeaponController::drawViewmodelDebugUI()
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Once);
 	ImGui::Begin("Viewmodel Transform", &m_showViewmodelDebug);
 
-	// Detect close via the ImGui X button
+	// Closed via the ImGui X button. ImGui has already written false through the
+	// bool* above, and the input lock is recomputed from that by
+	// InventoryController::update() next tick — so there is nothing to undo here
+	// beyond ending the window.
 	if (!m_showViewmodelDebug)
 	{
-		setViewmodelDebug(false);
 		ImGui::End();
 		return;
 	}

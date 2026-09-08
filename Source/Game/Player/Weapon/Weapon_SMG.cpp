@@ -40,7 +40,7 @@ void Weapon_SMG::init()
 	// Same arms rig as the rest of the glTF pack — the 'arms' root sits at the
 	// shared (0, 2.945, -17.671). A 77.7-unit barrel is short, so it is held
 	// closer in than the rifle. Tune with the F2 window, not here.
-	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.1500f, 0.1000f);
+	m_viewPositionOffset = irr::core::vector3df(0.1150f, -0.1650f, 0.3000f);
 	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
 	m_viewScaleOffset    = irr::core::vector3df(0.01f, 0.01f, 0.01f);
 

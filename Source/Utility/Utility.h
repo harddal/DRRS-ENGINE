@@ -40,6 +40,14 @@ namespace Utility
 	std::string OpenFileDialog(const char* filter = "Any File\0*.*\0", const char* initialDir = nullptr);
 	std::string SaveFileDialog(const char* filter = "Any File\0*.*\0", const char* initialDir = nullptr);
 
+	// Folder picker (IFileDialog + FOS_PICKFOLDERS). Empty string when cancelled.
+	std::string OpenFolderDialog(const char* title = "Select Folder", const char* initialDir = nullptr);
+
+	// Directory containing Engine.exe, with a trailing slash. Resolved from the
+	// module path rather than the CWD, which the file dialogs deliberately pin
+	// with OFN_NOCHANGEDIR and which content paths are relative to.
+	std::string ExecutableDirectory();
+
 	inline std::string GetRightSideOfDelim(const std::string &str, const std::string &delim) {
 		if (!str.empty())
 			return str.substr(str.find(delim) + delim.size());

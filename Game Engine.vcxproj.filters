@@ -159,6 +159,12 @@
     <ClCompile Include="Source\Game\Gore\GoreManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Game\Skill\SkillSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Skill\SkillPanel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Game\Gore\FractureManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -576,6 +582,9 @@
     <ClCompile Include="Source\Engine\Navigation\Recast\Source\RecastRegion.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Engine\Navigation\CrowdManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Engine\Navigation\NavigationManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -675,13 +684,16 @@
     <ClCompile Include="Include\imgui\misc\freetype\imgui_freetype.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Game\NPC\NPCSystem.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Engine\Renderer\Particle\ParticleSystemLoader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Engine\Renderer\Particle\ParticleManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Editor\Interface\EditorInterface_MixamoImporter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Utility\ProcessRunner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Editor\Interface\EditorInterface_ParticleDesigner.cpp">
@@ -708,10 +720,16 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_MiningLaser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Game\AI\AICoordinator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Game\Behavior\BehaviorFactory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Game\Behavior\BehaviorSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Behavior\CharacterBehavior.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Game\Behavior\EntityBehavior.cpp">
@@ -724,6 +742,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Game\Behavior\Classes\SuicideBomberBehavior.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Include\angelscript\sdk\add_on\scripthelper\scripthelper.cpp">
@@ -771,6 +792,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Engine\Engine.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Utility\ProcessRunner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Utility\Utility.h">
@@ -953,9 +977,6 @@
     <ClInclude Include="Source\Editor\EditorViewport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\World\Components\PrefabComponent.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Game\Components.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -996,6 +1017,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Components\MarkerComponent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Components\Faction.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Components\NPCComponent.h">
@@ -1340,6 +1364,15 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Launcher.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Game\Skill\SkillSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Skill\SkillPanel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Skill\WeaponSkills.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_DualSMG.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1427,6 +1460,9 @@
     <ClInclude Include="Source\Engine\Navigation\Recast\Include\RecastAssert.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Engine\Navigation\CrowdManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Engine\Navigation\NavigationManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1508,9 +1544,6 @@
     <ClInclude Include="Source\Editor\Interface\TextEditor\TextEditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Game\NPC\NPCSystem.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Engine\Renderer\Particle\ParticleSystemLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1553,10 +1586,16 @@
     <ClInclude Include="Source\Game\Components\BehaviorComponent.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Game\AI\AICoordinator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Game\Behavior\BehaviorFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Behavior\BehaviorSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Behavior\CharacterBehavior.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Behavior\EntityBehavior.h">
@@ -1569,6 +1608,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Behavior\Classes\MeleeZombieBehavior.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Game\Behavior\Classes\SuicideBomberBehavior.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\Game\Player\Weapon\WeaponEffects.h">

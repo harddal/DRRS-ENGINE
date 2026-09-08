@@ -32,6 +32,7 @@ struct EditorWindowData
     bool draw_window_viewport           = true;
     bool draw_window_script_editor      = false;
     bool draw_window_particle_designer  = false;
+    bool draw_window_mixamo_importer    = false;
 
     bool draw_toolbar    = true;
     bool draw_statusbar  = true;
@@ -92,6 +93,7 @@ namespace EditorInterface
     void draw_window_script_editor();
     void open_script_in_editor(const std::string& path);
     void draw_window_particle_designer();
+    void draw_window_mixamo_importer();
     void draw_toolbar();
     void draw_statusbar();
 

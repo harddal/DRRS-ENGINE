@@ -11,7 +11,7 @@ void ScriptBindings::RegisterInputManager(asIScriptEngine *engine)
     engine->RegisterObjectMethod("InputManager", "bool onActionRelease(string)", asMETHOD(InputManager, isActionReleased), asCALL_THISCALL);
 
     engine->RegisterObjectMethod("InputManager", "vector2d getMousePosition()", asMETHOD(InputManager, getMousePosition), asCALL_THISCALL);
-    engine->RegisterObjectMethod("InputManager", "vector2d getMouseDelta()", asMETHOD(InputManager, getMouseDelta), asCALL_THISCALL);
+    engine->RegisterObjectMethod("InputManager", "vector2d getMouseDelta(bool ignoreProcessFlag = false)", asMETHODPR(InputManager, getMouseDelta, (bool), irr::core::vector2df), asCALL_THISCALL);
 
     engine->RegisterObjectMethod("InputManager", "bool getMousePress(int)", asMETHOD(InputManager, isMouseButtonPressed_ASBinding), asCALL_THISCALL);
 

@@ -35,6 +35,18 @@ using namespace SPK::IRR;
 // SOUL FIRE is the finished one. GRAVE BLOOM exists to prove the table does what
 // it claims — it introduces no new code at all, only different numbers and a
 // different clip — so treat its balance as a placeholder and retune or delete it.
+//
+// *** DO NOT REORDER THIS TABLE. Its index is load-bearing in TWO places now. ***
+//
+//   1. saveMagState() writes out.slots[0] = m_spell, so a row's position is
+//      already part of the save format — reordering silently re-equips a
+//      different spell on every existing sidecar.
+//   2. UNLOCK BIT i IS SPELL i (see Weapon_SkullStaff.h). The skill table names
+//      these bits, so reordering also re-points every purchased spell unlock at
+//      whatever moved into its slot.
+//
+// APPENDING a row is safe and is how a spell should be added. Deleting one is
+// not: it shifts everything below it under both rules above.
 // =============================================================================
 const SpellDesc Weapon_SkullStaff::s_spells[] =
 {
@@ -141,6 +153,13 @@ const SpellDesc& Weapon_SkullStaff::spell() const
 bool Weapon_SkullStaff::canCastCurrent() const
 {
 	const SpellDesc& s = spell();
+
+	// Belt and braces with selectSpell()'s refusal. This is the gate fire() and
+	// the input path actually consult, so a locked spell reached by any route —
+	// a direct fire() call, or the one frame between a skill_reset and the next
+	// ensureSpellUnlocked() — still cannot be cast.
+	if (!spellUnlocked(m_spell))
+		return false;
 
 	if (Engine::Get()->getCurrentTime() < m_nextReadyTime[m_spell])
 		return false;
@@ -342,6 +361,18 @@ void Weapon_SkullStaff::init()
 	m_mana = m_manaMax;
 	m_nextReadyTime.assign(s_spellCount, 0.0f);
 
+	// The one drift this design can suffer: a spell appended to s_spells[] without
+	// a matching UNLOCK_ name means the skill table cannot address it, and — worse
+	// — a name removed without removing its row leaves a skill unlocking a spell
+	// that no longer exists at that index. Not a static_assert because
+	// s_spellCount is defined out-of-class and so is not usable in one.
+	if (s_spellCount != UNLOCK_SPELL_COUNT)
+	{
+		spdlog::error("Weapon_SkullStaff: s_spells[] has {} rows but the UNLOCK_ enum "
+		              "declares {}. The skill table's spell unlocks are now pointing at "
+		              "the wrong spells.", s_spellCount, static_cast<int>(UNLOCK_SPELL_COUNT));
+	}
+
 	m_crosshair = RenderManager::Get()->driver()->getTexture("content/texture/ui/crosshair/crosshair033.png");
 
 	// Spells leave from the skull's MOUTH, so the effects hang off 'jaw' — which
@@ -380,9 +411,36 @@ void Weapon_SkullStaff::destroy()
 
 // --- Spell selection ---------------------------------------------------------
 
+// Bit i is spell i. The range check is here rather than at the call sites
+// because the spell table and the unlock vocabulary are the same list, so a
+// bit outside it is a table-authoring error, not a runtime state.
+bool Weapon_SkullStaff::spellUnlocked(int index) const
+{
+	if (index < 0 || index >= s_spellCount)
+		return false;
+
+	return hasUnlock(index);
+}
+
+const char* Weapon_SkullStaff::unlockName(int bit) const
+{
+	if (bit < 0 || bit >= s_spellCount)
+		return nullptr;
+
+	// Straight off the table, so the skill tooltip and the spellbook cannot
+	// drift apart when a spell is renamed.
+	return s_spells[bit].name;
+}
+
 void Weapon_SkullStaff::selectSpell(int index)
 {
 	if (index < 0 || index >= s_spellCount || index == m_spell)
+		return;
+
+	// A locked spell is not selectable at all — not merely uncastable. Showing
+	// its name greyed out under the crosshair would advertise content the player
+	// has no way to reach from here, and the cycle below would stop on it.
+	if (!spellUnlocked(index))
 		return;
 
 	// Deliberately allowed mid-cast: the bolt already in the air remembers which
@@ -391,9 +449,45 @@ void Weapon_SkullStaff::selectSpell(int index)
 	m_spell = index;
 }
 
+// Steps over locked rows. Bounded by s_spellCount rather than looping until it
+// finds one: spell 0 is granted by defaultUnlocks() and can never be bought, so
+// there is always at least one unlocked row — but a table edit that broke that
+// assumption should leave the spell unchanged, not hang the frame.
 void Weapon_SkullStaff::cycleSpell()
 {
-	selectSpell((m_spell + 1) % s_spellCount);
+	for (int step = 1; step <= s_spellCount; ++step)
+	{
+		const int candidate = (m_spell + step) % s_spellCount;
+
+		if (spellUnlocked(candidate))
+		{
+			selectSpell(candidate);
+			return;
+		}
+	}
+}
+
+void Weapon_SkullStaff::ensureSpellUnlocked()
+{
+	if (spellUnlocked(m_spell))
+		return;
+
+	// Fall to the first legal row rather than to 0 blindly: 0 is the one the
+	// default grants, but that is a fact about the current table, and walking
+	// costs nothing at this size.
+	for (int i = 0; i < s_spellCount; ++i)
+	{
+		if (spellUnlocked(i))
+		{
+			m_spell = i;
+			return;
+		}
+	}
+
+	// Nothing at all is unlocked — only reachable before resolve() has run, or
+	// from a table with no default. Clamp into range so spell() and the
+	// m_nextReadyTime indexing stay valid; the cast gate refuses it anyway.
+	m_spell = 0;
 }
 
 // --- State -------------------------------------------------------------------
@@ -436,6 +530,10 @@ void Weapon_SkullStaff::update()
 {
 	if (!m_mesh.node || !m_mesh.node->isVisible())
 		return;
+
+	// Before anything reads m_spell this frame. See the note on the declaration:
+	// the unlock state can have moved under the equipped spell since last frame.
+	ensureSpellUnlocked();
 
 	const float now  = Engine::Get()->getCurrentTime();
 	const float dt   = Engine::Get()->getDeltaTime();
@@ -514,7 +612,7 @@ void Weapon_SkullStaff::update()
 		if (canCastCurrent())
 		{
 			m_mana -= static_cast<float>(s.manaCost);
-			m_nextReadyTime[m_spell] = now + s.cooldownMs;
+			m_nextReadyTime[m_spell] = now + statInv(WSTAT_FIRE_RATE, s.cooldownMs);
 
 			enterState(State::Casting);
 		}
@@ -652,7 +750,7 @@ void Weapon_SkullStaff::fire()
 		return;
 
 	m_mana -= static_cast<float>(s.manaCost);
-	m_nextReadyTime[m_spell] = now + s.cooldownMs;
+	m_nextReadyTime[m_spell] = now + statInv(WSTAT_FIRE_RATE, s.cooldownMs);
 
 	enterState(State::Casting);
 }
@@ -783,14 +881,22 @@ void Weapon_SkullStaff::spawnSpellBolt(const SpellDesc& desc, int spellIndex)
 
 	boltEntity.activate();
 
+	// Resolved ONCE and then used for both the scalar and the velocity: two
+	// statf() calls would agree today, but a bolt whose speed and velocity
+	// disagreed would drift in a way that is very hard to see. The bolt keeps
+	// the value it was launched with — buying the skill mid-flight does not
+	// speed up something already in the air, which matches m_projectileSpell
+	// remembering the spell that threw it.
+	const float launchSpeed = statf(WSTAT_PROJECTILE_SPEED, desc.speed);
+
 	WeaponProjectile proj;
-	proj.speed            = desc.speed;
+	proj.speed            = launchSpeed;
 	proj.useTracking      = false;
 	proj.targetId         = _entity_null_value;
 	proj.distanceTraveled = 0.0f;
 	proj.isTrackingActive = false;
 	proj.entity           = boltEntity;
-	proj.velocity         = direction * desc.speed;
+	proj.velocity         = direction * launchSpeed;
 	proj.previousPosition = spawnPos;
 	proj.trailParticles   = nullptr;
 	proj.isBouncing       = false;
@@ -972,13 +1078,29 @@ void Weapon_SkullStaff::detonate(const SpellDesc& desc, const irr::core::vector3
 	if (desc.impactParticle)
 		ParticleManager::Get()->spawn(desc.impactParticle, irr2spk(pos));
 
-	if (desc.splashDamage > 0.0f && desc.splashRadius > 0.0f)
-		applySplashDamage(desc, pos, directHitID);
+	// THE ONE RESOLUTION OF THE SPLASH FOR THIS DETONATION. Everything below —
+	// the guard, the blast-effect scale, and (passed down) the cull and falloff
+	// divisor inside applySplashDamage — reads these locals. A radius resolved
+	// separately per use is the documented way this goes wrong: an entity just
+	// inside a cull done with one radius takes a negative share when the falloff
+	// divides by another.
+	//
+	// The guard tests the RESOLVED value, not the authored one, which is what
+	// keeps Mend (splashDamage 0) explosion-free: a SOP_MUL row leaves 0 at 0.
+	// A SOP_ADD row on either stat WOULD give every spell a splash, Mend
+	// included — so if one is ever added, it belongs on a row targeted at a
+	// specific spell, which this table cannot express today. Keep the staff's
+	// splash rows multiplicative.
+	const float splashRadius = statf(WSTAT_SPLASH_RADIUS, desc.splashRadius);
+	const float splashDamage = statf(WSTAT_SPLASH_DAMAGE, desc.splashDamage);
+
+	if (splashDamage > 0.0f && splashRadius > 0.0f)
+		applySplashDamage(pos, directHitID, splashRadius, splashDamage);
 
 	// Light flash + scorch oriented to the hit surface + smoke + proximity shake,
 	// in the spell's own colour. Radius and shake scale off the splash, so a
 	// small spell does not put on a large spell's show.
-	const float scale = desc.splashRadius > 0.0f ? desc.splashRadius : 1.5f;
+	const float scale = splashRadius > 0.0f ? splashRadius : 1.5f;
 
 	m_effects.explosionAt(pos, desc.lightColor,
 		desc.lightRadius * 1.4f,
@@ -990,13 +1112,13 @@ void Weapon_SkullStaff::detonate(const SpellDesc& desc, const irr::core::vector3
 	if (directHitID != _entity_null_value)
 	{
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(desc.directDamage)));
+			directHitID, static_cast<unsigned int>(statf(WSTAT_DAMAGE, desc.directDamage))));
 	}
 }
 
-void Weapon_SkullStaff::applySplashDamage(const SpellDesc& desc,
-                                          const irr::core::vector3df& epicentre,
-                                          entityid directHitEntityID)
+void Weapon_SkullStaff::applySplashDamage(const irr::core::vector3df& epicentre,
+                                          entityid directHitEntityID,
+                                          float splashRadius, float splashDamage)
 {
 	// One feedback event per detonation regardless of how many entities it caught
 	HIT_RESULT bestResult = HIT_RESULT::NONE;
@@ -1016,10 +1138,12 @@ void Weapon_SkullStaff::applySplashDamage(const SpellDesc& desc,
 		const irr::core::vector3df entityPos = entity.getComponent<TransformComponent>().getPosition();
 		const float dist = (entityPos - epicentre).getLength();
 
-		if (dist >= desc.splashRadius) continue;
+		// Same radius the caller culled and scaled with, by construction — it is
+		// a parameter rather than something re-read.
+		if (dist >= splashRadius) continue;
 
-		const float falloff = 1.0f - (dist / desc.splashRadius);
-		const float damage  = desc.splashDamage * falloff;
+		const float falloff = 1.0f - (dist / splashRadius);
+		const float damage  = splashDamage * falloff;
 
 		if (damage >= 1.0f)
 		{

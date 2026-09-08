@@ -9,6 +9,7 @@
 #include "Game/Components/LogicComponent.h"
 #include "Game/Components/MarkerComponent.h"
 #include "Game/Components/NPCComponent.h"
+#include "Game/Components/Faction.h"
 #include "Game/Components/TriggerZoneComponent.h"
 #include "Game/Components/WaterComponent.h"
 #include "Game/Components/BehaviorComponent.h"
@@ -32,7 +33,6 @@ enum class ENTITY_COMPONENT
 	MESH,
 	NPC,
 	PHYSICS,
-	PREFAB,
 	RENDER,
 	SCRIPT,
 	SOUND,

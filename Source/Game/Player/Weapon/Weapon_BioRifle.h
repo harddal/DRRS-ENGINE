@@ -34,7 +34,7 @@ private:
 	float m_pointDamage  = 50.0f;
 	float m_splashDamage = 40.0f;
 	float m_splashRadius = 3.5f;
-	float m_splashForce  = 0.5f;
+	float m_splashForce  = 1.0f; // x2 for real-time physics, see PHYSX_DEFAULT_GRAVITY
 
 	std::vector<WeaponProjectile> m_projectiles;
 

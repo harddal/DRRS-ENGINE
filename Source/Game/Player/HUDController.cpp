@@ -138,28 +138,34 @@ void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
 							}
 						}
 						else if (target.hasComponent<NPCComponent>()) {
-							/*switch (target.getComponent<NPCComponent>().disposition)
+							// Ported from the old three-value disposition to FACTION.
+							// Still commented out along with the rest of the crosshair
+							// art in this function - un-commenting this block alone
+							// would draw a reticle nothing else here draws.
+							//
+							// Note this asks the question the RIGHT way round: hostility
+							// is a relation, so it is isHostile(target -> player), not a
+							// property read off the target on its own.
+							/*if (isHostile(target, player))
 							{
-							case NPC_AI_DISPOSITION::NEUTRAL:
-								RenderManager::Get()->renderImage2D(
-									m_crosshair_interact,
-									_crosshair_center_position,
-									irr::video::SColor(255, 175, 175, 175));
-								break;
-							case NPC_AI_DISPOSITION::ENEMY:
 								RenderManager::Get()->renderImage2D(
 									m_crosshair_interact,
 									_crosshair_center_position,
 									irr::video::SColor(255, 255, 51, 51));
-								break;
-							case NPC_AI_DISPOSITION::FRIENDLY:
+							}
+							else if (factionOf(target) == FACTION::PLAYER)
+							{
 								RenderManager::Get()->renderImage2D(
 									m_crosshair_interact,
 									_crosshair_center_position,
 									irr::video::SColor(255, 51, 255, 51));
-								break;
-							default:
-								break;
+							}
+							else
+							{
+								RenderManager::Get()->renderImage2D(
+									m_crosshair_interact,
+									_crosshair_center_position,
+									irr::video::SColor(255, 175, 175, 175));
 							}*/
 						}
 						else if ((target.hasComponent<DamageReceiverComponent>()))

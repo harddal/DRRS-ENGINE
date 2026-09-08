@@ -215,6 +215,46 @@ void InputManager::update(bool processInput)
 			static_cast<float>(center.x), static_cast<float>(center.y));
 	}
 
+	if (!m_rawInputAttempted)
+		registerRawMouseInput(RenderManager::Get()->mainWindowHandle());
+
+	// Mouse-look cursor policy.
+	//
+	// "Engaged" means the OS cursor is parked on the anchor and clipped there, so it
+	// can neither wander out of the window nor drift over an ImGui panel. Motion
+	// itself comes from WM_INPUT (see getMouseDelta), so nothing is warped per frame.
+	//
+	// Demand is inferred from getMouseDelta() having been called rather than from an
+	// explicit begin/end pair: update() and the game logic that reads the delta run in
+	// the same fixed step, so a consumer that stops looking — player locked, inventory
+	// open, console open, state change, editor RMB released — releases the cursor on
+	// the next step with no bookkeeping at the call site, and no path can leave it
+	// clipped forever.
+	if (m_rawInputRegistered)
+	{
+		// Gated on the MAIN window specifically, not anyAppWindowFocused(): raw input
+		// is registered against that window without RIDEV_INPUTSINK, so when one of
+		// the editor's torn-off tool windows holds focus no WM_INPUT arrives. Pinning
+		// the cursor there would trap it against a camera that cannot turn.
+		const bool foreground =
+			::GetForegroundWindow() == static_cast<HWND>(RenderManager::Get()->mainWindowHandle());
+
+		const bool wantMouseLook = m_mouseLookDemanded && foreground;
+		m_mouseLookDemanded = false;
+
+		if (wantMouseLook)
+		{
+			engageMouseLook();
+		}
+		else
+		{
+			// Drop whatever arrived while nobody was looking, so resuming a look does
+			// not apply a single accumulated burst of motion.
+			m_rawMouseAccum = irr::core::vector2df(0, 0);
+			releaseMouseLook();
+		}
+	}
+
 	m_canProcessInput = processInput;
 
 	if (m_canProcessInput)
@@ -629,18 +669,178 @@ bool InputManager::isMouseButtonPressed(int button, bool ignore_process_flag)
 		return false;
 }
 
-irr::core::vector2df InputManager::getMouseDelta()
+// ---------------------------------------------------------------------------
+// Relative mouse look
+//
+// This used to be "read GetCursorPos, subtract it from the window centre, then
+// SetCursorPos back to the centre". That measures motion only as long as WE own
+// the cursor position. Anything that asserts an ABSOLUTE position every packet
+// wins the race and the recentring never lands: Sunshine/Moonlight with
+// "optimize mouse for remote desktop" enabled, an RDP session, a tablet, some
+// VM guest tools. The cursor then sits at a fixed offset from the centre and the
+// same non-zero delta is read every single frame -- pitch runs to its clamp and
+// yaw spins forever.
+//
+// Raw input reports what the device did instead of where the cursor ended up, so
+// nothing has to be warped per frame. That also stops the game fighting drag
+// tools (Win+Shift+S was unusable while the game had focus) and removes the
+// SetCursorPos-per-frame cost.
+//
+// Absolute-position devices still report absolute values through WM_INPUT, so
+// onRawMouseInput() differences successive positions for those. Both paths end
+// up in the same accumulator.
+// ---------------------------------------------------------------------------
+
+void InputManager::registerRawMouseInput(void* hwnd)
 {
-	if (m_canProcessInput)
+	if (m_rawInputAttempted || !hwnd)
+		return;
+
+	m_rawInputAttempted = true;
+
+	RAWINPUTDEVICE rid = {};
+	rid.usUsagePage = 0x01;   // HID_USAGE_PAGE_GENERIC
+	rid.usUsage     = 0x02;   // HID_USAGE_GENERIC_MOUSE
+	rid.dwFlags     = 0;      // deliberately not RIDEV_INPUTSINK: only look while foreground
+	rid.hwndTarget  = static_cast<HWND>(hwnd);
+
+	if (::RegisterRawInputDevices(&rid, 1, sizeof(rid)))
 	{
-		auto temp = irr::core::vector2df(m_fixedMousePosition.X, m_fixedMousePosition.Y) - getMousePosition();
-		auto delta =
-			irr::core::vector2df(temp.X, temp.Y);
+		m_rawInputRegistered = true;
+	}
+	else
+	{
+		spdlog::error("InputManager: RegisterRawInputDevices failed (error {}) — "
+		              "falling back to warp-to-centre mouse look", ::GetLastError());
+	}
+}
+
+void InputManager::onRawMouseInput(void* rawInputHandle)
+{
+	RAWINPUT ri;
+	UINT     size = sizeof(ri);
+
+	if (::GetRawInputData(static_cast<HRAWINPUT>(rawInputHandle), RID_INPUT,
+	                      &ri, &size, sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1))
+		return;
+
+	if (ri.header.dwType != RIM_TYPEMOUSE)
+		return;
+
+	const RAWMOUSE& mouse = ri.data.mouse;
+
+	float dx = 0.f;
+	float dy = 0.f;
+
+	// MOUSE_MOVE_RELATIVE is 0, so the ABSOLUTE bit is the one worth testing.
+	if (mouse.usFlags & MOUSE_MOVE_ABSOLUTE)
+	{
+		// A position normalised to 0..65535 across the screen, not a movement.
+		// Differencing successive reports is the only way to recover motion.
+		const bool virtualDesktop = (mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
+
+		const int width  = ::GetSystemMetrics(virtualDesktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
+		const int height = ::GetSystemMetrics(virtualDesktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+
+		const long absX = static_cast<long>((mouse.lLastX / 65535.0f) * width);
+		const long absY = static_cast<long>((mouse.lLastY / 65535.0f) * height);
+
+		if (m_hasAbsoluteBaseline)
+		{
+			dx = static_cast<float>(absX - m_lastAbsX);
+			dy = static_cast<float>(absY - m_lastAbsY);
+		}
+
+		m_lastAbsX = absX;
+		m_lastAbsY = absY;
+		m_hasAbsoluteBaseline = true;
+
+		// NOTE: the baseline is deliberately NOT cleared when a relative packet
+		// arrives. An absolute device carries its own pointer position, which a
+		// local mouse moving relatively does not disturb.
+	}
+	else
+	{
+		dx = static_cast<float>(mouse.lLastX);
+		dy = static_cast<float>(mouse.lLastY);
+	}
+
+	// Sign flip: every caller was written against the old (centre - cursor) delta,
+	// which is NEGATIVE when the mouse moves right/down. Matching it here keeps the
+	// existing sensitivity values and the `-=` accumulation at each call site valid.
+	m_rawMouseAccum.X -= dx;
+	m_rawMouseAccum.Y -= dy;
+}
+
+void InputManager::onFocusChanged(bool focused)
+{
+	// Drop what is queued and re-baseline. A stream or remote session keeps moving
+	// its pointer while we are not looking, so the first absolute report after focus
+	// returns would otherwise difference against a stale position and snap the camera.
+	m_rawMouseAccum       = irr::core::vector2df(0, 0);
+	m_hasAbsoluteBaseline = false;
+	m_mouseLookDemanded   = false;
+
+	if (!focused)
+		releaseMouseLook();
+}
+
+void InputManager::engageMouseLook()
+{
+	const irr::core::vector2df anchor = m_hasCustomAnchor ? m_mouseLookAnchor : m_fixedMousePosition;
+
+	if (!m_mouseLookEngaged)
+	{
+		// Park it once, on entry. Everything that reads the cursor position during a
+		// look — ImGui hit-testing, the WantCaptureMouse guard in isMouseButtonPressed
+		// — then sees exactly what the old scheme gave it: a stationary cursor sitting
+		// on the anchor. Without this the hidden cursor would wander over a HUD panel
+		// and silently swallow the fire button.
+		setMousePosition(anchor);
+		m_mouseLookEngaged = true;
+	}
+
+	// Reassert every step: the clip rectangle is a global, shared resource and the
+	// system drops it whenever another window takes the foreground.
+	const LONG x = irr::core::round32(anchor.X);
+	const LONG y = irr::core::round32(anchor.Y);
+
+	RECT pin = { x, y, x + 1, y + 1 };
+	::ClipCursor(&pin);
+}
+
+void InputManager::releaseMouseLook()
+{
+	if (!m_mouseLookEngaged)
+		return;
+
+	m_mouseLookEngaged = false;
+	m_hasCustomAnchor  = false;
+
+	::ClipCursor(nullptr);
+}
+
+irr::core::vector2df InputManager::getMouseDelta(bool ignore_process_flag)
+{
+	if (!m_canProcessInput && !ignore_process_flag)
+		return irr::core::vector2df(0, 0);
+
+	// Fallback for the (never yet observed) case where raw input could not be
+	// registered: the old warp-to-centre measurement. Wrong under an absolute-position
+	// input stream, but better than a camera that cannot turn at all.
+	if (!m_rawInputRegistered)
+	{
+		const auto delta = m_fixedMousePosition - getMousePosition();
 		centerMouse();
 		return delta;
 	}
 
-	return irr::core::vector2df(0, 0);
+	m_mouseLookDemanded = true;
+
+	const auto delta = m_rawMouseAccum;
+	m_rawMouseAccum = irr::core::vector2df(0, 0);
+
+	return delta;
 }
 
 irr::core::vector2df InputManager::getMousePosition()

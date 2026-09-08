@@ -11,7 +11,26 @@
 #define PHYSX_DEFAULT_SCALE 1.0f  // 1 meter standard size
 #define PHYSX_DEFAULT_SPEED 9.81f // 9.81 meters per second standard speed
 
-#define PHYSX_DEFAULT_GRAVITY 0.0f, -9.81f, 0.0f
+// --- Legacy time-compression tuning -------------------------------------
+// PhysicsManager::update() used to call simulate(1/60) TWICE per 1/60s engine
+// tick, so PhysX advanced at 2x real time. simulate() advances simulated time;
+// it is not a solver-quality knob, so the second call bought speed, not
+// accuracy. Everything tuned against dynamic actors was therefore tuned against
+// a 2x clock: falls (distance goes as t^2) looked 4x heavy, and anything given a
+// velocity travelled 2x further per wall-clock second.
+//
+// update() now substeps correctly and runs at 1x real time. To keep that tuning
+// intact rather than silently re-balancing every prop and explosion, the
+// compression is baked into the constants instead:
+//
+//   accelerations / continuous forces  x4   (gravity, buoyancy)
+//   impulses / initial velocities      x2   (weapon splash forces)
+//
+// These are game-feel numbers, not physical ones. Dial them toward 9.81 / 1.0 to
+// move to true real-time physics -- but expect every dynamic prop to go floaty,
+// and note PlayerController hand-rolls its own gravity (g_gravity = 20.0f, x1.4
+// falling) and is not affected either way.
+#define PHYSX_DEFAULT_GRAVITY 0.0f, -39.24f, 0.0f // 4 x 9.81, see above
 #define PHYSX_DEFAULT_MATERIAL 0.5f, 0.5f, 0.0f // static friction, dynamic friction, restitution
 
 #define IRR_PHYSX_POS_SCALAR 1.0f
@@ -105,6 +124,9 @@ public:
     physx::PxCooking*           cooking() const { return m_cooking; }
     physx::PxControllerManager* cct()     const { return m_cctManager; }
 
+    physx::PxU32 getSubstepCount() const { return m_substepCount; }
+    void setSubstepCount(physx::PxU32 count) { m_substepCount = count < 1U ? 1U : count; }
+
     PhysicsConfiguration getConfiguration() const { return m_configuration; }
 	void saveConfiguration(PhysicsConfiguration configuration);
 
@@ -113,11 +135,12 @@ public:
 private:
     static PhysicsManager* s_Instance;
 
-    // 1 works, but 2 or 3 is the best, although it's quite lag inducing
+    // Number of solver substeps the frame's timestep is DIVIDED into (see
+    // update()). 1 reproduces the solver resolution per simulated second that
+    // this project has always run at; raising it trades CPU for solver accuracy
+    // and halves per-step displacement (which is what resists tunnelling).
+    // It does NOT change how much time passes -- that bug is what it used to do.
     physx::PxU32 m_substepCount;
-
-    float m_accumulator;
-    float m_stepSize;
 
     PhysicsConfiguration m_configuration;
 

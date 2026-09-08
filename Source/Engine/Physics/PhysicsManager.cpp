@@ -15,12 +15,15 @@
 
 using namespace physx;
 
+// Longest single frame update() will simulate, in seconds. Anything beyond this
+// is dropped rather than stepped -- physics falls behind wall clock, which is
+// always preferable to a step large enough to tunnel actors out of the world.
+static const float PHYSX_MAX_ELAPSED_SECONDS = 1.0f / 15.0f;
+
 PhysicsManager* PhysicsManager::s_Instance = nullptr;
 
 PhysicsManager::PhysicsManager() :
-    m_substepCount(2),
-    m_accumulator(0.0f),
-    m_stepSize(1.0f / 60.f),
+    m_substepCount(1),
     m_sceneDesc(nullptr),
     m_foundation(nullptr),
     m_physics(nullptr),
@@ -32,7 +35,7 @@ PhysicsManager::PhysicsManager() :
     m_material(nullptr),
     m_pvd(nullptr),
     m_transport(nullptr),
-    m_gravity(PxVec3(0, -9.81f, 0))
+    m_gravity(PxVec3(PHYSX_DEFAULT_GRAVITY))
 {
     if (s_Instance)
     {
@@ -197,9 +200,30 @@ PhysicsManager::~PhysicsManager()
 
 void PhysicsManager::update(irr::f32 dt)
 {
+    if (!m_scene) { return; }
+
+    // dt arrives in MILLISECONDS -- Engine::run() passes fixedDeltaMs. simulate()
+    // takes SECONDS. Feeding it dt directly would advance ~16 seconds per tick.
+    float elapsed = dt / 1000.0f;
+
+    if (elapsed <= 0.0f) { return; }
+
+    // Engine::run() already clamps its frame time and calls this from a fixed
+    // timestep loop, so elapsed is 1/60 in practice. Clamp anyway: this is the
+    // only thing standing between a stalled caller and one enormous step that
+    // would fling every actor through the level.
+    if (elapsed > PHYSX_MAX_ELAPSED_SECONDS) { elapsed = PHYSX_MAX_ELAPSED_SECONDS; }
+
+    // Substeps DIVIDE the timestep -- they do not each advance a full one. The
+    // previous version called simulate(1/60) m_substepCount times per 1/60s
+    // tick, which advanced physics at m_substepCount x real time rather than
+    // refining the solve. See PHYSX_DEFAULT_GRAVITY for the tuning that had been
+    // built on top of that.
+    const PxReal step = elapsed / static_cast<PxReal>(m_substepCount);
+
     for (auto i = 0U; i < m_substepCount; i++) 
     {
-        m_scene->simulate(m_stepSize);
+        m_scene->simulate(step);
         m_scene->fetchResults(true);
     }
 }
@@ -212,7 +236,7 @@ void PhysicsManager::createScene()
         {
             m_sceneDesc = new PxSceneDesc(m_physics->getTolerancesScale());
 
-            m_sceneDesc->gravity = PxVec3(PHYSX_DEFAULT_GRAVITY);
+            m_sceneDesc->gravity = m_gravity;
             m_sceneDesc->cpuDispatcher = m_dispatcher;
             m_sceneDesc->filterShader = PxDefaultSimulationFilterShader;
 

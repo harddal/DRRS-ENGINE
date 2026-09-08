@@ -37,8 +37,8 @@ void Weapon_Crossbow::init()
 
 	// Same arms rig as the other glTF weapons, so the same starting transform.
 	// Tune with the viewmodel debug UI (F2), not by guessing here.
-	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.21f, 0.1800f);
-	m_viewRotationOffset = irr::core::vector3df(0.0f, 180.0f, 0.0f);
+	m_viewPositionOffset = irr::core::vector3df(0.1000f, -0.2100f, 0.1300f);
+	m_viewRotationOffset = irr::core::vector3df(0.00f, 180.00f, 0.50);
 	m_viewScaleOffset    = irr::core::vector3df(0.01f, 0.01f, 0.01f);
 
 	m_mesh.mesh = _asset_glb("player/weapon/crossbow_animated");

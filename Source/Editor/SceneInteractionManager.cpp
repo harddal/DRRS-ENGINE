@@ -23,8 +23,7 @@ using namespace video;
 
 #define _selected_entity (m_selectedEntities.empty() ? (_entity_null_value) : (m_selectedEntities.at(0)))
 
-unsigned int g_currentEntity = _entity_null_value, g_undoEntity = _entity_null_value, g_undoCount = 0, g_currentMesh =
-	             _entity_null_value, g_currentPrefab = _entity_null_value;
+unsigned int g_currentEntity = _entity_null_value, g_undoEntity = _entity_null_value, g_undoCount = 0, g_currentMesh = _entity_null_value;
 std::string g_currentScene;
 extern std::string g_currentSelectedTexture = "null";
 extern std::string g_textureBrowserRequestID = "";

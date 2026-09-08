@@ -947,435 +947,99 @@ static void AS_NPC_SetAlive(entityid e, bool v)
     catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetAlive", ex.what(), e); }
 }
 
-static float AS_NPC_GetVisionRange(entityid e)
+static std::string AS_NPC_GetDisplayName(entityid e)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
         if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().visionRange;
+        return entity.getComponent<NPCComponent>().displayName;
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetVisionRange", ex.what(), e); }
-    return 0.0f;
-}
-
-static void AS_NPC_SetVisionRange(entityid e, float v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().visionRange = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetVisionRange", ex.what(), e); }
-}
-
-static float AS_NPC_GetChaseRange(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().chaseRange;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetChaseRange", ex.what(), e); }
-    return 0.0f;
-}
-
-static void AS_NPC_SetChaseRange(entityid e, float v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().chaseRange = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetChaseRange", ex.what(), e); }
-}
-
-static float AS_NPC_GetAttackRange(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().attackRange;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetAttackRange", ex.what(), e); }
-    return 0.0f;
-}
-
-static void AS_NPC_SetAttackRange(entityid e, float v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().attackRange = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetAttackRange", ex.what(), e); }
-}
-
-static float AS_NPC_GetAttackDelay(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().attackDelay;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetAttackDelay", ex.what(), e); }
-    return 0.0f;
-}
-
-static void AS_NPC_SetAttackDelay(entityid e, float v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().attackDelay = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetAttackDelay", ex.what(), e); }
-}
-
-static std::string AS_NPC_GetName(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().name;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetName", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetDisplayName", ex.what(), e); }
     return std::string();
 }
 
-static void AS_NPC_SetName(entityid e, std::string v)
+static void AS_NPC_SetDisplayName(entityid e, std::string v)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
         if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().name = v;
+        entity.getComponent<NPCComponent>().displayName = v;
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetName", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetDisplayName", ex.what(), e); }
 }
 
-static int AS_NPC_GetState(entityid e)
+// Reads through factionOf(), so it answers correctly for the PLAYER too -- the
+// player carries no NPCComponent and resolves off its ET_PLAYER descriptor.
+static int AS_NPC_GetFaction(entityid e)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return static_cast<int>(entity.getComponent<NPCComponent>().state);
+        return static_cast<int>(factionOf(entity));
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetState", ex.what(), e); }
-    return 0;
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetFaction", ex.what(), e); }
+    return static_cast<int>(FACTION::NEUTRAL);
 }
 
-static void AS_NPC_SetState(entityid e, int v)
+static void AS_NPC_SetFaction(entityid e, int f)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
         if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().state = static_cast<NPC_AI_STATE>(v);
+        if (f < 0 || f >= static_cast<int>(FACTION::FACTION_COUNT))
+            throw std::runtime_error("faction out of range");
+        entity.getComponent<NPCComponent>().faction = static_cast<FACTION>(f);
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetState", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetFaction", ex.what(), e); }
 }
 
-static int AS_NPC_GetDisposition(entityid e)
+static bool AS_NPC_IsHostile(entityid attacker, entityid target)
 {
     try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return static_cast<int>(entity.getComponent<NPCComponent>().disposition);
+        auto& a = WorldManager::Get()->managerSystem()->getEntityByID(attacker);
+        auto& b = WorldManager::Get()->managerSystem()->getEntityByID(target);
+        if (!a.isValid() || !b.isValid()) throw ex_ent_invalid_name;
+        return isHostile(a, b);
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetDisposition", ex.what(), e); }
-    return 0;
-}
-
-static void AS_NPC_SetDisposition(entityid e, int v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().disposition = static_cast<NPC_AI_DISPOSITION>(v);
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetDisposition", ex.what(), e); }
-}
-
-static std::string AS_NPC_GetStartWaypoint(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().start_waypoint;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetStartWaypoint", ex.what(), e); }
-    return std::string();
-}
-
-static void AS_NPC_SetStartWaypoint(entityid e, std::string v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().start_waypoint = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetStartWaypoint", ex.what(), e); }
-}
-
-static std::string AS_NPC_GetCurrentWaypoint(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().current_waypoint;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetCurrentWaypoint", ex.what(), e); }
-    return std::string();
-}
-
-static void AS_NPC_SetCurrentWaypoint(entityid e, std::string v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().current_waypoint = v;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetCurrentWaypoint", ex.what(), e); }
-}
-
-static bool AS_NPC_GetScriptControlled(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().scriptControlled;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetScriptControlled", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_IsHostile", ex.what(), attacker); }
     return false;
 }
 
-static void AS_NPC_SetScriptControlled(entityid e, bool v)
+// Collapses this NPC to NEUTRAL in factionOf(), which makes it work in BOTH
+// directions at once: a pacified NPC neither attacks nor is attacked.
+static void AS_NPC_SetPacified(entityid e, bool v)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
         if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().scriptControlled = v;
+        entity.getComponent<NPCComponent>().pacified = v;
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetScriptControlled", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetPacified", ex.what(), e); }
 }
 
-static irr::core::vector3df AS_NPC_GetMoveTarget(entityid e)
+static bool AS_NPC_GetPacified(entityid e)
 {
     try {
         auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
         if (!entity.isValid()) throw ex_ent_invalid_name;
         if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().move_target;
+        return entity.getComponent<NPCComponent>().pacified;
     }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetMoveTarget", ex.what(), e); }
-    return irr::core::vector3df();
-}
-
-static void AS_NPC_SetMoveTarget(entityid e, irr::core::vector3df v)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        auto& npc = entity.getComponent<NPCComponent>();
-        npc.move_target = v;
-        npc.scriptWantsMovement = true;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetMoveTarget", ex.what(), e); }
-}
-
-static void AS_NPC_StopMovement(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().scriptWantsMovement = false;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_StopMovement", ex.what(), e); }
-}
-
-static void AS_NPC_FindPath(entityid e, irr::core::vector3df dest)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        if (!NavigationManager::Get() || !NavigationManager::Get()->isNavMeshBuilt()) return;
-        auto& npc = entity.getComponent<NPCComponent>();
-        auto& tf  = entity.getComponent<TransformComponent>();
-        npc.navPath      = NavigationManager::Get()->findPath(tf.getPosition(), dest);
-        npc.navPathIndex = 0;
-        npc.navRepath    = static_cast<float>(Engine::Get()->getCurrentTime());
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_FindPath", ex.what(), e); }
-}
-
-static int AS_NPC_GetNavPathSize(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return static_cast<int>(entity.getComponent<NPCComponent>().navPath.size());
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetNavPathSize", ex.what(), e); }
-    return 0;
-}
-
-static int AS_NPC_GetNavPathIndex(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().navPathIndex;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetNavPathIndex", ex.what(), e); }
-    return 0;
-}
-
-static irr::core::vector3df AS_NPC_GetNavWaypoint(entityid e, int index)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        auto& path = entity.getComponent<NPCComponent>().navPath;
-        if (index >= 0 && index < static_cast<int>(path.size())) return path[index];
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetNavWaypoint", ex.what(), e); }
-    return irr::core::vector3df();
-}
-
-static void AS_NPC_AdvanceNavPath(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        auto& npc = entity.getComponent<NPCComponent>();
-        if (npc.navPathIndex < static_cast<int>(npc.navPath.size()) - 1)
-            ++npc.navPathIndex;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_AdvanceNavPath", ex.what(), e); }
-}
-
-static void AS_NPC_ClearNavPath(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        auto& npc = entity.getComponent<NPCComponent>();
-        npc.navPath.clear();
-        npc.navPathIndex = 0;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_ClearNavPath", ex.what(), e); }
-}
-
-static bool AS_NPC_HasWaypoint(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return !entity.getComponent<NPCComponent>().current_waypoint.empty();
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_HasWaypoint", ex.what(), e); }
+    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetPacified", ex.what(), e); }
     return false;
 }
 
-static irr::core::vector3df AS_NPC_CurrentWaypointPos(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        const std::string& wpName = entity.getComponent<NPCComponent>().current_waypoint;
-        if (wpName.empty()) return irr::core::vector3df(0.0f, 0.0f, 0.0f);
-        auto& wp = WorldManager::Get()->managerSystem()->getEntityByName(wpName);
-        if (!wp.isValid() || !wp.hasComponent<TransformComponent>())
-            return irr::core::vector3df(0.0f, 0.0f, 0.0f);
-        return wp.getComponent<TransformComponent>().getPosition();
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_CurrentWaypointPos", ex.what(), e); }
-    return irr::core::vector3df(0.0f, 0.0f, 0.0f);
-}
-
-// Reads DataComponent of the current waypoint entity and advances current_waypoint to the next in the chain.
-// Clears navPath so the script picks up a fresh path to the new target.
-static void AS_NPC_AdvanceWaypoint(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        auto& npc = entity.getComponent<NPCComponent>();
-        if (npc.current_waypoint.empty()) return;
-        auto& wp = WorldManager::Get()->managerSystem()->getEntityByName(npc.current_waypoint);
-        if (!wp.isValid() || !wp.hasComponent<DataComponent>()) {
-            npc.current_waypoint.clear();
-            return;
-        }
-        const auto& data = wp.getComponent<DataComponent>().data;
-        npc.current_waypoint = data.empty() ? std::string() : data.back();
-        npc.navPath.clear();
-        npc.navPathIndex = 0;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_AdvanceWaypoint", ex.what(), e); }
-}
-
-static float AS_NPC_GetMoveSpeedScale(entityid e)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        return entity.getComponent<NPCComponent>().moveSpeedScale;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_GetMoveSpeedScale", ex.what(), e); }
-    return 1.0f;
-}
-
-static void AS_NPC_SetMoveSpeedScale(entityid e, float scale)
-{
-    try {
-        auto& entity = WorldManager::Get()->managerSystem()->getEntityByID(e);
-        if (!entity.isValid()) throw ex_ent_invalid_name;
-        if (!entity.hasComponent<NPCComponent>()) throw ex_ent_invalid_comp;
-        entity.getComponent<NPCComponent>().moveSpeedScale = scale;
-    }
-    catch (std::exception& ex) { spdlog::error("{} entity:{} Function: AS_NPC_SetMoveSpeedScale", ex.what(), e); }
-}
-
-// NPC state enum constants (match NPC_AI_STATE order)
-static const int NPC_STATE_INACTIVE = 0;
-static const int NPC_STATE_IDLE     = 1;
-static const int NPC_STATE_PATROL   = 2;
-static const int NPC_STATE_ALERT    = 3;
-static const int NPC_STATE_ATTACK   = 4;
-static const int NPC_STATE_CHASE    = 5;
-static const int NPC_STATE_FLEE     = 6;
-static const int NPC_STATE_DEAD     = 7;
+// Faction constants (match the FACTION enum order, which is APPEND-ONLY --
+// see NPCComponent.h).
+static const int NPC_FACTION_NEUTRAL  = 0;
+static const int NPC_FACTION_PLAYER   = 1;
+static const int NPC_FACTION_UNDEAD   = 2;
+static const int NPC_FACTION_CULT     = 3;
+static const int NPC_FACTION_CIVILIAN = 4;
 
 void ScriptBindings::RegisterGame(asIScriptEngine* engine)
 {
@@ -1541,51 +1205,20 @@ void ScriptBindings::RegisterGame(asIScriptEngine* engine)
 	{
 		engine->RegisterGlobalFunction("bool alive(int entityId)",                        asFUNCTION(AS_NPC_GetAlive),           asCALL_CDECL);
 		engine->RegisterGlobalFunction("void alive(int entityId, bool alive)",          asFUNCTION(AS_NPC_SetAlive),           asCALL_CDECL);
-		engine->RegisterGlobalFunction("float visionRange(int entityId)",               asFUNCTION(AS_NPC_GetVisionRange),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("void visionRange(int entityId, float range)",   asFUNCTION(AS_NPC_SetVisionRange),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("float chaseRange(int entityId)",                asFUNCTION(AS_NPC_GetChaseRange),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("void chaseRange(int entityId, float range)",    asFUNCTION(AS_NPC_SetChaseRange),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("float attackRange(int entityId)",               asFUNCTION(AS_NPC_GetAttackRange),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("void attackRange(int entityId, float range)",   asFUNCTION(AS_NPC_SetAttackRange),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("float attackDelay(int entityId)",               asFUNCTION(AS_NPC_GetAttackDelay),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("void attackDelay(int entityId, float ms)",      asFUNCTION(AS_NPC_SetAttackDelay),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("string name(int entityId)",                     asFUNCTION(AS_NPC_GetName),            asCALL_CDECL);
-		engine->RegisterGlobalFunction("void name(int entityId, string name)",          asFUNCTION(AS_NPC_SetName),            asCALL_CDECL);
-		engine->RegisterGlobalFunction("int state(int entityId)",                       asFUNCTION(AS_NPC_GetState),           asCALL_CDECL);
-		engine->RegisterGlobalFunction("void state(int entityId, int state)",           asFUNCTION(AS_NPC_SetState),           asCALL_CDECL);
-		engine->RegisterGlobalFunction("int disposition(int entityId)",                 asFUNCTION(AS_NPC_GetDisposition),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("void disposition(int entityId, int disposition)",asFUNCTION(AS_NPC_SetDisposition),    asCALL_CDECL);
-		engine->RegisterGlobalFunction("string startWaypoint(int entityId)",            asFUNCTION(AS_NPC_GetStartWaypoint),   asCALL_CDECL);
-		engine->RegisterGlobalFunction("void startWaypoint(int entityId, string name)", asFUNCTION(AS_NPC_SetStartWaypoint),   asCALL_CDECL);
-		engine->RegisterGlobalFunction("string currentWaypoint(int entityId)",          asFUNCTION(AS_NPC_GetCurrentWaypoint), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void currentWaypoint(int entityId, string name)",asFUNCTION(AS_NPC_SetCurrentWaypoint),asCALL_CDECL);
+		engine->RegisterGlobalFunction("string displayName(int entityId)",              asFUNCTION(AS_NPC_GetDisplayName),     asCALL_CDECL);
+		engine->RegisterGlobalFunction("void displayName(int entityId, string name)",   asFUNCTION(AS_NPC_SetDisplayName),     asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("bool scriptControlled(int entityId)",                    asFUNCTION(AS_NPC_GetScriptControlled), asCALL_CDECL);
-		engine->RegisterGlobalFunction("void scriptControlled(int entityId, bool controlled)",   asFUNCTION(AS_NPC_SetScriptControlled), asCALL_CDECL);
-		engine->RegisterGlobalFunction("vector3d moveTarget(int entityId)",                      asFUNCTION(AS_NPC_GetMoveTarget),       asCALL_CDECL);
-		engine->RegisterGlobalFunction("void moveTarget(int entityId, vector3d pos)",            asFUNCTION(AS_NPC_SetMoveTarget),       asCALL_CDECL);
-		engine->RegisterGlobalFunction("void stopMovement(int entityId)",                        asFUNCTION(AS_NPC_StopMovement),        asCALL_CDECL);
-		engine->RegisterGlobalFunction("void findPath(int entityId, vector3d destination)",      asFUNCTION(AS_NPC_FindPath),            asCALL_CDECL);
-		engine->RegisterGlobalFunction("int navPathSize(int entityId)",                          asFUNCTION(AS_NPC_GetNavPathSize),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("int navPathIndex(int entityId)",                         asFUNCTION(AS_NPC_GetNavPathIndex),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("vector3d navWaypoint(int entityId, int index)",          asFUNCTION(AS_NPC_GetNavWaypoint),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("void advanceNavPath(int entityId)",                      asFUNCTION(AS_NPC_AdvanceNavPath),      asCALL_CDECL);
-		engine->RegisterGlobalFunction("void clearNavPath(int entityId)",                        asFUNCTION(AS_NPC_ClearNavPath),        asCALL_CDECL);
+		engine->RegisterGlobalFunction("int faction(int entityId)",                     asFUNCTION(AS_NPC_GetFaction),         asCALL_CDECL);
+		engine->RegisterGlobalFunction("void faction(int entityId, int faction)",       asFUNCTION(AS_NPC_SetFaction),         asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool isHostile(int attackerId, int targetId)",  asFUNCTION(AS_NPC_IsHostile),          asCALL_CDECL);
+		engine->RegisterGlobalFunction("bool pacified(int entityId)",                   asFUNCTION(AS_NPC_GetPacified),        asCALL_CDECL);
+		engine->RegisterGlobalFunction("void pacified(int entityId, bool pacified)",    asFUNCTION(AS_NPC_SetPacified),        asCALL_CDECL);
 
-		engine->RegisterGlobalFunction("bool hasWaypoint(int entityId)",                         asFUNCTION(AS_NPC_HasWaypoint),         asCALL_CDECL);
-		engine->RegisterGlobalFunction("vector3d currentWaypointPos(int entityId)",              asFUNCTION(AS_NPC_CurrentWaypointPos),  asCALL_CDECL);
-		engine->RegisterGlobalFunction("void advanceWaypoint(int entityId)",                     asFUNCTION(AS_NPC_AdvanceWaypoint),     asCALL_CDECL);
-		engine->RegisterGlobalFunction("float moveSpeedScale(int entityId)",                     asFUNCTION(AS_NPC_GetMoveSpeedScale),   asCALL_CDECL);
-		engine->RegisterGlobalFunction("void moveSpeedScale(int entityId, float scale)",         asFUNCTION(AS_NPC_SetMoveSpeedScale),   asCALL_CDECL);
-
-		engine->RegisterGlobalProperty("const int STATE_INACTIVE", const_cast<int*>(&NPC_STATE_INACTIVE));
-		engine->RegisterGlobalProperty("const int STATE_IDLE",     const_cast<int*>(&NPC_STATE_IDLE));
-		engine->RegisterGlobalProperty("const int STATE_PATROL",   const_cast<int*>(&NPC_STATE_PATROL));
-		engine->RegisterGlobalProperty("const int STATE_ALERT",    const_cast<int*>(&NPC_STATE_ALERT));
-		engine->RegisterGlobalProperty("const int STATE_ATTACK",   const_cast<int*>(&NPC_STATE_ATTACK));
-		engine->RegisterGlobalProperty("const int STATE_CHASE",    const_cast<int*>(&NPC_STATE_CHASE));
-		engine->RegisterGlobalProperty("const int STATE_FLEE",     const_cast<int*>(&NPC_STATE_FLEE));
-		engine->RegisterGlobalProperty("const int STATE_DEAD",     const_cast<int*>(&NPC_STATE_DEAD));
+		engine->RegisterGlobalProperty("const int FACTION_NEUTRAL",  const_cast<int*>(&NPC_FACTION_NEUTRAL));
+		engine->RegisterGlobalProperty("const int FACTION_PLAYER",   const_cast<int*>(&NPC_FACTION_PLAYER));
+		engine->RegisterGlobalProperty("const int FACTION_UNDEAD",   const_cast<int*>(&NPC_FACTION_UNDEAD));
+		engine->RegisterGlobalProperty("const int FACTION_CULT",     const_cast<int*>(&NPC_FACTION_CULT));
+		engine->RegisterGlobalProperty("const int FACTION_CIVILIAN", const_cast<int*>(&NPC_FACTION_CIVILIAN));
 	}
 
 	engine->SetDefaultNamespace("");

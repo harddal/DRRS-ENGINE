@@ -187,13 +187,15 @@ void EditorInterface::draw_window_entity_debug_info()
 				{
 					ImGui::Text("No Data Present");
 				}
-				if (entity.hasComponent<PrefabComponent>() && ImGui::CollapsingHeader("Prefab"))
-				{
-					ImGui::Text("No Data Present");
-				}
 				if (entity.hasComponent<NPCComponent>() && ImGui::CollapsingHeader("NPC"))
 				{
-					ImGui::Text("No Data Present");
+					auto& npc = entity.getComponent<NPCComponent>();
+					ImGui::Text("Display Name: %s", npc.displayName.c_str());
+					// factionOf(), not npc.faction — it is the resolver that
+					// applies the pacified override and the range clamp, so this
+					// shows what the hostility table will actually be indexed with.
+					ImGui::Text("Faction: %s", factionName(factionOf(entity)));
+					ImGui::Text("Pacified: %s", npc.pacified ? "yes" : "no");
 				}
 				if (entity.hasComponent<AutoKillComponent>() && ImGui::CollapsingHeader("Auto Kill"))
 				{

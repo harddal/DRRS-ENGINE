@@ -73,9 +73,21 @@ void GameState::serializeComponent(anax::Entity& entity, cereal::XMLOutputArchiv
 		archive.finishNode();
 	}
 
+	// "npcinfo", not "npc". NPCComponent used to carry an AI pipeline's worth of
+	// fields under <npc>; it is now three. The node was RENAMED rather than
+	// reused so that stale <npc> blocks in old scenes are never entered:
+	// deserializeEntity pre-scans which node names an entity actually has and
+	// only calls startNode for names a load() asks for, so an unclaimed node is
+	// simply skipped by finishNode.
+	//
+	// Reusing "npc" would be the DANGEROUS option -- the loader would enter a
+	// stale <npc>, archive(CEREAL_NVP(displayName)) would find no such child,
+	// cereal would throw from between startNode/finishNode, the archive's node
+	// stack would unbalance, and every entity AFTER that one in the file would
+	// be corrupted.
 	if (entity.hasComponent<NPCComponent>())
 	{
-		archive.setNextName("npc");
+		archive.setNextName("npcinfo");
 		archive.startNode();
 		archive(entity.getComponent<NPCComponent>());
 		archive.finishNode();
@@ -163,7 +175,7 @@ void GameState::deserializeComponent(anax::Entity& entity, cereal::XMLInputArchi
 		archive(entity.getComponent<MarkerComponent>());
 	});
 
-	load("npc", [&]() {
+	load("npcinfo", [&]() {
 		entity.addComponent<NPCComponent>();
 		archive(entity.getComponent<NPCComponent>());
 	});

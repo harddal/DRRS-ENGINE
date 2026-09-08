@@ -20,7 +20,6 @@
 
 extern unsigned int g_currentEntity;
 extern unsigned int g_currentMesh;
-extern unsigned int g_currentPrefab;
 extern std::string g_currentScene;
 extern std::string g_currentSelectedTexture;  // full "content/texture/....ext" path chosen in the texture browser, or "null"
 extern std::string g_textureBrowserRequestID; // identifies which call site is awaiting a browser result, "" when none pending
