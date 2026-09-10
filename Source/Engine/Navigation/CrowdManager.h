@@ -107,6 +107,25 @@ public:
     bool isEnabled() const { return m_enabled; }
     void setEnabled(bool enabled);
 
+    // Console bypass (ai_topo). DT_CROWD_OPTIMIZE_TOPO on every agent, applied
+    // live -- no re-registration needed.
+    //
+    // DEFAULTS OFF, and that is a considered choice rather than the feature
+    // being unfinished. dtPathCorridor::optimizePathTopology runs a SLICED
+    // find-path with a hard MAX_ITER of 32 and then calls
+    // finalizeSlicedFindPathPartial -- so when the budget cannot reach the
+    // goal, it splices a PARTIAL result into the front of the corridor, every
+    // half second, forever. In open space 32 iterations is plenty and the
+    // re-plan is exactly what you want against a moving player. In a maze it is
+    // nowhere near enough, and the corridor churns: the agent visibly changes
+    // its mind and doubles back.
+    //
+    // Turn it on to get the "double back around a pillar and it re-routes the
+    // short way" behaviour it was added for; leave it off anywhere the corridor
+    // is long and branchy.
+    bool optimizeTopology() const { return m_optimizeTopo; }
+    void setOptimizeTopology(bool enabled);
+
     bool isReady() const { return m_crowd != nullptr; }
     uint32_t generation() const { return m_generation; }
     int  agentCount() const { return m_agentCount; }
@@ -168,5 +187,6 @@ private:
     uint32_t            m_generation = 1;
     int                 m_agentCount = 0;
     bool                m_enabled    = true;
+    bool                m_optimizeTopo = false;
     std::vector<Record> m_records;
 };

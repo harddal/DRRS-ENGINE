@@ -38,6 +38,33 @@ namespace
     // than after it is already inside.
     const float k_wallProbeDist = 1.5f;
 
+    // --- Ground probe -------------------------------------------------------
+    //
+    // Starts ABOVE the feet so a body that has sunk slightly still finds the
+    // floor, and reaches well BELOW them so one that has been displaced upward
+    // can find its way back down.
+    //
+    // THE REACH USED TO BE 2.0 FROM 1.0 UP -- one unit of downward travel --
+    // and that was a trap with no error and no way back. Anything that ended up
+    // more than a unit above the floor could no longer see it: the probe
+    // reported no hit, snapToGround wrote nothing, and the body hung there
+    // permanently. It is exactly what made corpses float once a player had
+    // walked over them, and it would have kept them floating even after the
+    // cause was fixed. 4.0 from 1.0 up clears a character's full height with
+    // room to spare.
+    const float k_groundProbeUp   = 1.0f;
+    const float k_groundProbeDist = 4.0f;
+
+    // Groups an NPC's world probes must never see.
+    //
+    // A CHARACTER IS NOT WORLD SURFACE. The player's controller capsule is
+    // tagged RHG_DYNAMIC so weapons hit it, which also put it in the path of
+    // every unfiltered probe in here: the downward one read the top of the
+    // capsule as ground and stood the NPC on the player's head, and the forward
+    // one read its side as a wall and had slideAlongWall refuse to close the
+    // last stride into melee range.
+    const irr::u32 k_probeExclude = RHG_CHARACTER;
+
     // --- Ground smoothing ---------------------------------------------------
 
     // Max rate the feet may be LIFTED, units/sec. An 0.2u stair tread takes
@@ -85,6 +112,14 @@ namespace
     // downhill or a speed buff from turning the cycle into a scribble.
     const float k_animRateMin = 0.35f;
     const float k_animRateMax = 1.25f;
+
+    // Below this fraction of nominal speed the body is not walking at all --
+    // it is pinned against a wall, or holding for the crowd. THE FLOOR ABOVE
+    // MUST FADE OUT HERE. A floor that applied all the way down to zero is what
+    // ran the legs under a stationary body; a floor that simply did not apply
+    // would freeze them mid-stride instead, which is no better. So the rate
+    // ramps 0 -> k_animRateMin across this band and the two meet continuously.
+    const float k_animStopFrac = 0.05f;
 
     // Ramp a speed down toward zero at 'decel'.
     //
@@ -368,8 +403,9 @@ void CharacterBehavior::snapToGround(TransformComponent& tc, float dt)
     const vector3df p = tc.getPosition();
 
     auto ray = PhysicsManager::Get()->raycast(
-        p + vector3df(0.0f, 1.0f, 0.0f),
-        vector3df(0.0f, -1.0f, 0.0f), 2.0f);
+        p + vector3df(0.0f, k_groundProbeUp, 0.0f),
+        vector3df(0.0f, -1.0f, 0.0f), k_groundProbeDist,
+        RHG_ANY_HIT, k_probeExclude);
 
     if (!ray.hit) return;
 
@@ -424,6 +460,23 @@ void CharacterBehavior::faceTowards(TransformComponent& tc, const vector3df& dir
     tc.setRotation(vector3df(0.0f, m_heading + m_yawOffset, 0.0f));
 }
 
+void CharacterBehavior::applyAnimSpeed(anax::Entity& e, float achieved, float nominal)
+{
+    if (nominal <= 0.001f) return;
+    if (!e.hasComponent<MeshComponent>()) return;
+
+    MeshComponent& mc = e.getComponent<MeshComponent>();
+    if (!mc.node) return;
+
+    const float frac = achieved / nominal;
+
+    const float rate = (frac <= k_animStopFrac)
+        ? frac * (k_animRateMin / k_animStopFrac)          // fades 0 -> floor
+        : std::max(k_animRateMin, std::min(k_animRateMax, frac));
+
+    mc.node->setAnimationSpeed(static_cast<irr::f32>(mc.fps) * rate);
+}
+
 void CharacterBehavior::resetMovement()
 {
     m_path.clear();
@@ -453,6 +506,7 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
         if (goalDist <= m_arrivalRadius)
         {
             brake(m_currentSpeed, m_decel, dt);
+            applyAnimSpeed(e, 0.0f, speed);
             return false;
         }
 
@@ -473,6 +527,7 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
             if (len <= 0.001f)
             {
                 brake(m_currentSpeed, m_decel, dt);
+                applyAnimSpeed(e, 0.0f, speed);
                 return false;
             }
 
@@ -549,6 +604,7 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
         if (m_pathIndex >= static_cast<int>(m_path.size()))
         {
             brake(m_currentSpeed, m_decel, dt);
+            applyAnimSpeed(e, 0.0f, speed);
             return false;
         }
 
@@ -558,6 +614,7 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
         if (wpDistXZ <= 0.01f)
         {
             brake(m_currentSpeed, m_decel, dt);
+            applyAnimSpeed(e, 0.0f, speed);
             return false;
         }
 
@@ -656,10 +713,20 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
     const float speedScale = std::max(0.25f, std::cos(errorRad));
 
     // --- Ramp toward the wanted speed rather than assuming it ----------------
-    // Applied to the WANTED speed, not to the position, so every term above
-    // (the facing falloff, the crowd's own slowdown) still means what it did --
-    // they just take a few frames to arrive now instead of a single one.
-    const float wanted = speed * speedScale * m_crowdSpeedFrac;
+    //
+    // THE FACING FALLOFF IS DELIBERATELY NOT IN HERE. It used to be, and that
+    // was wrong: speedScale is a STEERING term, not a locomotion one. Ramping
+    // it made a corner cost the hard brake down to the falloff AND the slow
+    // climb back out of it, on top of the turn the falloff already represents.
+    // At m_moveSpeed 3 a 90-degree corner cost roughly 0.4s of that, every
+    // corner -- which in a maze is continuous, and is what "they slow down a
+    // lot when they turn" actually was.
+    //
+    // So the ramp governs the LOCOMOTION target only (start, stop, and the
+    // crowd's own arrival/avoidance easing, which is already smooth), and the
+    // falloff multiplies in afterwards where it responds instantly in both
+    // directions exactly as it did before any of this.
+    const float wanted = speed * m_crowdSpeedFrac;
 
     {
         const float rate = (wanted > m_currentSpeed) ? m_accel : m_decel;
@@ -669,11 +736,14 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
         else                         m_currentSpeed = std::max(wanted, m_currentSpeed - step);
     }
 
-    vector3df newPos = myPos + forward * m_currentSpeed * (dt * 0.001f);
+    const float applied = m_currentSpeed * speedScale;
+
+    vector3df newPos = myPos + forward * applied * (dt * 0.001f);
 
     auto gndRay = PhysicsManager::Get()->raycast(
-        newPos + vector3df(0.0f, 1.0f, 0.0f),
-        vector3df(0.0f, -1.0f, 0.0f), 2.0f);
+        newPos + vector3df(0.0f, k_groundProbeUp, 0.0f),
+        vector3df(0.0f, -1.0f, 0.0f), k_groundProbeDist,
+        RHG_ANY_HIT, k_probeExclude);
 
     // Rate-limited up, snapped on a real drop. A hard write here popped the
     // whole body tread by tread up a staircase; see smoothGroundY. snapToGround
@@ -686,8 +756,14 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
     // --- Foot speed ----------------------------------------------------------
     // playAnim sets the playback rate ONCE, at clip change, and the body's
     // actual ground speed then varies underneath it -- worst on a hard corner,
-    // where the cos(facingError) scale above costs up to 75% of the speed and
-    // the eye is drawn straight to the feet.
+    // where the cos(facingError) scale costs up to 75% of the speed and the eye
+    // is drawn straight to the feet.
+    //
+    // MEASURED FROM THE REAL DISPLACEMENT, not from m_currentSpeed. Those two
+    // diverge whenever slideAlongWall shortens 'forward' -- which is constantly,
+    // in any corridor -- and reading the intended speed instead of the achieved
+    // one ran the legs at full rate under a body pinned motionless against a
+    // wall. XZ only: the ground pin's vertical component is not locomotion.
     //
     // This must run AFTER any playAnim() in the same frame, which is how both
     // NPCs are written: the clip change happens in the state transition, the
@@ -696,16 +772,10 @@ bool CharacterBehavior::followPath(anax::Entity& e, const vector3df& goal, float
     //
     // Unrelated to ITimer::setSpeed -- that is the global virtual-timer time
     // scale, and it composes with this multiplicatively, which is correct.
-    if (speed > 0.001f && e.hasComponent<MeshComponent>())
-    {
-        MeshComponent& mc = e.getComponent<MeshComponent>();
-        if (mc.node)
-        {
-            const float rate = std::max(k_animRateMin,
-                               std::min(k_animRateMax, m_currentSpeed / speed));
-            mc.node->setAnimationSpeed(static_cast<irr::f32>(mc.fps) * rate);
-        }
-    }
+    const float movedXZ = std::sqrtf((newPos.X - myPos.X) * (newPos.X - myPos.X) +
+                                     (newPos.Z - myPos.Z) * (newPos.Z - myPos.Z));
+
+    applyAnimSpeed(e, movedXZ / (dt * 0.001f), speed);
 
     return true;
 }
@@ -803,7 +873,10 @@ float CharacterBehavior::stepUp(const vector3df& pos, const vector3df& dir)
 {
     const vector3df origin = pos + vector3df(0.0f, 1.5f, 0.0f) + dir * 0.7f;
 
-    auto ray = PhysicsManager::Get()->raycast(origin, vector3df(0.0f, -1.0f, 0.0f), 1.6f);
+    // Uncalled today, but fixed alongside the live probes rather than left as a
+    // trap for whoever wires it up.
+    auto ray = PhysicsManager::Get()->raycast(origin, vector3df(0.0f, -1.0f, 0.0f), 1.6f,
+                                              RHG_ANY_HIT, k_probeExclude);
     if (!ray.hit) return 0.0f;
 
     const float heightDiff = ray.data.getAnyHit(0).position.y - pos.Y;
@@ -818,7 +891,12 @@ float CharacterBehavior::stepUp(const vector3df& pos, const vector3df& dir)
 
 vector3df CharacterBehavior::slideAlongWall(const vector3df& pos, vector3df dir)
 {
-    auto ray = PhysicsManager::Get()->raycast(pos + vector3df(0.0f, 0.5f, 0.0f), dir, k_wallProbeDist);
+    // Characters excluded: the player is not a wall. Un-excluded, the probe hit
+    // the player's capsule from 1.5 units out -- further than the zombie's 1.25
+    // attack range -- and the head-on collapse below then stopped it dead just
+    // outside the range it needed to reach to bite.
+    auto ray = PhysicsManager::Get()->raycast(pos + vector3df(0.0f, 0.5f, 0.0f), dir,
+                                              k_wallProbeDist, RHG_ANY_HIT, k_probeExclude);
     if (!ray.hit) return dir;
 
     const auto pn = ray.data.getAnyHit(0).normal;
@@ -848,7 +926,8 @@ vector3df CharacterBehavior::slideAlongWall(const vector3df& pos, vector3df dir)
 bool CharacterBehavior::hasGroundAhead(const vector3df& pos, const vector3df& dir, float dist)
 {
     const vector3df probe = pos + dir * dist + vector3df(0.0f, 2.0f, 0.0f);
-    return PhysicsManager::Get()->raycast(probe, vector3df(0.0f, -1.0f, 0.0f), 4.0f).hit;
+    return PhysicsManager::Get()->raycast(probe, vector3df(0.0f, -1.0f, 0.0f), 4.0f,
+                                          RHG_ANY_HIT, k_probeExclude).hit;
 }
 
 // ---------------------------------------------------------------------------

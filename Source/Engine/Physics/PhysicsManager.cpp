@@ -20,6 +20,35 @@ using namespace physx;
 // always preferable to a step large enough to tunnel actors out of the world.
 static const float PHYSX_MAX_ELAPSED_SECONDS = 1.0f / 15.0f;
 
+namespace
+{
+	// Rejects any shape carrying a bit in 'exclude'. See the header for why an
+	// include mask cannot do this job.
+	//
+	// eBLOCK for everything else, NOT eTOUCH: these are blocking single-hit
+	// queries and eTOUCH would have the buffer discard the hit for want of a
+	// touch array.
+	struct ExcludeGroupFilter : public PxQueryFilterCallback
+	{
+		PxU32 exclude = 0;
+
+		PxQueryHitType::Enum preFilter(const PxFilterData& /*queryData*/, const PxShape* shape,
+		                               const PxRigidActor* /*actor*/, PxHitFlags& /*flags*/) override
+		{
+			if (shape && (shape->getQueryFilterData().word0 & exclude))
+				return PxQueryHitType::eNONE;
+
+			return PxQueryHitType::eBLOCK;
+		}
+
+		PxQueryHitType::Enum postFilter(const PxFilterData& /*queryData*/,
+		                                const PxQueryHit& /*hit*/) override
+		{
+			return PxQueryHitType::eBLOCK;
+		}
+	};
+}
+
 PhysicsManager* PhysicsManager::s_Instance = nullptr;
 
 PhysicsManager::PhysicsManager() :
@@ -679,7 +708,7 @@ void PhysicsManager::cookConvexMeshFromMemory(irr::scene::IMesh* trimesh, PxRigi
 }
 
 
-RaycastData PhysicsManager::raycast(irr::core::vector3df origin, irr::core::vector3df direction, double maxDistance, int group)
+RaycastData PhysicsManager::raycast(irr::core::vector3df origin, irr::core::vector3df direction, double maxDistance, int group, PxU32 excludeGroups)
 {
     RaycastData raycastData;
 
@@ -722,10 +751,24 @@ RaycastData PhysicsManager::raycast(irr::core::vector3df origin, irr::core::vect
 		break;
 	}*/
 	
+	// Opt-in, because it costs a virtual call per candidate shape. PhysX runs
+	// the AND equation above FIRST and this callback IN ADDITION to it
+	// (NpSceneQueries.cpp:163-170), so nothing the mask already excluded can
+	// come back through here.
+	ExcludeGroupFilter excludeFilter;
+	PxQueryFilterCallback* filterCall = nullptr;
+
+	if (excludeGroups != 0)
+	{
+		excludeFilter.exclude = excludeGroups;
+		filterData.flags |= PxQueryFlag::ePREFILTER;
+		filterCall = &excludeFilter;
+	}
+
     raycastData.hit = m_scene->raycast(
         PxVec3(origin.X, origin.Y, origin.Z),
         PxVec3(direction.X, direction.Y, direction.Z),
-        PxReal(maxDistance), raycastData.data, outputFlags, filterData);
+        PxReal(maxDistance), raycastData.data, outputFlags, filterData, filterCall);
 
     return raycastData;
 }
@@ -737,6 +780,12 @@ PxController* PhysicsManager::createCCT(PxCapsuleControllerDesc desc)
 	// Tag the capsule like every other dynamic actor so raycasts masked to
 	// RHG_STATIC | RHG_DYNAMIC still hit it (its query filter data would
 	// otherwise be all zeros and get skipped).
+	//
+	// RHG_CHARACTER is carried ALONGSIDE RHG_DYNAMIC and never instead of it.
+	// Dropping RHG_DYNAMIC here would silently stop every weapon, damage trace
+	// and script probe in the game from hitting the player -- the AND equation
+	// would no longer match. The extra bit is only ever read by callers that
+	// pass it as an EXCLUSION, so adding it cannot change any existing query.
 	if (controller && controller->getActor())
 	{
 		PxShape* shape = nullptr;
@@ -744,7 +793,7 @@ PxController* PhysicsManager::createCCT(PxCapsuleControllerDesc desc)
 			controller->getActor()->getShapes(&shape, 1) == 1 && shape)
 		{
 			PxFilterData filterData;
-			filterData.word0 = RHG_DYNAMIC;
+			filterData.word0 = RHG_DYNAMIC | RHG_CHARACTER;
 			shape->setQueryFilterData(filterData);
 		}
 	}

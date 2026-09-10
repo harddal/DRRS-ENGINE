@@ -50,6 +50,17 @@ enum RAYCAST_HIT_GROUP
 	RHG_CLIP_PLAYER  = 64,
 	RHG_CLIP_MONSTER = 128,
 	RHG_CLIP_WEAPON  = 256,
+
+	// A living body, as opposed to world surface. Carried ALONGSIDE RHG_DYNAMIC
+	// (not instead of it) by the player's character-controller capsule, so every
+	// existing query masked to RHG_STATIC|RHG_DYNAMIC -- weapons, damage traces,
+	// the whole lot -- still hits the player exactly as before.
+	//
+	// It exists to be EXCLUDED. A character is not floor and is not wall, and an
+	// NPC probing for either must not find one: an unfiltered downward probe
+	// treats the player's capsule as ground and stands the NPC on the player's
+	// head. See PhysicsManager::raycast's excludeGroups parameter.
+	RHG_CHARACTER    = 512,
 };
 
 struct RaycastData
@@ -113,7 +124,22 @@ public:
     void cookStaticTriangleMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidStatic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1), physx::PxU32 queryFilterWord0 = RHG_STATIC);
     void cookConvexMeshFromMemory(irr::scene::IMesh* mesh, physx::PxRigidStatic*& actor, physx::PxVec3 pos = physx::PxVec3(0, 0, 0), physx::PxQuat rot = physx::PxQuat(0, physx::PxVec3(0, 1, 0)), physx::PxVec3 scale = physx::PxVec3(1, 1, 1));
 
-    RaycastData raycast(irr::core::vector3df origin, irr::core::vector3df direction, double maxDistance, int group = RHG_ANY_HIT);
+    // 'excludeGroups' is a bitmask of RAYCAST_HIT_GROUP values to SKIP, and it
+    // is not expressible as an include mask -- which is why it exists.
+    //
+    // PhysX's built-in query filter (NpQueryShared.h: applyFilterEquation) is a
+    // bitwise AND: a shape is kept when queryWord0 & shapeWord0 is non-zero. It
+    // can say "hit these groups"; it can never say "hit these EXCEPT". The
+    // player's capsule must stay tagged RHG_DYNAMIC so weapons keep hitting it,
+    // so no include mask can drop it from an NPC's ground probe. This installs
+    // a PxQueryFlag::ePREFILTER callback instead, which PhysX runs IN ADDITION
+    // to the AND equation, never in place of it -- so the structural-group mask
+    // and the clip-brush exclusion below are both still in force.
+    //
+    // Costs a virtual call per candidate shape, so pass 0 (the default) unless
+    // you actually need it.
+    RaycastData raycast(irr::core::vector3df origin, irr::core::vector3df direction, double maxDistance,
+                        int group = RHG_ANY_HIT, physx::PxU32 excludeGroups = 0);
 
     physx::PxMaterial* getDefaultMaterial() const { return m_material; }
 

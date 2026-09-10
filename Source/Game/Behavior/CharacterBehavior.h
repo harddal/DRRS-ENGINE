@@ -190,6 +190,20 @@ protected:
     // m_heading in sync so a following followPath() does not spin back.
     void faceTowards(TransformComponent& tc, const irr::core::vector3df& dir);
 
+    // Scale the current clip's playback by how fast the body ACTUALLY moved.
+    //
+    // 'achieved' must be measured from the real displacement, NOT from the
+    // speed the ramp wanted. Those two are not the same number: slideAlongWall
+    // shortens the movement vector without touching m_currentSpeed, so an NPC
+    // pressed against a wall wants full speed, goes nowhere, and -- when this
+    // read m_currentSpeed -- ran its legs at full rate on the spot. That is the
+    // "walking in place" the maze test found.
+    //
+    // Called from followPath at every exit, including the early ones: a crowd
+    // "hold" that skipped this left the legs running at whatever rate they were
+    // last given.
+    void applyAnimSpeed(anax::Entity& e, float achieved, float nominal);
+
     // Drop the current route AND the accumulated momentum.
     //
     // CALL THIS INSTEAD OF A BARE m_path.clear() ON ANY STATE CHANGE. Since
@@ -338,7 +352,13 @@ protected:
     //
     // Braking harder than accelerating is deliberate: it is what keeps a
     // charging bomber from overshooting its own trigger radius.
-    float m_accel            = 8.0f;
+    //
+    // 8 -> 12 after the maze test. It is only half the fix -- see followPath,
+    // where the FACING FALLOFF was taken back out of the ramp. Ramping that
+    // term made every corner cost the brake AND the recovery on top of the turn
+    // itself, and in a maze that compounded into "they slow down a lot when
+    // they turn".
+    float m_accel            = 12.0f;
     float m_decel            = 16.0f;
 
     // The glTF importer mirrors Z (S = diag(1,1,-1,1), see GltfImport.cpp), so a

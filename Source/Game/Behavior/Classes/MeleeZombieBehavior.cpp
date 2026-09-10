@@ -30,6 +30,10 @@ namespace
     // clamps the walk cycle to, so the stagger reads as the same slowdown
     // rather than as a separate effect.
     const float k_staggerAnimRate = 0.35f;
+
+    // followPath must report no movement for this long before the clip is
+    // swapped to 'idle'. See m_stillTimer.
+    const float k_stillClipSwapMs = 250.0f;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +125,7 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
             m_state = State::CHASE;
             resetMovement();
             m_hasWanderGoal = false;
+            m_stillTimer    = 0.0f;
             m_repathTimer   = 99999.0f;
             playAnim(mc, "move");
         }
@@ -139,19 +144,6 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
             m_attackTimer = m_attackDelay; // allow immediate first bite
             resetMovement();
         }
-        else if (!hasFreshTarget() && timeSinceSeen() > m_searchDelay && hasLastKnown())
-        {
-            // Lost sight of it long enough to stop being a flicker. Go and look
-            // where it was. Checked BEFORE the give-up distance so that walking
-            // out of range behind cover reads as being hunted, not as being
-            // forgotten.
-            m_state        = State::SEARCH;
-            m_searchTimer  = 0.0f;
-            m_searchWalked = false;
-            resetMovement();
-            m_repathTimer  = 99999.0f;
-            playAnim(mc, "move");
-        }
         else if (dist > m_chaseRange * 2.0f)
         {
             m_state = State::IDLE;
@@ -167,16 +159,14 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
         // including mid-turn, which is the moment that reads best.
         if (hasFreshTarget())
         {
-            m_state = State::CHASE;
+            m_state      = State::CHASE;
+            m_stillTimer = 0.0f;
             resetMovement();
             m_repathTimer = 99999.0f;
             playAnim(mc, "move");
         }
-        else if (m_searchWalked && m_searchTimer >= m_searchLookTime)
+        else if (m_searchTimer >= m_searchLookTime)
         {
-            // m_searchWalked as well as the timer: m_searchTimer accumulates
-            // during the WALK leg too (as its timeout), so without this the
-            // search would give up before it ever arrived.
             m_state = State::IDLE;
             resetMovement();
             playAnim(mc, "idle");
@@ -188,7 +178,8 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
     {
         if (dist > m_attackRange * 1.25f)
         {
-            m_state = State::CHASE;
+            m_state      = State::CHASE;
+            m_stillTimer = 0.0f;
             resetMovement();
             m_repathTimer = 99999.0f;
             playAnim(mc, "move");
@@ -200,54 +191,57 @@ void MeleeZombieBehavior::update(anax::Entity& entity, float dt)
     {
         if (staggered) return;
 
-        // Where the squad wants this one -- the target itself if it holds an
+        // Pursue what it can actually SEE. With the sight line broken it heads
+        // for where the target was, not where the target is -- same commitment,
+        // no wallhack -- and snaps back the instant it sees it again.
+        //
+        // Losing sight does NOT change state. That is the whole lesson of the
+        // maze test: a corner must not interrupt a chase.
+        const bool      seen   = hasFreshTarget();
+        const vector3df pursue = (seen || !hasLastKnown()) ? targetPos : lastKnownPos();
+
+        // Where the squad wants this one -- the pursued point if it holds an
         // attack token, otherwise its slot on the ring. With Squad Mode set to
-        // 0 this hands back targetPos unchanged and the behaviour is exactly
+        // 0 this hands back 'pursue' unchanged and the behaviour is exactly
         // what it was before squads existed.
         //
         // The state machine deliberately keeps measuring 'dist' to the TARGET,
         // not to the goal: a zombie circling at the ring must still give up at
         // chase range and still transition to ATTACK when the target closes on
         // IT, neither of which is a fact about the slot.
-        const SquadOrder order = requestSquadOrder(entity, targetId, targetPos);
+        const SquadOrder order = requestSquadOrder(entity, targetId, pursue);
 
-        followPath(entity, order.goal, m_moveSpeed, dt);
+        const bool moved = followPath(entity, order.goal, m_moveSpeed, dt);
+
+        m_stillTimer = moved ? 0.0f : (m_stillTimer + dt);
+
+        // ARRIVED, and still cannot see it. Only now is the target really lost,
+        // and only now does it stop and look round. m_searchDelay is a floor on
+        // top of this so a momentary hold does not count as arriving.
+        if (!moved && !seen && hasLastKnown() && timeSinceSeen() > m_searchDelay)
+        {
+            m_state       = State::SEARCH;
+            m_searchTimer = 0.0f;
+            resetMovement();
+            playAnim(mc, "idle");
+            return;
+        }
+
+        // Holding a ring slot, or boxed in behind another zombie. Standing
+        // still with the walk cycle running IS the walking-in-place complaint,
+        // and no animation rate can fix it -- it is the wrong clip.
+        playAnim(mc, (m_stillTimer > k_stillClipSwapMs) ? "idle" : "move");
         return;
     }
 
-    // ---- SEARCH: walk to the last known position, then look round ----
+    // ---- SEARCH: stand on the last known position and look round ----
+    //
+    // No walking here at all. CHASE did the walking; this state is only reached
+    // by arriving. Re-acquiring at any point during it goes straight back to
+    // CHASE, which is handled in the transition block above.
     if (m_state == State::SEARCH)
     {
         if (staggered) return;
-
-        if (!m_searchWalked)
-        {
-            m_searchTimer += dt;
-
-            // followPath returns false on arrival AND on a route it cannot
-            // walk. Both mean the walk leg is over -- standing on an
-            // unreachable last-known position forever would be worse than
-            // having a look from wherever it got to.
-            //
-            // The timeout is there because followPath returning TRUE only means
-            // "it moved". An agent being nudged back and forth against a corner
-            // it cannot get past reports movement every frame and would never
-            // reach the look phase, or the give-up that follows it.
-            //
-            // NOTE it walks at full m_moveSpeed. A slower search gait would
-            // desynchronise the walk cycle, because followPath scales playback
-            // by m_currentSpeed / the speed it was PASSED -- a shamble would
-            // need its own clip, not a smaller number here.
-            if (m_searchTimer >= m_searchLookTime * 3.0f ||
-                !followPath(entity, lastKnownPos(), m_moveSpeed, dt))
-            {
-                m_searchWalked = true;
-                m_searchTimer  = 0.0f;
-                resetMovement();
-                playAnim(mc, "idle");
-            }
-            return;
-        }
 
         // Turn on the spot. m_heading is the base's own travel heading, so
         // writing it here (rather than the node rotation directly) keeps a

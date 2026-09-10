@@ -105,13 +105,19 @@ public:
     }
 
 private:
-    // SEARCH sits between CHASE and IDLE: the target is still remembered, but it
-    // has not been SEEN for m_searchDelay, so the zombie goes to where it last
-    // was and has a look round before losing interest.
+    // SEARCH is the LOOK-ROUND state, and nothing else. Walking to the last
+    // known position is CHASE's job -- CHASE simply pursues lastKnownPos()
+    // instead of the live position whenever it cannot see the target.
     //
-    // It is the payoff for the base class's LOS gating. Without it, breaking
-    // line of sight would just mean the zombie kept walking at your live
-    // position through a wall -- the perception work would be invisible.
+    // IT WAS NOT ALWAYS SPLIT THAT WAY, and the first version failed the maze
+    // test badly. Entering SEARCH on a TIMER meant that every corner -- which
+    // breaks line of sight for well over a second -- flipped the zombie out of
+    // CHASE and sent it BACK to a last-known point it had usually already
+    // walked past. It read as the zombie changing its mind and reversing.
+    //
+    // Now the transition is on ARRIVAL: keep pursuing the last known position,
+    // and only look round once you are actually standing on it and still cannot
+    // see anything. A corner costs nothing, because the pursuit never stopped.
     enum class State { IDLE, CHASE, SEARCH, ATTACK, DEAD };
 
     int   m_attackDamage      = 10;
@@ -121,9 +127,9 @@ private:
     float m_chaseRange        = 5.0f;
     float m_moveSpeed         = 3.0f;
 
-    // How long LOS must stay broken before CHASE becomes SEARCH. Short enough
-    // that ducking behind a crate is answered, long enough that a pillar you
-    // run past does not trigger it.
+    // How long LOS must stay broken before ARRIVING at the last known position
+    // counts as having lost the target. This is a floor on top of the arrival
+    // test, not a trigger on its own -- see the State comment.
     float m_searchDelay       = 1500.0f; // ms
 
     // Time spent turning on the spot at the last known position before giving
@@ -135,10 +141,17 @@ private:
     // for why a second call site would silently break the hit sounds.
     float m_staggerTime       = 350.0f;  // ms
 
-    // Idle wander. 0 disables it and the zombie stands still exactly as before.
+    // Idle wander. OFF BY DEFAULT (0), i.e. opt-in per .ent.
+    //
+    // It shipped on, and that was a mistake: combined with the old eager SEARCH
+    // it meant a zombie that lost you in a maze did not merely stop, it
+    // strolled away to a random point. Two separate features compounding into
+    // "they seem less intelligent". A wandering idle is a scene-dressing
+    // decision, so it belongs to whoever places the entity.
+    //
     // The destination comes from NavigationManager::randomPointNear, so it is
     // always somewhere actually reachable rather than through a wall.
-    float m_wanderRadius      = 6.0f;
+    float m_wanderRadius      = 0.0f;
     float m_wanderDelay       = 5000.0f; // ms between legs, jittered +/-50%
 
     // Lateral drift around the target between bites, as a fraction of the
@@ -151,7 +164,13 @@ private:
     float m_attackTimer  = 0.0f;
 
     float m_searchTimer  = 0.0f;   // ms spent looking round on arrival
-    bool  m_searchWalked = false;  // false until the walk leg has finished
+
+    // How long followPath has been reporting no movement. Debounced, because
+    // this picks the clip: a zombie holding a squad ring slot or boxed in
+    // behind another one must stand in 'idle' rather than run the walk cycle on
+    // the spot, and flipping clip every frame on a marginal reading would look
+    // far worse than either.
+    float m_stillTimer   = 0.0f;
 
     float m_staggerTimer = 0.0f;   // ms of flinch left
 

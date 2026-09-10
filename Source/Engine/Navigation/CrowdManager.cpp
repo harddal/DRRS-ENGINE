@@ -146,6 +146,35 @@ void CrowdManager::shutdown()
     spdlog::info("CrowdManager: released (generation now {})", m_generation);
 }
 
+void CrowdManager::setOptimizeTopology(bool enabled)
+{
+    if (m_optimizeTopo == enabled) return;
+    m_optimizeTopo = enabled;
+
+    if (!m_crowd) return;   // picked up by registerAgent when the crowd comes up
+
+    // Applied to the agents already registered. updateAgentParameters only
+    // copies the params block -- it does not reset the corridor -- so this is
+    // safe to flip mid-chase, which is the entire point of having it as a
+    // console command: you want to A/B it on the NPC currently misbehaving.
+    for (size_t i = 0; i < m_records.size(); ++i)
+    {
+        if (!m_records[i].used) continue;
+
+        dtCrowdAgent* ag = m_crowd->getEditableAgent(static_cast<int>(i));
+        if (!ag || !ag->active) continue;
+
+        dtCrowdAgentParams params = ag->params;
+        if (enabled) params.updateFlags |=  DT_CROWD_OPTIMIZE_TOPO;
+        else         params.updateFlags &= ~DT_CROWD_OPTIMIZE_TOPO;
+
+        m_crowd->updateAgentParameters(static_cast<int>(i), &params);
+    }
+
+    spdlog::info("CrowdManager: path topology optimisation {}",
+                 enabled ? "ON" : "OFF");
+}
+
 void CrowdManager::setEnabled(bool enabled)
 {
     if (m_enabled == enabled) return;
@@ -192,18 +221,15 @@ bool CrowdManager::registerAgent(const anax::Entity& entity, const CrowdAgentCon
     params.updateFlags          = DT_CROWD_ANTICIPATE_TURNS
                                 | DT_CROWD_OBSTACLE_AVOIDANCE
                                 | DT_CROWD_SEPARATION
-                                | DT_CROWD_OPTIMIZE_VIS
-                                | DT_CROWD_OPTIMIZE_TOPO;
+                                | DT_CROWD_OPTIMIZE_VIS;
+
     // OPTIMIZE_VIS raycast-shortcuts WITHIN the corridor the agent already
-    // holds. OPTIMIZE_TOPO re-plans the corridor TOPOLOGY as the goal moves,
-    // which is the whole situation here -- the goal is a live player.
-    //
-    // Without TOPO an agent commits to the corridor it got when it first
-    // acquired you, and doubling back around a pillar has it walk the original
-    // long way round until the goal has moved k_goalResubmitDist and forces a
-    // fresh requestMoveTarget. Cost is one bounded local A* per agent per tick
-    // (dtPathCorridor::optimizePathTopology), irrelevant at ~20 NPCs.
-    //
+    // holds, and is always on. OPTIMIZE_TOPO re-plans the corridor TOPOLOGY and
+    // is a runtime toggle (ai_topo) that defaults OFF -- see the header for the
+    // MAX_ITER=32 partial-finalize reasoning that put it behind a switch.
+    if (m_optimizeTopo)
+        params.updateFlags |= DT_CROWD_OPTIMIZE_TOPO;
+
     // dtCrowd::init fills all 8 avoidance presets identically; ensureInit()
     // above overwrites preset 0 with our own numbers.
     params.obstacleAvoidanceType = 0;

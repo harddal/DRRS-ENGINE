@@ -297,6 +297,22 @@ void GameConsole::registerBuiltins()
 		      ", ready: " + (CrowdManager::Get()->isReady() ? "yes" : "no") + ")");
 	});
 
+	registerCommand("ai_topo", "[0|1] dtCrowd path-TOPOLOGY re-planning; off by default (see CrowdManager.h)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!CrowdManager::Get())
+		{
+			printLine(kColError, "no CrowdManager");
+			return;
+		}
+
+		if (!args.empty())
+			CrowdManager::Get()->setOptimizeTopology(atoi(args[0].c_str()) != 0);
+
+		print(std::string("ai_topo: ") +
+		      (CrowdManager::Get()->optimizeTopology() ? "1" : "0"));
+	});
+
 	registerCommand("ai_tokens", "<n> override every squad's attack-token cap; -1 restores per-NPC values",
 		[this](const std::vector<std::string>& args, const std::string&)
 	{
