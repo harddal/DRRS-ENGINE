@@ -50,6 +50,7 @@ enum BrushContentFlags : irr::u32
     CONTENT_LADDER       = 1 << 6,  // player can climb while overlapping the volume
     CONTENT_FOG          = 1 << 7,  // overrides scene fog while the player is inside the volume
     CONTENT_HURT         = 1 << 8,  // damages the player continuously while inside the volume
+    CONTENT_NOAIR        = 1 << 9,  // no breathable air: the player's air drains while their EYE is inside
 
     CONTENT_CLIP_MASK = CONTENT_CLIP_PLAYER | CONTENT_CLIP_MONSTER | CONTENT_CLIP_WEAPON,
 };

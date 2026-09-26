@@ -1,5 +1,7 @@
 #include "Editor/EditorViewport.h"
 
+#include <IMGUI/imgui_internal.h>
+
 #include <SViewFrustum.h>
 #include <matrix4.h>
 
@@ -185,7 +187,29 @@ bool acceptsSceneInput(int idx)
 
     // An active item means a widget is being dragged (slider, splitter, text field);
     // scene tools must not also act on that drag.
-    return !ImGui::IsAnyItemActive();
+    //
+    // One active id is NOT a widget. Clicking empty space inside a window makes ImGui
+    // claim that window's MoveId for the whole press -- EndFrame() ->
+    // UpdateMouseMovingWindowEndFrame() -> StartMouseMovingWindow(), which calls
+    // SetActiveID(window->MoveId) unconditionally and only skips assigning
+    // g.MovingWindow for a NoMove window like this one. Pressing inside the 3D view
+    // therefore raised IsAnyItemActive() from the SECOND frame of every hold onward
+    // (the grab is taken at the end of the click frame), so every click-DRAG tool --
+    // vegetation painting, terrain/brush sculpting, brush creation, vertex and clip
+    // drags -- acted on the first frame only and had to be tapped repeatedly.
+    //
+    // SetActiveID() records the owning window in g.ActiveIdWindow, so the move grab is
+    // exactly "ActiveId is that window's MoveId". A real widget (splitter, slider) has
+    // its own id and still blocks; so does a docking tab drag, whose id is TabId.
+    //
+    // A press that began on ANOTHER window's empty space is rejected before this, by
+    // p.hovered: IsWindowHovered() only forgives an active id when it is the HOVERED
+    // window's own MoveId.
+    ImGuiContext* g = ImGui::GetCurrentContext();
+    if (!g || g->ActiveId == 0)
+        return true;
+
+    return g->ActiveIdWindow != nullptr && g->ActiveId == g->ActiveIdWindow->MoveId;
 }
 
 }

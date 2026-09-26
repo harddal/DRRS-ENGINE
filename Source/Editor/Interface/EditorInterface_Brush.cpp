@@ -64,6 +64,7 @@ namespace
         { "Ladder",       CONTENT_LADDER,       "content/texture/tool/ladder.png"      },
         { "Fog",          CONTENT_FOG,          "content/texture/tool/fog.png"         },
         { "Hurt",         CONTENT_HURT,         "content/texture/tool/damage.png"      },
+        { "No Air",       CONTENT_NOAIR,        "content/texture/tool/noair.png"       },
     };
 
     // One undo entry snapshotting every selected brush (whole-brush snapshots,
@@ -692,6 +693,8 @@ void EditorInterface::draw_window_brush_editor()
             "Invisible volume that overrides the scene fog while the player is inside,\ncross-fading back to the scene defaults on exit.\nSet the fog values in the Fog Zone section below.");
         presetButton(kToolPresets[7].label, kToolPresets[7].flags, kToolPresets[7].texture,
             "Invisible volume that damages the player while they stand in it.\nSet the rate in the Hurt Volume section below.");
+        ImGui::SameLine(); presetButton(kToolPresets[8].label, kToolPresets[8].flags, kToolPresets[8].texture,
+            "Invisible volume with no breathable air (gas, vacuum).\nThe player's air drains while their EYE is inside, then they start to drown.\nToggle the whole system with the 'breath' console command.");
 
         if (primary->isToolBrush())
             ImGui::TextDisabled("Tool brush: stripped from the game's render mesh");
@@ -715,6 +718,7 @@ void EditorInterface::draw_window_brush_editor()
             flagCheckbox("Ladder",       CONTENT_LADDER);
             flagCheckbox("Fog",          CONTENT_FOG);
             flagCheckbox("Hurt",         CONTENT_HURT);
+            flagCheckbox("No air",       CONTENT_NOAIR);
             ImGui::TreePop();
         }
 

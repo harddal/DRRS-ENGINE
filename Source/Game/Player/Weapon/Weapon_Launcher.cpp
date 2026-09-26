@@ -1,4 +1,5 @@
 #include "Weapon_Launcher.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -1020,7 +1021,7 @@ void Weapon_Launcher::updateProjectiles(float dt)
 			}
 			else
 			{
-				detonateAt(hitPoint, hitEntityID, hitNormal);
+				detonateAt(hitPoint, hitEntityID, hitNormal, WaterBallistics::projectileScale(*it));
 				shouldRemove = true;
 			}
 		}
@@ -1047,6 +1048,13 @@ void Weapon_Launcher::updateProjectiles(float dt)
 				transformComp.node->updateAbsolutePosition();
 			}
 		}
+
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
 
 		it->previousPosition = sweepOrigin;
 		it->lifetime += dt;
@@ -1081,11 +1089,11 @@ void Weapon_Launcher::updateProjectiles(float dt)
 }
 
 void Weapon_Launcher::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-	const irr::core::vector3df& surfaceNormal)
+	const irr::core::vector3df& surfaceNormal, float waterScale)
 {
 	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.06f);
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
-	applySplashDamage(pos, directHitID);
+	applySplashDamage(pos, directHitID, waterScale);
 
 	// The casing comes apart with it — a sphere of the same glowing shrapnel the
 	// alt fire throws, off the same pool. This is what gives the grenade a reason
@@ -1105,12 +1113,13 @@ void Weapon_Launcher::detonateAt(const irr::core::vector3df& pos, entityid direc
 		// should set him off, not merely kill him.
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
 			directHitID,
-			static_cast<unsigned int>(stati(WSTAT_DAMAGE, static_cast<int>(m_pointDamage))),
+			static_cast<unsigned int>(stati(WSTAT_DAMAGE, static_cast<int>(m_pointDamage)) * waterScale),
 			DAMAGE_TYPE::DEFAULT, DamageContext::fromBlast(pos, pos)));
 	}
 }
 
-void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
+void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+	float waterScale)
 {
 	// Resolved once, at the top: the radius is used three times below — the
 	// early-out, the cull and the falloff divisor — and a falloff computed
@@ -1144,7 +1153,7 @@ void Weapon_Launcher::applySplashDamage(const irr::core::vector3df& epicentre, e
 		if (dist >= splashRadius) continue;
 
 		float falloff = 1.0f - (dist / splashRadius);
-		float damage  = splashDamage * falloff;
+		float damage  = splashDamage * falloff * waterScale;
 
 		if (damage >= 1.0f)
 		{

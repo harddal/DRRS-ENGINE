@@ -156,6 +156,15 @@ namespace scene
 		//! updates the joint positions of this mesh
 		virtual void animateJoints(bool CalculateAbsolutePositions=true);
 
+		//! ENGINE FORK #6 - drive this node's skeleton from an application pose
+		virtual void setExternalPose(const core::array<SJointPose>& pose);
+
+		//! ENGINE FORK #6 - return this node to frame-driven playback
+		virtual void clearExternalPose();
+
+		//! ENGINE FORK #6 - true while an external pose is installed
+		virtual bool hasExternalPose() const { return UseExternalPose; }
+
 		//! render mesh ignoring its transformation. Used with ragdolls. (culling is unaffected)
 		virtual void setRenderFromIdentity( bool On );
 
@@ -203,6 +212,14 @@ namespace scene
 
 		core::array<IBoneSceneNode* > JointChildSceneNodes;
 		core::array<core::matrix4> PretransitingSave;
+
+		// ENGINE FORK #6 - application-supplied pose.
+		// Per NODE, not per mesh: ISceneManager::getMesh() caches, so every node
+		// using the same file shares one CSkinnedMesh and pose state cannot live
+		// there. A buffer rather than a callback - ~2.6KB/character/frame for a
+		// 65-joint rig, against a dangling-pointer surface we do not want.
+		core::array<SJointPose> ExternalPose;
+		bool UseExternalPose;
 
 		// Quake3 Model
 		struct SMD3Special : public virtual IReferenceCounted

@@ -186,66 +186,86 @@ static void HealPlayer(int d)
 // ids themselves: those came from directory iteration order, so a script saying
 // give(4) meant a different item the moment a .item file was added.
 
+// EVERY BINDING BELOW MUST TOLERATE A NULL CONTROLLER, and that is a change
+// from how they were written. The controller is constructed by the
+// MT_PLAYER_START marker case now, not unconditionally by GameManager::init(),
+// so a scene with no player-start marker has none at all — and a prototype that
+// ships no inventory can legitimately return null from inventoryController().
+//
+// A script is authored against the level, not against the prototype running it,
+// so the failure mode has to be "no player" rather than a crash.
+static InventoryController* player_inventory()
+{
+	return g_PlayerController ? g_PlayerController->inventoryController() : nullptr;
+}
+
 static void player_giveitem(std::string item)
 {
-	g_PlayerController->inventoryController()->giveItem(item, 1);
+	if (auto* inventory = player_inventory())
+		inventory->giveItem(item, 1);
 }
 
 static void player_giveitemcount(std::string item, int count)
 {
-	g_PlayerController->inventoryController()->giveItem(item, count);
+	if (auto* inventory = player_inventory())
+		inventory->giveItem(item, count);
 }
 
 bool as_isPlayerMoving()
 {
-	return g_PlayerController->isMoving();
+	return g_PlayerController && g_PlayerController->isMoving();
 }
 
 static void player_removeitem(std::string item)
 {
-	g_PlayerController->inventoryController()->removeItem(item, 1);
+	if (auto* inventory = player_inventory())
+		inventory->removeItem(item, 1);
 }
 
 static bool player_useitem(std::string item)
 {
-	return g_PlayerController->inventoryController()->useItem(item);
+	auto* inventory = player_inventory();
+	return inventory && inventory->useItem(item);
 }
 
 int GetPlayerHealth()
 {
-	return g_PlayerController->getCurrentHealth();
+	return g_PlayerController ? g_PlayerController->getCurrentHealth() : 0;
 }
 int GetPlayerMaxHealth()
 {
-	return g_PlayerController->getMaxHealth();
+	return g_PlayerController ? g_PlayerController->getMaxHealth() : 0;
 }
 
 static bool player_hasitem(std::string item)
 {
-	return g_PlayerController->inventoryController()->hasItem(item);
+	auto* inventory = player_inventory();
+	return inventory && inventory->hasItem(item);
 }
 
 static int player_itemcount(std::string item)
 {
-	return g_PlayerController->inventoryController()->itemCount(item);
+	auto* inventory = player_inventory();
+	return inventory ? inventory->itemCount(item) : 0;
 }
 
 bool player_isswimming()
 {
-	return g_PlayerController->isSwimming();
+	return g_PlayerController && g_PlayerController->isSwimming();
 }
 bool player_isheadunderwater()
 {
-	return g_PlayerController->isHeadUnderWater();
+	return g_PlayerController && g_PlayerController->isHeadUnderWater();
 }
 
 bool player_isblocking()
 {
-	return g_PlayerController->isBlocking();
+	return g_PlayerController && g_PlayerController->isBlocking();
 }
 void player_setblocking(bool blocking)
 {
-	g_PlayerController->setIsBlocking(blocking);
+	if (g_PlayerController)
+		g_PlayerController->setIsBlocking(blocking);
 }
 
 void as_lockplayerforinput(bool lock)

@@ -105,6 +105,45 @@ uint32_t ParticleManager::spawn(const std::string& name, const Vector3D& pos, bo
     return handle;
 }
 
+uint32_t ParticleManager::spawnPersistent(const std::string& name, const Vector3D& pos)
+{
+    const uint32_t handle = spawn(name, pos, false);
+    if (handle)
+        m_instances[handle].persistent = true;
+    return handle;
+}
+
+bool ParticleManager::isAlive(uint32_t handle) const
+{
+    return handle != 0 && m_instances.count(handle) != 0;
+}
+
+bool ParticleManager::emitAlongLine(uint32_t handle, const irr::core::vector3df& start,
+                                    const irr::core::vector3df& end, float step,
+                                    float offset, size_t groupIndex)
+{
+    if (handle == 0 || step <= 0.0f) return false;
+    auto it = m_instances.find(handle);
+    if (it == m_instances.end()) return false;
+
+    // Looked up through the handle every call, never cached by the caller: a
+    // looping instance swaps its System* when it is re-copied.
+    SPK::System* sys = it->second.system;
+    if (!sys || groupIndex >= sys->getNbGroups()) return false;
+
+    SPK::Group* group = sys->getGroup(groupIndex);
+    if (!group) return false;
+
+    SPK::Emitter* emitter = group->getNbEmitters() > 0 ? group->getEmitter(0) : nullptr;
+
+    if (emitter)
+        group->addParticles(irr2spk(start), irr2spk(end), emitter, step, offset > 0.0f ? offset : 0.0f);
+    else
+        group->addParticles(irr2spk(start), irr2spk(end), Vector3D(), step, offset > 0.0f ? offset : 0.0f);
+
+    return true;
+}
+
 void ParticleManager::destroy(uint32_t handle)
 {
     auto it = m_instances.find(handle);
@@ -157,7 +196,13 @@ void ParticleManager::update(float dt)
         auto& inst = it->second;
         if (!inst.system->update(dtS * inst.updateRate))
         {
-            if (inst.loop)
+            if (inst.persistent)
+            {
+                // Idle, not finished: a hand-fed system is "asleep" whenever it
+                // has no live particles. Keep it for the next emitAlongLine().
+                ++it;
+            }
+            else if (inst.loop)
             {
                 // SPARK has no reset API — destroy and re-copy from the base template
                 std::string effName = inst.effectName;

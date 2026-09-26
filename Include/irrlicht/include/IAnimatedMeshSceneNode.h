@@ -9,6 +9,7 @@
 #include "IBoneSceneNode.h"
 #include "IAnimatedMeshMD2.h"
 #include "IAnimatedMeshMD3.h"
+#include "SJointPose.h"   // ENGINE FORK #6
 
 namespace irr
 {
@@ -208,6 +209,26 @@ namespace scene
 		//! animates the joints in the mesh based on the current frame.
 		/** Also takes in to account transitions. */
 		virtual void animateJoints(bool CalculateAbsolutePositions=true) = 0;
+
+		//! ENGINE FORK #6 - drive this node's skeleton from an application pose.
+		/** One SJointPose per joint, in ISkinnedMesh::getAllJoints() order. While
+		set, this node skins from the supplied pose instead of from getFrameNr()
+		(EJUOR_NONE/READ) or from the joint scene nodes (EJUOR_CONTROL), and it
+		does so immediately before its own skinMesh() - which is what makes it
+		safe when several nodes share one cached skinned mesh.
+
+		The array is COPIED, so the caller may reuse its buffer. A pose whose
+		size does not match the mesh's joint count is ignored at draw time and
+		the node falls back to its normal path.
+
+		Skinned meshes only; it does nothing for MD2/MD3. */
+		virtual void setExternalPose(const core::array<SJointPose>& pose) = 0;
+
+		//! ENGINE FORK #6 - return this node to frame-driven playback.
+		virtual void clearExternalPose() = 0;
+
+		//! ENGINE FORK #6 - true while an external pose is installed.
+		virtual bool hasExternalPose() const = 0;
 
 		//! render mesh ignoring its transformation.
 		/** Culling is unaffected. */

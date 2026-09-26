@@ -1,4 +1,5 @@
 ﻿#include "Weapon_FuelRodCannon.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -477,7 +478,7 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
 				hitEntityID != it->entity.getComponent<DescriptorComponent>().id)
 			{
-				detonateAt(hitPoint, hitEntityID, hitNormal);
+				detonateAt(hitPoint, hitEntityID, hitNormal, WaterBallistics::projectileScale(*it));
 				shouldRemove = true;
 			}
 		}
@@ -504,6 +505,13 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 			}
 		}
 
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
+
 		it->previousPosition = currentPos;
 		it->lifetime += dt;
 
@@ -514,7 +522,8 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 				irr::core::vector3df detonPos = transformComp.node
 					? transformComp.node->getAbsolutePosition()
 					: nextPos;
-				detonateAt(detonPos, _entity_null_value);
+				detonateAt(detonPos, _entity_null_value,
+					irr::core::vector3df(0.0f, 0.0f, 0.0f), WaterBallistics::projectileScale(*it));
 			}
 
 			if (it->trailParticles)
@@ -545,7 +554,7 @@ void Weapon_FuelRodCannon::updateProjectiles(float dt)
 }
 
 void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-	const irr::core::vector3df& surfaceNormal)
+	const irr::core::vector3df& surfaceNormal, float waterScale)
 {
 	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.05f);
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
@@ -561,7 +570,7 @@ void Weapon_FuelRodCannon::detonateAt(const irr::core::vector3df& pos, entityid 
 	if (directHitID != _entity_null_value)
 	{
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(m_pointDamage)));
+			directHitID, static_cast<unsigned int>(m_pointDamage * waterScale)));
 	}
 
 	// The zone does all ongoing damage; no instant splash

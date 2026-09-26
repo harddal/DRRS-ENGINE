@@ -183,3 +183,72 @@ shares per-thread/per-HKL dead-key state with `TranslateMessage`. The `hwnd` spl
 only one of the two runs per keystroke and the two windows cannot hold focus at once, so
 this is safe — but a dead key pressed in a torn-off panel leaves pending state that
 carries into the main window. Known and bounded; not worth code to avoid.
+
+## 6. Application-supplied skeletal pose (2026-09)
+
+**Files:** `include/SJointPose.h` (new), `include/ISkinnedMesh.h`,
+`include/IAnimatedMeshSceneNode.h`, `source/Irrlicht/CSkinnedMesh.h/.cpp`,
+`source/Irrlicht/CAnimatedMeshSceneNode.h/.cpp`
+
+Lets the application compute its own blended/layered skeletal pose and hand it
+to a node, instead of the node sampling one clip at `getFrameNr()`.
+
+```cpp
+core::array<scene::SJointPose> pose;   // one per ISkinnedMesh::getJointCount()
+node->setExternalPose(pose);           // node skins from this until cleared
+node->clearExternalPose();             // back to setFrameLoop/getFrameNr playback
+```
+
+`SJointPose` is TRS with a real `core::quaternion` — the same representation
+`SJoint::Animatedposition/Animatedrotation/Animatedscale` already uses.
+`ISkinnedMesh::applyPose()` copies it into those fields, rebuilds the local
+animated matrices, updates the bbox, and resets `LastAnimatedFrame = -1` /
+`SkinnedLastFrame = false` exactly as `transferJointsToMesh()` does.
+
+### Why not `setTransitionTime` / `EJUOR_CONTROL`
+
+The built-in transition implicitly switches the node to `EJUOR_CONTROL`, where
+`recoverJointsFromMesh` / `transferJointsToMesh` round-trip every joint through
+`matrix4::getRotationDegrees()` → `IBoneSceneNode::setRotation()` → 
+`setRotationDegrees()` — Euler angles, twice per frame. That is ambiguous at
+pitch ±90° and assumes no negative scale; Mixamo rigs reach those poses, and it
+is why Irrlicht's own transition code carries `//Code is slow, needs to be fixed up`.
+It also blends from a *frozen* snapshot (`PretransitingSave`), has one global
+duration, and skips scale entirely. We want quaternions end to end.
+
+### Why the hook is on the NODE and not the mesh
+
+`ISceneManager::getMesh(path)` caches: every node loading `paladin.glb` shares
+one `CSkinnedMesh`, which is why `getMeshForCurrentFrame()` re-animates the mesh
+on every node every frame. So the pose buffer lives **per node**, and
+`applyPose()` runs inside `getMeshForCurrentFrame()` immediately before *that
+node's* `skinMesh()` — the same slot where the two built-in paths clobber. The
+order is external pose → `EJUOR_CONTROL` → frame-driven `animateMesh`; the
+`EJUOR_READ` recover below it is untouched, so `getJointNode()`-driven weapon
+and bone attachments still work on a posed node.
+
+A pose whose size does not match `getJointCount()` is ignored and the node
+falls back to normal playback, so a mesh swap cannot skin garbage.
+
+It is a buffer, not a callback: ~2.6KB per character per frame (65 joints ×
+40 bytes), against a dangling-pointer surface that is not worth it.
+
+`SJointPose` got its own header rather than being nested in `ISkinnedMesh` so
+that `IAnimatedMeshSceneNode.h` can name it without pulling in
+`SSkinMeshBuffer.h`/`S3DVertex.h`.
+
+### Consequences at the call site
+
+* A node on this path no longer rides Irrlicht's virtual timer
+  (`reference_irrlicht_virtual_timer`) — `setAnimationSpeed`/`setFrameLoop`/
+  `getFrameNr` do nothing for it. Time scaling comes from whatever clock the
+  application advances its own cursors on. `ITimer::setSpeed()` still matters
+  for everything that has **not** been migrated, so it stays.
+* `getMeshForCurrentFrame()` is called from both `render()` and `OnAnimate()`,
+  and there is more than one `drawAll()` per frame (shadow pass, main pass,
+  preview scene manager), so `applyPose` + `skinMesh` run more than once per
+  frame per character. Correct, and cheap next to the per-vertex skinning
+  already being paid — but gate on a frame counter if it ever shows in a profile.
+* `Source/Engine/Renderer/Extensions/CUnrealMeshFileLoader.h` holds an
+  engine-side `ISkinnedMesh` forwarder (`SSkinnedMesh`); the new pure virtual
+  needed a one-line forward there too.

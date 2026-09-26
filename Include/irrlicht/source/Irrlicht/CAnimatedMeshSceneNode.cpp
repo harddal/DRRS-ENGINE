@@ -37,7 +37,8 @@ CAnimatedMeshSceneNode::CAnimatedMeshSceneNode(IAnimatedMesh* mesh,
 	TransitionTime(0), Transiting(0.f), TransitingBlend(0.f),
 	JointMode(EJUOR_NONE), JointsUsed(false),
 	Looping(true), ReadOnlyMaterials(false), RenderFromIdentity(false),
-	LoopCallBack(0), PassCount(0), Shadow(0), MD3Special(0)
+	LoopCallBack(0), PassCount(0), Shadow(0),
+	UseExternalPose(false), MD3Special(0)
 {
 	#ifdef _DEBUG
 	setDebugName("CAnimatedMeshSceneNode");
@@ -204,7 +205,14 @@ IMesh * CAnimatedMeshSceneNode::getMeshForCurrentFrame()
 
 		CSkinnedMesh* skinnedMesh = reinterpret_cast<CSkinnedMesh*>(Mesh);
 
-		if (JointMode == EJUOR_CONTROL)//write to mesh
+		// ENGINE FORK #6: an application-supplied pose wins over both built-in
+		// joint paths. It has to be applied HERE - immediately before this
+		// node's own skinMesh() - because the mesh is shared between every node
+		// that loaded the same file and both other paths clobber it at exactly
+		// this point.
+		if (UseExternalPose && ExternalPose.size() == skinnedMesh->getJointCount())
+			skinnedMesh->applyPose(ExternalPose);
+		else if (JointMode == EJUOR_CONTROL)//write to mesh
 			skinnedMesh->transferJointsToMesh(JointChildSceneNodes);
 		else
 			skinnedMesh->animateMesh(getFrameNr(), 1.0f);
@@ -941,6 +949,22 @@ void CAnimatedMeshSceneNode::setTransitionTime(f32 time)
 void CAnimatedMeshSceneNode::setRenderFromIdentity(bool enable)
 {
 	RenderFromIdentity=enable;
+}
+
+
+//! ENGINE FORK #6 - drive this node's skeleton from an application pose.
+void CAnimatedMeshSceneNode::setExternalPose(const core::array<SJointPose>& pose)
+{
+	ExternalPose = pose;
+	UseExternalPose = true;
+}
+
+
+//! ENGINE FORK #6 - return this node to frame-driven playback.
+void CAnimatedMeshSceneNode::clearExternalPose()
+{
+	UseExternalPose = false;
+	ExternalPose.set_used(0);
 }
 
 

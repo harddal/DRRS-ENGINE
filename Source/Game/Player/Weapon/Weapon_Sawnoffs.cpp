@@ -1,4 +1,5 @@
 #include "Weapon_Sawnoffs.h"
+#include "WaterBallistics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -795,8 +796,12 @@ void Weapon_Sawnoffs::fireBarrel(int gun, int barrel)
 
 		const irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
-		RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(
-			muzzlePos, rayEnd, true);
+		// Water does not stop the pellet. pierce() walks the ray THROUGH any water
+		// surfaces on the way, splashes at each, and charges the pellet for the
+		// water it crossed; one that runs out of penetration comes back as a MISS
+		// and falls out at the guard below.
+		const WaterBallistics::Shot shot = WaterBallistics::pierce(muzzlePos, rayEnd);
+		const RaycastResultData& raycastResult = shot.hit;
 
 		if (!raycastResult.hit || !raycastResult.node)
 			continue;
@@ -811,7 +816,7 @@ void Weapon_Sawnoffs::fireBarrel(int gun, int barrel)
 			{
 				registerHitFeedback(
 					WorldManager::Get()->gameplaySystem()->damageEntity(
-						hitDescriptor.id, static_cast<unsigned int>(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
+						hitDescriptor.id, shot.scaled(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
 						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
 							raycastResult.ray.getVector())));
 

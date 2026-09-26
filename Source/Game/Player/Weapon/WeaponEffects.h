@@ -109,6 +109,28 @@ public:
 	// ratio. Zero vector if there is no pool.
 	const irr::core::vector3df& shellMeshExtent() const;
 
+	// --- Underwater casing tunables (global, console-backed) -----------------
+	// Shared by every weapon's casings; the shell_water_* console commands edit
+	// them live. They only apply while a casing is inside a water volume, so the
+	// dry path is untouched.
+	//
+	// Drag is what sells water, not the reduced gravity: casings leave the port
+	// at ~8 u/s, and with less gravity alone they glide sideways for metres.
+	// Terminal sink speed is g * gravityScale / drag. Keep it times the lifetime
+	// above the deepest pool, or casings vanish partway down.
+	static float shellWaterGravityScale();           // x the dry gravity while submerged
+	static void  setShellWaterGravityScale(float scale);
+	static float shellWaterDrag();                   // 1/s, linear velocity drag
+	static void  setShellWaterDrag(float perSecond);
+	static float shellWaterAngularDrag();            // 1/s, tumble drag
+	static void  setShellWaterAngularDrag(float perSecond);
+	static float shellWaterRestitution();            // bounce energy kept, 0..1
+	static void  setShellWaterRestitution(float restitution);
+	static float shellWaterLifetime();               // ms, once a casing has entered water
+	static void  setShellWaterLifetime(float ms);
+	static float shellWaterEntryDamp();              // speed KEPT on dropping in from outside, 0..1
+	static void  setShellWaterEntryDamp(float keep);
+
 	// Impact particles fanned along the surface normal + optional decal.
 	void impact(const irr::core::vector3df& point, const irr::core::vector3df& normal);
 
@@ -179,6 +201,8 @@ private:
 		float spawnTime     = 0.0f;
 		bool  active        = false;
 		bool  physicsActive = false;
+		bool  enteredWater  = false; // switches the shell onto the underwater lifetime
+		bool  inWater       = false; // submerged as of the last step; its rising edge is a surface entry
 		int   bounceCount   = 0;
 	};
 	std::vector<Shell> m_shells;

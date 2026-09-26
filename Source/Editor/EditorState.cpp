@@ -1,5 +1,7 @@
 #include "Editor/EditorState.h"
 
+#include "Shlwapi.h"
+
 #include "Engine/Engine.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Interface/EditorInterface.h"
@@ -43,7 +45,13 @@ void EditorState::init(std::string args)
 
 	Engine::Get()->stateManager()->initState(ESID_EDITORGAME);
 
-	WorldManager::Get()->importScene(_asset_scn_pak("TempleDungeon"));
+	// A user-configured startup scene (set via Tools > Editor Settings) overrides
+	// the built-in default when present on disk.
+	const std::string& startupScenePath = g_sceneInteractor.getConfiguration().startupScenePath;
+	if (!startupScenePath.empty() && PathFileExistsA(startupScenePath.c_str()))
+		WorldManager::Get()->importScene(startupScenePath);
+	else
+		WorldManager::Get()->importScene(_asset_scn_pak("TempleDungeon"));
 }
 
 void EditorState::update(float dt)

@@ -1,4 +1,5 @@
 #include "Weapon_Crossbow.h"
+#include "WaterBallistics.h"
 
 #include <cmath>
 
@@ -702,7 +703,8 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 				// The bolt's own flight vector is the shot direction here — there is
 				// no camera ray, the projectile has been travelling on its own.
 				registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-					hitID, static_cast<unsigned int>(m_damage), DAMAGE_TYPE::DEFAULT,
+					hitID, static_cast<unsigned int>(m_damage * WaterBallistics::projectileScale(*it)),
+					DAMAGE_TYPE::DEFAULT,
 					DamageContext::fromImpact(hitPoint, hitNormal, it->velocity)));
 			}
 
@@ -763,6 +765,13 @@ void Weapon_Crossbow::updateProjectiles(float dt)
 			transformComp.node->setRotation(transformComp.rotation);
 			transformComp.node->updateAbsolutePosition();
 		}
+
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
 
 		it->previousPosition = currentPos;
 		it->lifetime += dt;

@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    water_splash — bullet (or any point impact) breaking a water surface.
+
+    Spawned by WaterBallistics::spawnSplash() at each point a shot crosses a
+    water surface, which is the top face of a water entity's box. The three upward groups are SPHERIC
+    emitters so ParticleManager::setEmitterDirection() can aim them along the
+    surface normal; the ripple is a StaticEmitter and stays flat, which is why
+    its renderer is 'fixed' with look = +Y (a horizontal quad) rather than
+    camera-facing.
+
+    Everything is authored small — this is a bullet, not a body. Scale the whole
+    effect with ParticleManager::setScale() for heavier impacts, remembering that
+    setScale is EFFECT-WIDE, not per instance.
+-->
+<cereal>
+    <ParticleSystem>
+        <updateRate>2</updateRate>
+        <groups size="4">
+            <!-- ripple — flat expanding foam ring on the surface -->
+            <item0>
+                <name>ripple</name>
+                <capacity>2</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>0</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.45</lifetimeMin>
+                    <lifetimeMax>0.6</lifetimeMax>
+                    <enabledFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </enabledFlags>
+                    <mutableFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="2">
+                        <item0>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>0.55</item0><item1>0</item1></values>
+                        </item0>
+                        <item1>
+                            <!-- mutable: start, end -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.15</item0><item1>1.5</item1></values>
+                        </item1>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/circle_03.png</texturePath>
+                    <blending>alpha</blending>
+                    <!-- lies in the water plane, not facing the camera -->
+                    <orientation>fixed</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>1</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>1</lookY><lookZ>0</lookZ>
+                    <upX>1</upX><upY>0</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>static</type>
+                        <zone>
+                            <type>point</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>1</tank>
+                        <flow>-1</flow>
+                        <forceMin>0</forceMin>
+                        <forceMax>0</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <angleMin>0</angleMin><angleMax>0</angleMax>
+                    </item0>
+                </emitters>
+            </item0>
+            <!-- crown — the short fat column thrown straight up out of the hole -->
+            <item1>
+                <name>crown</name>
+                <capacity>6</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>-7</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.14</lifetimeMin>
+                    <lifetimeMax>0.26</lifetimeMax>
+                    <enabledFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </enabledFlags>
+                    <mutableFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </mutableFlags>
+                    <randomFlags size="1">
+                        <item0>SIZE</item0>
+                    </randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="2">
+                        <item0>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>0.9</item0><item1>0</item1></values>
+                        </item0>
+                        <item1>
+                            <!-- mutable + random: birth min/max, end min/max -->
+                            <name>SIZE</name>
+                            <values size="4">
+                                <item0>0.16</item0><item1>0.26</item1>
+                                <item2>0.05</item2><item3>0.10</item3>
+                            </values>
+                        </item1>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/circle_01.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>1</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <!-- tight cone about the surface normal -->
+                        <type>spheric</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.04</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>6</tank>
+                        <flow>-1</flow>
+                        <forceMin>2</forceMin>
+                        <forceMax>3.5</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <angleMin>0</angleMin><angleMax>0.35</angleMax>
+                    </item0>
+                </emitters>
+            </item1>
+            <!-- droplets — the wide spray that outlives the crown and falls back -->
+            <item2>
+                <name>droplets</name>
+                <capacity>16</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>-9</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0</friction>
+                <model>
+                    <lifetimeMin>0.3</lifetimeMin>
+                    <lifetimeMax>0.65</lifetimeMax>
+                    <enabledFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </enabledFlags>
+                    <mutableFlags size="1">
+                        <item0>ALPHA</item0>
+                    </mutableFlags>
+                    <randomFlags size="1">
+                        <item0>SIZE</item0>
+                    </randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="2">
+                        <item0>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>1</item0><item1>0</item1></values>
+                        </item0>
+                        <item1>
+                            <!-- random: min, max -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.03</item0><item1>0.07</item1></values>
+                        </item1>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/circle_01.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>1</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>spheric</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.06</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>16</tank>
+                        <flow>-1</flow>
+                        <forceMin>2.5</forceMin>
+                        <forceMax>5</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <!-- skirt, not a cone: nothing is emitted straight up here,
+                             so the droplets read as thrown clear of the crown -->
+                        <angleMin>0.25</angleMin><angleMax>1.1</angleMax>
+                    </item0>
+                </emitters>
+            </item2>
+            <!-- mist — faint haze left hanging over the hole -->
+            <item3>
+                <name>mist</name>
+                <capacity>4</capacity>
+                <gravityX>0</gravityX>
+                <gravityY>0.4</gravityY>
+                <gravityZ>0</gravityZ>
+                <friction>0.6</friction>
+                <model>
+                    <lifetimeMin>0.5</lifetimeMin>
+                    <lifetimeMax>0.85</lifetimeMax>
+                    <enabledFlags size="5">
+                        <item0>RED</item0>
+                        <item1>GREEN</item1>
+                        <item2>BLUE</item2>
+                        <item3>ALPHA</item3>
+                        <item4>SIZE</item4>
+                    </enabledFlags>
+                    <mutableFlags size="2">
+                        <item0>ALPHA</item0>
+                        <item1>SIZE</item1>
+                    </mutableFlags>
+                    <randomFlags size="0"></randomFlags>
+                    <interpolatedFlags size="0"></interpolatedFlags>
+                    <params size="5">
+                        <item0>
+                            <name>RED</name>
+                            <values size="1"><item0>0.85</item0></values>
+                        </item0>
+                        <item1>
+                            <name>GREEN</name>
+                            <values size="1"><item0>0.92</item0></values>
+                        </item1>
+                        <item2>
+                            <name>BLUE</name>
+                            <values size="1"><item0>0.95</item0></values>
+                        </item2>
+                        <item3>
+                            <!-- mutable: start, end -->
+                            <name>ALPHA</name>
+                            <values size="2"><item0>0.3</item0><item1>0</item1></values>
+                        </item3>
+                        <item4>
+                            <!-- mutable: start, end -->
+                            <name>SIZE</name>
+                            <values size="2"><item0>0.25</item0><item1>0.8</item1></values>
+                        </item4>
+                    </params>
+                    <interpolators size="0"></interpolators>
+                </model>
+                <renderer>
+                    <texturePath>content/texture/particle/smoke_04.png</texturePath>
+                    <blending>alpha</blending>
+                    <orientation>camera_plane</orientation>
+                    <atlasW>1</atlasW>
+                    <atlasH>1</atlasH>
+                    <scaleX>1</scaleX>
+                    <scaleY>1</scaleY>
+                    <depthWrite>0</depthWrite>
+                    <alphaTest>0</alphaTest>
+                    <alphaTestThreshold>0</alphaTestThreshold>
+                    <lookX>0</lookX><lookY>0</lookY><lookZ>-1</lookZ>
+                    <upX>0</upX><upY>1</upY><upZ>0</upZ>
+                </renderer>
+                <emitters size="1">
+                    <item0>
+                        <type>random</type>
+                        <zone>
+                            <type>sphere</type>
+                            <cx>0</cx><cy>0</cy><cz>0</cz>
+                            <radius>0.12</radius>
+                            <hx>0</hx><hy>0</hy><hz>0</hz>
+                        </zone>
+                        <fullZone>1</fullZone>
+                        <tank>4</tank>
+                        <flow>-1</flow>
+                        <forceMin>0.2</forceMin>
+                        <forceMax>0.5</forceMax>
+                        <dirX>0</dirX><dirY>1</dirY><dirZ>0</dirZ>
+                        <angleMin>0</angleMin><angleMax>0</angleMax>
+                    </item0>
+                </emitters>
+            </item3>
+        </groups>
+    </ParticleSystem>
+</cereal>

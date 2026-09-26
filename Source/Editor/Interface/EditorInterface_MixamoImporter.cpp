@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -40,6 +42,7 @@ namespace
 	float s_scale          = 1.0f;
 	bool  s_flipY          = false;
 	bool  s_flipGreen      = false;
+	bool  s_loadedSaved    = false;      // panel was primed from mixamo_convert.json
 
 	const int   k_textureSizes[]      = { 512, 1024, 2048, 4096 };
 	const char* k_textureSizeLabels[] = { "512", "1024", "2048", "4096" };
@@ -65,6 +68,87 @@ namespace
 	}
 
 	// C++14 here (the project default is stdcpp14), so no std::filesystem.
+	// mixamo_to_glb.py writes mixamo_convert.json beside the FBXs recording what
+	// the folder was last converted with. Priming the panel from it is what stops
+	// this button quietly re-converting an asset at the wrong scale: the paladin
+	// needs 0.18412, and the 1.0 default produced a 12.9-unit character.
+	//
+	// Six flat scalars do not justify pulling simdjson (and C++17) into this
+	// file, so the value is lifted out by hand.
+	bool readJsonScalar(const std::string& text, const char* key, std::string& out)
+	{
+		const std::string needle = "\"" + std::string(key) + "\"";
+		const size_t k = text.find(needle);
+		if (k == std::string::npos)
+			return false;
+		const size_t colon = text.find(':', k + needle.size());
+		if (colon == std::string::npos)
+			return false;
+		size_t b = text.find_first_not_of(" \t\r\n", colon + 1);
+		if (b == std::string::npos)
+			return false;
+
+		size_t e;
+		if (text[b] == '"')
+		{
+			++b;
+			e = text.find('"', b);
+		}
+		else
+		{
+			e = text.find_first_of(",}\r\n", b);
+		}
+		if (e == std::string::npos || e < b)
+			return false;
+
+		out = text.substr(b, e - b);
+		while (!out.empty() && (out.back() == ' ' || out.back() == '\t'))
+			out.pop_back();
+		return !out.empty();
+	}
+
+	void loadSavedSettings(const std::string& folder)
+	{
+		s_loadedSaved = false;
+		if (folder.empty())
+			return;
+
+		std::string path = folder;
+		if (path.back() != '\\' && path.back() != '/')
+			path += '\\';
+		path += "mixamo_convert.json";
+
+		std::ifstream in(path.c_str());
+		if (!in)
+			return;
+
+		std::ostringstream buf;
+		buf << in.rdbuf();
+		const std::string text = buf.str();
+
+		std::string value;
+		if (readJsonScalar(text, "scale", value))
+		{
+			try { s_scale = std::stof(value); } catch (...) {}
+		}
+		if (readJsonScalar(text, "size", value))
+		{
+			int px = 0;
+			try { px = std::stoi(value); } catch (...) {}
+			for (int i = 0; i < IM_ARRAYSIZE(k_textureSizes); ++i)
+				if (k_textureSizes[i] == px)
+					s_sizeIndex = i;
+		}
+		if (readJsonScalar(text, "flip_y", value))
+			s_flipY = (value == "true");
+		if (readJsonScalar(text, "flip_green", value))
+			s_flipGreen = (value == "true");
+
+		s_loadedSaved = true;
+		spdlog::info("Mixamo importer: primed from {} (scale {:.5f}, size {})",
+			path, s_scale, k_textureSizes[s_sizeIndex]);
+	}
+
 	void scanFolder(const std::string& folder)
 	{
 		s_fbxFiles.clear();
@@ -100,6 +184,8 @@ namespace
 
 		FindClose(h);
 		std::sort(s_fbxFiles.begin(), s_fbxFiles.end());
+
+		loadSavedSettings(folder);
 	}
 
 	std::string scriptPath()
@@ -249,10 +335,24 @@ void EditorInterface::draw_window_mixamo_importer()
 	ImGui::SetItemTooltip("Longest edge after resizing. Textures smaller than this are left alone.");
 
 	ImGui::SetNextItemWidth(90.0f);
-	ImGui::InputFloat("Scale", &s_scale, 0.0f, 0.0f, "%.2f");
+	// 5dp: the per-asset scales that matter here are small and exact (0.18412),
+	// and %.2f would silently round one to 0.18.
+	ImGui::InputFloat("Scale", &s_scale, 0.0f, 0.0f, "%.5f");
 	ImGui::SetItemTooltip("Multiplier on the model's natural height.\n"
-	                      "Mixamo's centimetre unit scale is normalised out first,\n"
-	                      "so 1.00 gives a real-world-sized character (~1.7 units).");
+	                      "The centimetre unit scale is normalised out first, so 1.00\n"
+	                      "USUALLY gives a real-world-sized character (~1.7 units) -\n"
+	                      "but that normalisation fails on some rigs. Always check the\n"
+	                      "'model extent' line in the log against a known character.");
+
+	if (s_loadedSaved)
+	{
+		ImGui::TextColored(ImVec4(0.55f, 0.80f, 0.55f, 1.0f),
+			"Settings loaded from this folder's mixamo_convert.json");
+		ImGui::SetItemTooltip("This folder has been converted before, so the values above\n"
+		                      "are the ones it was last built with rather than the defaults.\n"
+		                      "Change them here to re-convert differently; the file is\n"
+		                      "rewritten after every successful run.");
+	}
 
 	ImGui::Checkbox("Flip Y", &s_flipY);
 	ImGui::SetItemTooltip("Rotate 180 degrees. Use if the character faces backwards in-engine.");

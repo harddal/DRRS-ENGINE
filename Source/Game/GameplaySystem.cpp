@@ -18,7 +18,12 @@
 #include "Engine/World/Components/MeshComponent.h"
 #include "Game/Components.h"
 #include "Game/LogicLinks.h"
-#include "Player/PlayerController.h"
+// PlayerController.h is no longer needed for the spawn: the profile table
+// resolves the controller class, and PLAYER_HEIGHT moved onto it.
+#include "Game/PlayerProfile.h"
+#include "Game/IPlayerController.h"
+#include "Game/Player/HUDController.h"   // hudController()->hide()
+#include "Game/Player/PlayerBreath.h"    // breath()->setInAirlessVolume()
 
 #include "Utility/Utility.h"
 
@@ -175,10 +180,48 @@ void GameplaySystem::init()
 
 	FractureManager::create();
 
+	// Particle effects are NOT registered here -- ParticleManager does not exist
+	// yet at this point (see ensureEffects). update() drives that instead.
+	ensureEffects();
+}
+
+void GameplaySystem::ensureEffects()
+{
+	if (m_effectsUnavailable)
+		return;
+
+	auto* pm = ParticleManager::Get();
+	if (!pm)
+		return;
+
+	bool ok = true;
+
 	// Non-flesh impact FX (crates, barrels, props). STUB: all surfaces reuse the
 	// weapon spark effect until dedicated debris effects are authored.
-	if (auto* pm = ParticleManager::Get())
-		pm->precache("spark", _asset_psys("spark"));
+	if (!pm->precache("spark", _asset_psys("spark")))
+	{
+		spdlog::warn("GameplaySystem: spark.psys failed to load; prop impacts lose their sparks");
+		ok = false;
+	}
+
+	// Bullets breaking a water surface. Registered here rather than per weapon
+	// because every hitscan weapon can produce one and none of them owns it.
+	if (!pm->precache("water_splash", _asset_psys("water_splash")))
+	{
+		spdlog::warn("GameplaySystem: water_splash.psys failed to load; shots into water will not splash");
+		ok = false;
+	}
+
+	// The bubble trail a shot leaves underwater. Same ownership as the splash;
+	// WaterBallistics keeps one persistent instance of it and re-spawns that
+	// after every clear().
+	if (!pm->precache("water_bubbles", _asset_psys("water_bubbles")))
+	{
+		spdlog::warn("GameplaySystem: water_bubbles.psys failed to load; shots underwater leave no trail");
+		ok = false;
+	}
+
+	m_effectsUnavailable = !ok;
 }
 
 void GameplaySystem::propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited)
@@ -259,6 +302,14 @@ void GameplaySystem::updateBrushVolumes()
     const irr::core::vector3df bodyChest = p + irr::core::vector3df(0.0f, 1.3f, 0.0f);
     bool onLadder = false;
 
+    // No-air volumes are judged at the EYE, the same rule the water test uses
+    // for drowning: crouching under a gas layer should keep you breathing.
+    // Falls back to the chest point if the player somehow has no camera.
+    irr::core::vector3df eye = bodyChest;
+    if (player.hasComponent<CameraComponent>() && player.getComponent<CameraComponent>().camera)
+        eye = player.getComponent<CameraComponent>().camera->getAbsolutePosition();
+    bool inNoAir = false;
+
     // Noclip skips the ladder grab and the hurt-volume tick (water/swim is
     // handled the same way in update()). Triggers still fire — flying through a
     // level to test its scripting is a legitimate use.
@@ -283,6 +334,9 @@ void GameplaySystem::updateBrushVolumes()
 
         if ((brush.contentFlags & CONTENT_LADDER) && !onLadder && !noclip)
             onLadder = touchesBody(brush);
+
+        if ((brush.contentFlags & CONTENT_NOAIR) && !inNoAir && !noclip)
+            inNoAir = brush.bounds.isPointInside(eye) && BrushGeometry::containsPoint(brush, eye);
 
         if ((brush.contentFlags & CONTENT_HURT) && brush.hurtDamagePerSecond > 0.0f)
         {
@@ -320,7 +374,12 @@ void GameplaySystem::updateBrushVolumes()
     }
 
     if (g_PlayerController)
+    {
         g_PlayerController->setOnLadder(onLadder);
+
+        if (auto* breath = g_PlayerController->breath())
+            breath->setInAirlessVolume(inNoAir);
+    }
 
     // Fog is no longer resolved here: the global scene fog stays as WorldManager
     // set it at scene load, and per-zone fog is rendered per-view-ray from the
@@ -468,9 +527,70 @@ void GameplaySystem::drawEntityLinkDebug()
 	}
 }
 
+namespace
+{
+	// World-space AABB of a zone-style entity.
+	//
+	// Zone volumes are authored as a scaled "_primitive_cube", which resolves to
+	// cube.obj -- and cube.obj spans -1..+1, so it is TWO units across and the
+	// entity's scale is a HALF-EXTENT, not a size. Every zone test in this file
+	// used to rebuild the box by hand as position +/- scale*0.5, which is HALF the
+	// volume the level designer can see. At scale 1 the 0.5u error passes for
+	// tuning slop, but it grows with the zone -- so scaling a zone UP was what made
+	// it visibly stop firing where it looked like it should.
+	//
+	// Reading the node's own transformed box fixes the factor, picks up rotation,
+	// and keeps working for an entity given some other mesh entirely (a scripted
+	// prop's collide box was never a unit cube in the first place). Same source
+	// PhysicsSystem builds its colliders from.
+	//
+	// Trigger/checkpoint zones carry their cube on DebugMeshComponent; only water
+	// has a real renderable. Both are checked, mesh first.
+	bool zoneWorldBounds(const anax::Entity& entity, irr::core::aabbox3df& out)
+	{
+		irr::scene::IAnimatedMeshSceneNode* node = nullptr;
+
+		if (entity.hasComponent<MeshComponent>())
+			node = entity.getComponent<MeshComponent>().node;
+		if (!node && entity.hasComponent<DebugMeshComponent>())
+			node = entity.getComponent<DebugMeshComponent>().node;
+
+		if (!node)
+			return false;
+
+		// An INVISIBLE node never refreshes its absolute transform: Irrlicht skips
+		// OnAnimate for it and for its children, so a debug zone mesh hidden outside
+		// the editor would hand back whatever box it held when it was last drawn.
+		// Zones are hidden in game mode, which is precisely when the test matters.
+		node->updateAbsolutePosition();
+
+		out = node->getTransformedBoundingBox();
+		return true;
+	}
+
+	// Fallback when the entity has no node at all (mesh failed to load). Uses the
+	// correct 2-unit primitive extent rather than silently testing against a box
+	// half the intended size.
+	irr::core::aabbox3df zoneScaleBounds(const TransformComponent& transform)
+	{
+		const auto pos    = transform.getPosition();
+		const auto extent = transform.getScale();
+
+		return irr::core::aabbox3df(pos - extent, pos + extent);
+	}
+}
+
 void GameplaySystem::update()
 {
+	// Re-register effects clearScene() destroyed on the last mode switch.
+	// precache() returns early on a name it already holds, so this is two hash
+	// lookups in the steady state.
+	ensureEffects();
+
 	m_waterZones.clear();
+	m_waterNodes.clear();
+	if (auto* rm = RenderManager::Get())
+		rm->clearWaterVolumes();
 
 	updateBrushVolumes();
 
@@ -549,13 +669,18 @@ void GameplaySystem::update()
 					constexpr float PLAYER_HALF_WIDTH  = 0.25f;
 					constexpr float PLAYER_HALF_HEIGHT = 0.875f;
 
-					irr::core::vector3df xyz_min, xyz_max;
-					xyz_min.X = transformComponent.getPosition().X - transformComponent.getScale().X * 0.5f - PLAYER_HALF_WIDTH;
-					xyz_min.Y = transformComponent.getPosition().Y - transformComponent.getScale().Y * 0.5f - PLAYER_HALF_HEIGHT;
-					xyz_min.Z = transformComponent.getPosition().Z - transformComponent.getScale().Z * 0.5f - PLAYER_HALF_WIDTH;
-					xyz_max.X = transformComponent.getPosition().X + transformComponent.getScale().X * 0.5f + PLAYER_HALF_WIDTH;
-					xyz_max.Y = transformComponent.getPosition().Y + transformComponent.getScale().Y * 0.5f + PLAYER_HALF_HEIGHT;
-					xyz_max.Z = transformComponent.getPosition().Z + transformComponent.getScale().Z * 0.5f + PLAYER_HALF_WIDTH;
+					// The player is tested as a POINT, so the entity's box is grown
+					// by the capsule's half-extents to stand in for a box-vs-capsule
+					// overlap. That padding is the only part of this that was right
+					// before -- the box itself was half size. See zoneWorldBounds.
+					irr::core::aabbox3df bounds;
+					if (!zoneWorldBounds(entity, bounds))
+						bounds = zoneScaleBounds(transformComponent);
+
+					const irr::core::vector3df playerPad(PLAYER_HALF_WIDTH, PLAYER_HALF_HEIGHT, PLAYER_HALF_WIDTH);
+
+					const irr::core::vector3df xyz_min = bounds.MinEdge - playerPad;
+					const irr::core::vector3df xyz_max = bounds.MaxEdge + playerPad;
 
 					auto test_point = playerTransform.position;
 					bool overlapping =
@@ -661,14 +786,24 @@ void GameplaySystem::update()
 
 				InputManager::Get()->centerMouse();
 
-				g_PlayerController->lockPlayer(false);
-				g_PlayerController->hudController()->hide(false);
+				// Null when the scene has no player-start marker; hudController()
+				// is separately null for a prototype that ships no HUD.
+				if (g_PlayerController)
+				{
+					g_PlayerController->lockPlayer(false);
+					if (auto* hud = g_PlayerController->hudController())
+						hud->hide(false);
+				}
 			}
 
 			if (dialog.active)
 			{
-				g_PlayerController->lockPlayer();
-				g_PlayerController->hudController()->hide();
+				if (g_PlayerController)
+				{
+					g_PlayerController->lockPlayer();
+					if (auto* hud = g_PlayerController->hudController())
+						hud->hide();
+				}
 
 				if (!dialog.data.empty())
 				{
@@ -740,15 +875,36 @@ void GameplaySystem::update()
 				break;
 
 			case MT_PLAYER_START:
+			{
+				// THIS IS THE ONE PLACE THAT DECIDES WHICH PLAYER PROTOTYPE RUNS.
+				// The marker names a profile; the profile names the entity, the
+				// spawn height and the controller class. Dragging a different
+				// playerstart .ent into the scene is the entire authoring gesture.
+				const PlayerProfile& profile = resolvePlayerProfile(markerComponent.profile);
+
 				if (Engine::Get()->isGameMode() && !markerComponent.hasUpdated)
 				{
 					if (!WorldManager::Get()->managerSystem()->doesEntityExist("player"))
 					{
 						WorldManager::Get()->spawnEntity(
-							_asset_ent("player/player"), "player", false,
-							transformComponent.position - irr::core::vector3df(0.0f, PLAYER_HEIGHT, 0.0f),
+							_asset_ent(profile.entityAsset), "player", false,
+							transformComponent.position - irr::core::vector3df(0.0f, profile.spawnHeight, 0.0f),
 							irr::core::vector3df(0.0f, transformComponent.rotation.Y, 0.0f));
-						
+
+						// Controller construction lives HERE, not in
+						// GameManager::init(), because here is where the profile is
+						// known. The doesEntityExist() guard above is what stops two
+						// start markers in one scene producing two controllers.
+						//
+						// Teardown deliberately does NOT move: it stays in
+						// GameManager::destroy(), which must run even when the player
+						// entity is already dead, because destroy() unregisters the
+						// weapon viewmodel and LDR-effect nodes from the RenderManager.
+						g_PlayerController = profile.create();
+						g_PlayerController->init();
+
+						spdlog::info("MT_PLAYER_START spawned player profile '{}'", profile.name);
+
 						markerComponent.hasUpdated = true;
 					}
 					else
@@ -760,11 +916,12 @@ void GameplaySystem::update()
 				if (WorldManager::Get()->managerSystem()->doesEntityExist("player"))
 				{
 					auto& playerTransform = WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<TransformComponent>();
-					
-					transformComponent.setPosition(playerTransform.getPosition() + irr::core::vector3df(0.0f, PLAYER_HEIGHT, 0.0f));
+
+					transformComponent.setPosition(playerTransform.getPosition() + irr::core::vector3df(0.0f, profile.spawnHeight, 0.0f));
 					transformComponent.setRotation(irr::core::vector3df(0.0f, playerTransform.getRotation().Y, 0.0f));
 				}
 				break;
+			}
 
 			case MT_FREECAMERA:
 				if (Engine::Get()->isGameMode() && !markerComponent.hasUpdated)
@@ -824,13 +981,14 @@ void GameplaySystem::update()
 				auto& transformComponent   = entity.getComponent<TransformComponent>();
 				auto& triggerzoneComponent = entity.getComponent<TriggerZoneComponent>();
 
-				irr::core::vector3df xyz_min, xyz_max, test_point;
-				xyz_min.X = transformComponent.getPosition().X - transformComponent.getScale().X * 0.5f;
-				xyz_min.Y = transformComponent.getPosition().Y - transformComponent.getScale().Y * 0.5f;
-				xyz_min.Z = transformComponent.getPosition().Z - transformComponent.getScale().Z * 0.5f;
-				xyz_max.X = transformComponent.getPosition().X + transformComponent.getScale().X * 0.5f;
-				xyz_max.Y = transformComponent.getPosition().Y + transformComponent.getScale().Y * 0.5f;
-				xyz_max.Z = transformComponent.getPosition().Z + transformComponent.getScale().Z * 0.5f;
+				irr::core::vector3df test_point;
+
+				irr::core::aabbox3df bounds;
+				if (!zoneWorldBounds(entity, bounds))
+					bounds = zoneScaleBounds(transformComponent);
+
+				const irr::core::vector3df xyz_min = bounds.MinEdge;
+				const irr::core::vector3df xyz_max = bounds.MaxEdge;
 
 
 				if (triggerzoneComponent.mask == TRIGGER_ZONE_MASK::PLAYER_ONLY && !player_in_trigger_zone)
@@ -961,47 +1119,99 @@ void GameplaySystem::update()
 		}
 
 		// --------- WATER COMPONENT
-		// Skipped entirely while noclipping — setNoclip() already cleared the
-		// swim/underwater flags, and the test would just re-set them every frame.
-		if (entity.hasComponent<WaterComponent>() && !player_in_water_zone
-			&& !(g_PlayerController && g_PlayerController->isNoclip()))
+		if (entity.hasComponent<WaterComponent>())
 		{
+			if (entity.hasComponent<MeshComponent>())
+			{
+				if (auto* waterNode = entity.getComponent<MeshComponent>().node)
+					m_waterNodes.push_back(waterNode);
+			}
+
 			if (entity.hasComponent<TransformComponent>())
 			{
 				auto& transformComponent = entity.getComponent<TransformComponent>();
 
-				irr::core::vector3df xyz_min, xyz_max;
+				// Take the volume from the NODE, not from position +/- scale*0.5 --
+				// the water the player swims in has to be the water they can see.
+				// See zoneWorldBounds for why the old box was half size.
+				irr::core::aabbox3df bounds;
+				if (!zoneWorldBounds(entity, bounds))
+					bounds = zoneScaleBounds(transformComponent);
 
-				xyz_min.X = transformComponent.getPosition().X - transformComponent.getScale().X * 0.5f;
-				xyz_min.Y = transformComponent.getPosition().Y - transformComponent.getScale().Y * 0.5f;
-				xyz_min.Z = transformComponent.getPosition().Z - transformComponent.getScale().Z * 0.5f;
-				xyz_max.X = transformComponent.getPosition().X + transformComponent.getScale().X * 0.5f;
-				xyz_max.Y = transformComponent.getPosition().Y + transformComponent.getScale().Y * 0.5f;
-				xyz_max.Z = transformComponent.getPosition().Z + transformComponent.getScale().Z * 0.5f;
+				const irr::core::vector3df xyz_min = bounds.MinEdge;
+				const irr::core::vector3df xyz_max = bounds.MaxEdge;
 
+				// Registered for EVERY water entity, unconditionally. This used to
+				// sit under the same guards as the player test below, which meant
+				// that once the player was swimming in one pool every other pool
+				// fell out of the list -- and with it the buoyancy PhysicsSystem
+				// reads from these zones.
 				m_waterZones.emplace_back(xyz_min, xyz_max);
 
-				if (WorldManager::Get()->managerSystem()->doesEntityExist("player"))
+				// The same box, with its look, for the renderer's underwater pass.
+				// The renderer decides submersion from its own camera each drawn
+				// frame; nothing player-side feeds it.
+				if (auto* rm = RenderManager::Get())
+				{
+					const auto& water = entity.getComponent<WaterComponent>();
+					WaterVolume volume;
+					volume.bounds = bounds;
+					for (int c = 0; c < 3; ++c)
+					{
+						volume.shallowColor[c] = water.shallowColor[c];
+						volume.deepColor[c]    = water.deepColor[c];
+					}
+					volume.fogStart = water.fogStart;
+					volume.fogEnd   = water.fogEnd;
+					rm->addWaterVolume(volume);
+				}
+
+				// The player swim/drown test, on the other hand, still wants both
+				// guards: one zone must not overwrite another's verdict, and while
+				// noclipping setNoclip() has already cleared the flags, so this
+				// would just re-set them every frame.
+				if (!player_in_water_zone
+					&& !(g_PlayerController && g_PlayerController->isNoclip())
+					&& WorldManager::Get()->managerSystem()->doesEntityExist("player"))
 				{
 					auto& player = WorldManager::Get()->managerSystem()->getEntityByName("player");
 
-					if (player.isValid())
+					// The controller is spawned alongside the player entity, so in
+					// practice these agree — but they are two separate objects now
+					// and the entity outliving a torn-down controller is exactly the
+					// game->edit transition this used to crash on.
+					if (player.isValid() && g_PlayerController)
 					{
-						// Get camera position so player isn't swimming until camera is under water
-						auto test_point1 = player.getComponent<CameraComponent>().camera->getAbsolutePosition() - irr::core::vector3df(0.0, 0.75, 0.0);
-						auto test_point2 = player.getComponent<CameraComponent>().camera->getAbsolutePosition() + irr::core::vector3df(0.0, 0.0, 0.0);
+						auto inside = [&](const irr::core::vector3df& p)
+						{
+							return p.X <= xyz_max.X && p.X >= xyz_min.X &&
+							       p.Y <= xyz_max.Y && p.Y >= xyz_min.Y &&
+							       p.Z <= xyz_max.Z && p.Z >= xyz_min.Z;
+						};
 
-						g_PlayerController->setIsSwimming(
-							test_point1.X <= xyz_max.X && test_point1.X >= xyz_min.X &&
-							test_point1.Y <= xyz_max.Y && test_point1.Y >= xyz_min.Y &&
-							test_point1.Z <= xyz_max.Z && test_point1.Z >= xyz_min.Z);
+						// Swim from the chest, drown from the eyes: the player only
+						// starts swimming once a point below the camera is submerged,
+						// and only loses air once the camera itself is.
+						const auto eye   = player.getComponent<CameraComponent>().camera->getAbsolutePosition();
+						const auto chest = eye - irr::core::vector3df(0.0f, 0.75f, 0.0f);
 
-						g_PlayerController->setIHeadUnderWater(
-							test_point2.X <= xyz_max.X && test_point2.X >= xyz_min.X &&
-							test_point2.Y <= xyz_max.Y && test_point2.Y >= xyz_min.Y &&
-							test_point2.Z <= xyz_max.Z && test_point2.Z >= xyz_min.Z);
+						const bool swimming  = inside(chest);
+						const bool headUnder = inside(eye);
 
-						player_in_water_zone = g_PlayerController->isSwimming();
+						g_PlayerController->setIsSwimming(swimming);
+						g_PlayerController->setIHeadUnderWater(headUnder);
+
+						// The waterline the controller floats against. Pushed only
+						// while the player is genuinely in THIS volume, so a pool
+						// on the far side of the map can never claim their surface
+						// and spring them toward a waterline they are nowhere near.
+						if (swimming || headUnder)
+							g_PlayerController->setWaterSurfaceY(xyz_max.Y);
+
+						// Latch on EITHER flag. Latching on swimming alone let a later
+						// zone clear the head-under-water flag of a shallow zone the
+						// player's eyes were in but whose chest test had failed.
+						player_in_water_zone = swimming || headUnder;
 					}
 				}
 			}
@@ -1010,6 +1220,23 @@ void GameplaySystem::update()
 
 	player_in_trigger_zone = false;
 	player_in_water_zone = false;
+}
+
+// A water entity's node carries a triangle selector like any other mesh, so a
+// shot fired into a pool stops AT the surface instead of reaching the bottom.
+// This is how WaterBallistics::pierce() recognises that hit and steps past it.
+bool GameplaySystem::isWaterNode(const irr::scene::ISceneNode* node) const
+{
+	if (!node)
+		return false;
+
+	for (const auto* waterNode : m_waterNodes)
+	{
+		if (waterNode == node)
+			return true;
+	}
+
+	return false;
 }
 
 void GameplaySystem::destroy()
@@ -1070,6 +1297,22 @@ HIT_RESULT GameplaySystem::damageEntity(entityid id, unsigned int damage, DAMAGE
 				// so a refused hit cannot set off anything.
 				if (ctx.explosive)
 					dcomp.receivedExplosive = true;
+
+				// Drowning has no wound. Recorded like any hit (so god/buddha,
+				// death and the hurt latch all behave), but none of the
+				// gore/fracture/debris theatre below may run: the player is
+				// flesh, and every tick would spray blood from their bounding box
+				// underwater. deathResolved stays false so the death is ordinary.
+				if (type == DAMAGE_TYPE::DROWN)
+				{
+					if (!desc.isAlive || pendingDead)
+						return HIT_RESULT::NONE;
+
+					const bool drownKills = !dcomp.invulnerable && !dcomp.buddha &&
+						(dcomp.threshold - dcomp.damageReceived) <= 0;
+
+					return drownKills ? HIT_RESULT::KILL : HIT_RESULT::HIT;
+				}
 
 				// Flesh bleeds; a crate or barrel throws debris instead. Resolved
 				// once here so the corpse and alive branches agree.

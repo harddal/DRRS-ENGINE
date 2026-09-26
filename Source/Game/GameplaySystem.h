@@ -3,6 +3,9 @@
 #include <unordered_set>
 
 #include <SColor.h>
+#include <vector>
+
+namespace irr { namespace scene { class ISceneNode; } }
 
 #include "anax/anax.hpp"
 
@@ -32,6 +35,18 @@ public:
 
 	std::vector<std::pair<irr::core::vector3df, irr::core::vector3df>> getWaterZones() { return m_waterZones; }
 
+	// Same list without the copy. WaterBallistics reads this per projectile per
+	// frame, which is not a place to be allocating a vector.
+	const std::vector<std::pair<irr::core::vector3df, irr::core::vector3df>>& waterZones() const { return m_waterZones; }
+
+	// Is this scene node the renderable of a water entity? Rebuilt every game
+	// tick alongside m_waterZones, so it is only populated in game mode.
+	//
+	// Node pointers rather than entity ids because a raycast hands back a node,
+	// and node->getID() is not a reliable way back to an entity (IDs default to
+	// 0, which is itself a valid entity id).
+	bool isWaterNode(const irr::scene::ISceneNode* node) const;
+
 	void interact(entityid receiver);
 
 	void setShowEntityLinks(bool show) { m_showEntityLinks = show; }
@@ -49,8 +64,30 @@ private:
 	bool m_showEntityLinks = true;
 
 	std::vector<std::pair<irr::core::vector3df, irr::core::vector3df>> m_waterZones;
+	std::vector<const irr::scene::ISceneNode*> m_waterNodes;
 
 	void propagateLogicSignal(anax::Entity& entity, std::unordered_set<entityid>& visited);
+
+	// Register the effects this system owns with ParticleManager, re-registering
+	// them whenever they have gone away. Retried from update() rather than done
+	// once in init() for TWO reasons, either of which is fatal on its own:
+	//
+	//  1. init() runs from the WorldManager CONSTRUCTOR, and Engine declares
+	//     m_worldManager BEFORE m_particleManager -- so ParticleManager::Get()
+	//     is still null there and the precache is silently skipped.
+	//  2. Engine::clearScene() calls ParticleManager::clear(), which erases the
+	//     whole effect table, and it runs on every editor<->game transition.
+	//     init() is only ever reached once.
+	//
+	// 'spark' survived both because every weapon precaches it again in its own
+	// precache(); 'water_splash' has no second owner, so it never loaded at all
+	// and every bullet into a pool logged "spawn: unknown effect 'water_splash'".
+	// Same shape, and same reasoning, as GoreManager::ensureEffects().
+	void ensureEffects();
+
+	// Latched when a .psys genuinely fails to load, so a missing file is not
+	// re-read (and re-logged) once per frame forever.
+	bool m_effectsUnavailable = false;
 
 	// Resolve a CSV entity-name list (LogicComponent::receiver convention) and
 	// propagate a logic signal into every match.  Shared visited set across

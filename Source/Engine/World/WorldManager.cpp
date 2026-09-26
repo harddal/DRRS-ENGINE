@@ -61,6 +61,7 @@ WorldManager::WorldManager()
 	m_gameWorld.addSystem(m_gameplaySystem);
 	m_gameWorld.addSystem(m_particleSystem);
 	m_gameWorld.addSystem(m_behaviorSystem);
+	m_gameWorld.addSystem(m_animationSystem);
 
     // Registered under BOTH names. "WeaponPickup" is what every already-placed
     // .ent file says, and renaming a behavior must not silently turn placed
@@ -208,6 +209,14 @@ void WorldManager::update(irr::f32 dt)
 		exportScene(m_pendingSaveFile);
 		m_pendingSaveFile.clear();
 	}
+}
+
+void WorldManager::updateAnimation(irr::f32 dt)
+{
+    // Deliberately NOT gated on isGameMode. A character posed by AnimGraph must
+    // keep being posed in the editor too, or it freezes on whatever pose it held
+    // when play mode ended - setExternalPose pins the node until it is cleared.
+    m_animationSystem.update(dt);
 }
 
 void WorldManager::updateEntityQueues()

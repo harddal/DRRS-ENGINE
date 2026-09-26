@@ -175,6 +175,9 @@ public:
 	//! Animates this mesh's joints based on frame input
 	virtual void animateMesh(f32 frame, f32 blend) { Mesh->animateMesh(frame,blend); }
 
+	//! ENGINE FORK #6 - forwarded like every other ISkinnedMesh method here
+	virtual void applyPose(const core::array<SJointPose>& pose) { Mesh->applyPose(pose); }
+
 	//! Preforms a software skin on this mesh based of joint positions
 	virtual void skinMesh() { Mesh->skinMesh(); }
 

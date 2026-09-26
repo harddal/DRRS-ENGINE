@@ -45,6 +45,10 @@
 
 #include <spdlog/spdlog.h>
 
+// For ShaderMaterialManager::get() — alphaMode:MASK materials need the
+// alpha-tested build of phong_perpixel rather than the default solid one.
+#include "../RenderManager.h"
+
 using namespace irr;
 
 namespace
@@ -685,6 +689,37 @@ private:
         SLOT_EMISSION_  = 7,
     };
 
+    static u8 toIrrWrap(fastgltf::Wrap w)
+    {
+        switch (w)
+        {
+        case fastgltf::Wrap::ClampToEdge:    return video::ETC_CLAMP_TO_EDGE;
+        case fastgltf::Wrap::MirroredRepeat: return video::ETC_MIRROR;
+        case fastgltf::Wrap::Repeat:
+        default:                             return video::ETC_REPEAT;
+        }
+    }
+
+    // Irrlicht defaults every layer to ETC_REPEAT, so a glTF sampler asking for
+    // CLAMP_TO_EDGE was silently ignored before this. It matters wherever UVs
+    // stray outside [0,1]: eyeball meshes park the iris in the middle of the map
+    // and let the sclera run off the edge, so under REPEAT the iris wraps around
+    // and a second copy appears in the corner of the eye.
+    void applySampler(video::SMaterial& mat, u32 slot, size_t textureIndex)
+    {
+        if (textureIndex >= m_asset.textures.size())
+            return;
+        const fastgltf::Texture& tex = m_asset.textures[textureIndex];
+        if (!tex.samplerIndex.has_value())
+            return;
+        const size_t samplerIndex = tex.samplerIndex.value();
+        if (samplerIndex >= m_asset.samplers.size())
+            return;
+        const fastgltf::Sampler& sampler = m_asset.samplers[samplerIndex];
+        mat.TextureLayer[slot].TextureWrapU = toIrrWrap(sampler.wrapS);
+        mat.TextureLayer[slot].TextureWrapV = toIrrWrap(sampler.wrapT);
+    }
+
     void createMaterials()
     {
         m_materials.clear();
@@ -700,15 +735,21 @@ private:
             irrMaterial.EmissiveColor = toIrrColor(emissive.x(), emissive.y(), emissive.z(), 1.f);
 
             if (mat.pbrData.baseColorTexture.has_value())
-                irrMaterial.TextureLayer[SLOT_DIFFUSE_].Texture =
-                    resolveTexture(mat.pbrData.baseColorTexture.value().textureIndex);
+            {
+                const size_t ti = mat.pbrData.baseColorTexture.value().textureIndex;
+                irrMaterial.TextureLayer[SLOT_DIFFUSE_].Texture = resolveTexture(ti);
+                applySampler(irrMaterial, SLOT_DIFFUSE_, ti);
+            }
 
             // Slot 1 stays free — it is reserved for baked lightmaps
             // (phong_perpixel treats any non-null slot 1 as a lightmap).
 
             if (mat.normalTexture.has_value())
-                irrMaterial.TextureLayer[SLOT_NORMAL_].Texture =
-                    resolveTexture(mat.normalTexture.value().textureIndex);
+            {
+                const size_t ti = mat.normalTexture.value().textureIndex;
+                irrMaterial.TextureLayer[SLOT_NORMAL_].Texture = resolveTexture(ti);
+                applySampler(irrMaterial, SLOT_NORMAL_, ti);
+            }
 
             // One packed ORM texture (R=occlusion, G=roughness, B=metallic) with
             // the scalar factors folded in, bound to both slots. The shader
@@ -720,11 +761,49 @@ private:
             {
                 irrMaterial.TextureLayer[SLOT_ROUGHNESS_].Texture = orm;
                 irrMaterial.TextureLayer[SLOT_METALLIC_].Texture  = orm;
+                // Built, not resolved, so it has no sampler of its own — it shares
+                // the base colour's UVs and must share its wrap mode too.
+                irrMaterial.TextureLayer[SLOT_ROUGHNESS_].TextureWrapU =
+                    irrMaterial.TextureLayer[SLOT_METALLIC_].TextureWrapU =
+                    irrMaterial.TextureLayer[SLOT_DIFFUSE_].TextureWrapU;
+                irrMaterial.TextureLayer[SLOT_ROUGHNESS_].TextureWrapV =
+                    irrMaterial.TextureLayer[SLOT_METALLIC_].TextureWrapV =
+                    irrMaterial.TextureLayer[SLOT_DIFFUSE_].TextureWrapV;
             }
 
             if (mat.emissiveTexture.has_value())
-                irrMaterial.TextureLayer[SLOT_EMISSION_].Texture =
-                    resolveTexture(mat.emissiveTexture.value().textureIndex);
+            {
+                const size_t ti = mat.emissiveTexture.value().textureIndex;
+                irrMaterial.TextureLayer[SLOT_EMISSION_].Texture = resolveTexture(ti);
+                applySampler(irrMaterial, SLOT_EMISSION_, ti);
+            }
+
+            // alphaMode:MASK is a cut-out (hair cards, eyelashes, foliage): the
+            // base colour's alpha is a stencil, not an opacity ramp. Swap in the
+            // alpha-tested build of the SAME shader, which alpha-tests in fixed
+            // function and still reports isTransparent()==false, so the mesh keeps
+            // depth writes and stays out of the sorted transparent pass.
+            //
+            // alphaMode:BLEND is deliberately left alone. Blender's exporter emits
+            // it for any material whose alpha socket is merely linked, so honouring
+            // it here would silently move existing imported assets into the
+            // transparent pass — see the OPAQUE forcing in blender_fbx_materials.py.
+            if (mat.alphaMode == fastgltf::AlphaMode::Mask)
+            {
+                const video::E_MATERIAL_TYPE masked =
+                    ShaderMaterialManager::get("phong_perpixel_masked");
+                if (masked != video::EMT_SOLID)
+                    irrMaterial.MaterialType = masked;
+                spdlog::info("GltfImport: material '{}' is alphaMode:MASK - alpha-tested",
+                    std::string(mat.name.begin(), mat.name.end()));
+
+                // Cut-out cards are modelled as single-sided strips and are meant
+                // to be read from both faces. Only MASK materials get this —
+                // Blender marks nearly everything doubleSided, so applying it
+                // wholesale would disable backface culling across every asset.
+                if (mat.doubleSided)
+                    irrMaterial.BackfaceCulling = false;
+            }
 
             m_materials.push_back(irrMaterial);
         }

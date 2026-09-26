@@ -18,10 +18,21 @@ struct PlayerData
 	// the refresh, and the HUD now asks the weapon directly instead.
     int currentHealth = 0;
 
+	// Breath readout for the HUD, written by PlayerController after its
+	// PlayerBreath tick. Display copies only, same rule as currentHealth.
+	float breathFraction = 1.0f;   // 0..1 air remaining
+	float breathHudAlpha = 0.0f;   // 0..1 faded visibility of the bar
+	bool  isDrowning     = false;  // out of air and still airless
+
+	// Every field must be swapped here by hand: one left out silently keeps
+	// its default through any assignment.
 	PlayerData& operator=(PlayerData data)
 	{
 		std::swap(isWeaponEquipped, data.isWeaponEquipped);
 		std::swap(currentHealth, data.currentHealth);
+		std::swap(breathFraction, data.breathFraction);
+		std::swap(breathHudAlpha, data.breathHudAlpha);
+		std::swap(isDrowning, data.isDrowning);
 
 		return *this;
 	}

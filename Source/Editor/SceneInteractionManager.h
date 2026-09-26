@@ -72,6 +72,10 @@ struct EditorConfiguration
 	float snapX, snapY, snapZ;
 	float snapAngle; // rotation snap increment, in degrees
 
+	// Scene the editor loads on startup. Empty means "use the built-in default"
+	// (TempleDungeon) -- see EditorState::init().
+	std::string startupScenePath;
+
 	template <class Archive>
 	void serialize(Archive& archive)
 	{
@@ -81,7 +85,8 @@ struct EditorConfiguration
 			CEREAL_NVP(snapX),
 			CEREAL_NVP(snapY),
 			CEREAL_NVP(snapZ),
-			CEREAL_NVP(snapAngle));
+			CEREAL_NVP(snapAngle),
+			CEREAL_NVP(startupScenePath));
 	}
 
 	EditorConfiguration() :
@@ -90,7 +95,8 @@ struct EditorConfiguration
 		snapX(0.25f),
 		snapY(0.25f),
 		snapZ(0.25f),
-		snapAngle(15.0f)
+		snapAngle(15.0f),
+		startupScenePath("")
 	{}
 };
 

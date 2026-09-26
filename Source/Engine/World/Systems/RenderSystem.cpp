@@ -9,6 +9,9 @@
 #include "Editor/SceneInteractionManager.h"
 #include "Editor/EditorState.h"
 
+#include <unordered_map>
+#include <vector>
+
 #define DEBUG_MESH_LIGHT_SPHERE_SCALE 0.75f;
 
 using namespace anax;
@@ -16,6 +19,260 @@ using namespace irr;
 using namespace core;
 using namespace scene;
 using namespace video;
+
+namespace
+{
+	// Pristine, as-loaded vertex normals for every mesh that has been put through
+	// recalculateNormals.
+	//
+	// The recalculation rewrites the mesh in place, and the mesh cache hands the
+	// SAME IMesh to every entity naming that file, so the edit is both shared and
+	// permanent. Holding the originals here is what lets the editor checkbox be a
+	// real toggle instead of a one-way door.
+	using NormalBackup = std::vector<std::vector<vector3df>>;
+
+	std::unordered_map<std::string, NormalBackup>& originalNormalCache()
+	{
+		static std::unordered_map<std::string, NormalBackup> cache;
+		return cache;
+	}
+
+	// Key the backup on the path the MESH CACHE registered, not on the string in
+	// the component. They usually agree, but the primitives are aliases:
+	// "_primitive_cube" and "content/mesh/primitive/cube.obj" resolve to one
+	// cached IMesh, and keying on the component string would file two backups for
+	// the one set of buffers. Sharing is a property of the mesh, so the key has to
+	// be one too.
+	std::string meshCacheKey(const IMesh* mesh)
+	{
+		auto* meshCache = RenderManager::Get()->sceneManager()->getMeshCache();
+
+		return std::string(meshCache->getMeshName(mesh).getPath().c_str());
+	}
+}
+
+// Rebuilds or restores a loaded mesh's vertex normals and flags the buffers
+// dirty, so the change lands on the current frame. The work itself is Irrlicht's
+// CMeshManipulator operating on the in-memory IMesh — it is importer-agnostic and
+// has nothing to do with whichever backend produced the mesh.
+void RenderSystem::applyRecalculateNormals(MeshComponent& meshComponent, bool recalculate,
+                                           bool propagateToSharedMeshes)
+{
+	if (!meshComponent.node || meshComponent.mesh.empty())
+		return;
+
+	IAnimatedMesh* mesh = meshComponent.node->getMesh();
+	if (!mesh)
+		return;
+
+	// The mesh cache hands ONE IMesh to every entity naming the same file, so the
+	// normals below are shared - but the flag describing them is stored per entity.
+	// Mirror it onto the siblings, or ten crates out of one .glb end up showing
+	// nine unticked boxes over geometry that is plainly recalculated. Pointer
+	// identity is the sharing relation itself, so primitive aliases and anything
+	// the cache de-duplicates in future are covered without a second rule.
+	//
+	// Off during scene load: setMeshComponentData calls this once per entity, and
+	// the entities that would be written to do not all exist yet.
+	if (propagateToSharedMeshes)
+	{
+		for (const auto& other : WorldManager::Get()->world()->getEntities())
+		{
+			if (!other.isValid() || !other.hasComponent<MeshComponent>())
+				continue;
+
+			auto& otherMesh = other.getComponent<MeshComponent>();
+			if (&otherMesh != &meshComponent && otherMesh.node && otherMesh.node->getMesh() == mesh)
+				otherMesh.recalculateNormals = recalculate;
+		}
+	}
+
+	const u32 bufferCount = mesh->getMeshBufferCount();
+	const std::string key = meshCacheKey(mesh);
+
+	auto& cache = originalNormalCache();
+	auto entry = cache.find(key);
+
+	if (recalculate)
+	{
+		// Snapshot once, before this mesh is touched for the first time.
+		if (entry == cache.end())
+		{
+			NormalBackup backup(bufferCount);
+			for (u32 b = 0; b < bufferCount; ++b)
+			{
+				auto* buf = mesh->getMeshBuffer(b);
+				const u32 vtxcnt = buf->getVertexCount();
+				backup[b].resize(vtxcnt);
+				for (u32 v = 0; v < vtxcnt; ++v)
+					backup[b][v] = buf->getNormal(v);
+			}
+			cache.emplace(key, std::move(backup));
+		}
+
+		RenderManager::Get()->manipulator()->recalculateNormals(mesh, true);
+	}
+	else
+	{
+		// Never recalculated, so the mesh still holds its authored normals.
+		if (entry == cache.end())
+			return;
+
+		const NormalBackup& backup = entry->second;
+		if (backup.size() != bufferCount)
+		{
+			// A different mesh now lives under this path; the snapshot no longer
+			// describes it, so drop it rather than write garbage into the buffers.
+			cache.erase(entry);
+			return;
+		}
+
+		for (u32 b = 0; b < bufferCount; ++b)
+		{
+			auto* buf = mesh->getMeshBuffer(b);
+			const u32 count = core::min_(buf->getVertexCount(), static_cast<u32>(backup[b].size()));
+			for (u32 v = 0; v < count; ++v)
+				buf->getNormal(v) = backup[b][v];
+		}
+	}
+
+	// Once setHardwareMappingHint(EHM_STATIC) has run the vertices live in a VBO,
+	// and a CPU-side edit stays invisible until the buffer is flagged dirty.
+	// Without this the change would only appear after a mesh reload — which is
+	// precisely the wait this function exists to remove.
+	for (u32 b = 0; b < bufferCount; ++b)
+		mesh->getMeshBuffer(b)->setDirty(EBT_VERTEX);
+
+	// A weighted skinned mesh rebuilds every vertex normal from a per-weight cache
+	// of the BIND-POSE normal on each skinning pass, so an edit to the mesh buffers
+	// is wiped on the next animated frame. That cache (SWeight::StaticNormal) is
+	// private to CSkinnedMesh and only ever filled once, so it cannot be refreshed
+	// from here — say so instead of leaving the checkbox silently doing nothing.
+	if (recalculate && mesh->getMeshType() == EAMT_SKINNED)
+	{
+		auto& joints = static_cast<ISkinnedMesh*>(mesh)->getAllJoints();
+
+		bool weighted = false;
+		for (u32 j = 0; j < joints.size() && !weighted; ++j)
+			weighted = joints[j]->Weights.size() > 0;
+
+		if (weighted)
+			spdlog::warn("RenderSystem::applyRecalculateNormals: \"{}\" is a skinned mesh - "
+			             "the recalculated normals will be overwritten by the next skinning pass.",
+			             meshComponent.mesh);
+	}
+}
+
+// Full shader assignment for a mesh node: the node-wide shader first, then the
+// per-buffer overrides on top. Idempotent, so the editor can call it after every
+// edit — which is what makes REMOVING an override restore the default shader
+// rather than leaving the buffer on whatever it was last given.
+void RenderSystem::applyMeshShaders(MeshComponent& meshComponent)
+{
+	if (!meshComponent.node)
+		return;
+
+	// Resolve shader: named shader takes priority; fall back to renderMaterial for old saves.
+	const std::string& sn = meshComponent.shaderName;
+	auto resolvedMat = sn.empty()
+	    ? ShaderMaterialManager::get("phong_perpixel")
+	    : ShaderMaterialManager::get(sn);
+	if (resolvedMat != EMT_SOLID)
+	{
+		// setMaterialType() is node-wide, but alpha-testing is a PER-BUFFER
+		// property: a character has one hair buffer among thirty opaque ones.
+		// GltfImport already set the masked type on exactly the buffers whose
+		// glTF material was alphaMode:MASK, so preserve those and overwrite the
+		// rest. Only the default shader defers this way — an explicit
+		// shaderName (water, foliage, ...) is an instruction and still wins.
+		// Gate on the RESOLVED type, not on sn being empty: several .ent files
+		// spell "phong_perpixel" out explicitly, and those must behave exactly
+		// like the default rather than losing their cut-outs.
+		auto maskedMat = ShaderMaterialManager::get("phong_perpixel_masked");
+		const bool keepMasked = maskedMat != EMT_SOLID &&
+		                        resolvedMat == ShaderMaterialManager::get("phong_perpixel");
+
+		if (!keepMasked)
+			meshComponent.node->setMaterialType(resolvedMat);
+		else
+		{
+			u32 kept = 0;
+			for (u32 i = 0; i < meshComponent.node->getMaterialCount(); ++i)
+				if (meshComponent.node->getMaterial(i).MaterialType != maskedMat)
+					meshComponent.node->getMaterial(i).MaterialType = resolvedMat;
+				else
+					++kept;
+			if (kept)
+				spdlog::info("RenderSystem: '{}' keeps {} of {} buffer(s) alpha-tested",
+					meshComponent.mesh, kept, meshComponent.node->getMaterialCount());
+		}
+	}
+
+	// Node-wide params, re-applied here so a removed override's tuning does not
+	// survive on the buffer it was attached to.
+	for (u32 i = 0; i < meshComponent.node->getMaterialCount(); ++i)
+		for (u32 p = 0; p < 8; ++p)
+			meshComponent.node->getMaterial(i).MaterialTypeParams[p] = meshComponent.materialTypeParams[p];
+
+	applyBufferShaderOverrides(meshComponent);
+}
+
+// Per-buffer shader assignment — see MeshBufferShader in MeshComponent.h.
+void RenderSystem::applyBufferShaderOverrides(MeshComponent& meshComponent)
+{
+    if (!meshComponent.node || meshComponent.bufferShaderOverrides.empty())
+        return;
+
+    const u32 bufferCount = meshComponent.node->getMaterialCount();
+
+    for (const auto& ovr : meshComponent.bufferShaderOverrides)
+    {
+        if (ovr.shaderName.empty())
+            continue;
+
+        const E_MATERIAL_TYPE mat = ShaderMaterialManager::get(ovr.shaderName);
+        if (mat == EMT_SOLID)
+        {
+            // EMT_SOLID is what the manager returns for a name it does not know,
+            // so a typo would silently leave the buffer on the default shader.
+            spdlog::warn("RenderSystem: '{}' buffer override names unknown shader '{}'",
+                meshComponent.mesh, ovr.shaderName);
+            continue;
+        }
+
+        u32 applied = 0;
+        for (u32 b = 0; b < bufferCount; ++b)
+        {
+            auto& material = meshComponent.node->getMaterial(b);
+
+            if (!ovr.match.empty())
+            {
+                // Name match against the diffuse texture — survives a re-export
+                // of the source mesh, which renumbers buffers.
+                const ITexture* tex = material.getTexture(SLOT_DIFFUSE);
+                if (!tex)
+                    continue;
+                if (core::stringc(tex->getName().getPath()).find(ovr.match.c_str()) < 0)
+                    continue;
+            }
+            else if (b != ovr.bufferIndex)
+                continue;
+
+            material.MaterialType = mat;
+            for (u32 p = 0; p < 4; ++p)
+                material.MaterialTypeParams[p] = ovr.params[p];
+            ++applied;
+        }
+
+        if (applied == 0)
+            spdlog::warn("RenderSystem: '{}' buffer override '{}' matched NO buffer "
+                         "(match='{}', index={}, node has {})",
+                meshComponent.mesh, ovr.shaderName, ovr.match, ovr.bufferIndex, bufferCount);
+        else
+            spdlog::info("RenderSystem: '{}' -> shader '{}' on {} buffer(s)",
+                meshComponent.mesh, ovr.shaderName, applied);
+    }
+}
 
 void RenderSystem::setMeshComponentData(Entity& entity)
 {
@@ -94,7 +351,7 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 
 	if (meshComponent.recalculateNormals)
 	{
-		RenderManager::Get()->manipulator()->recalculateNormals(meshComponent.node->getMesh(), true);
+		applyRecalculateNormals(meshComponent, true);
 	}
 
 	// Upload geometry to GPU buffers (VBOs). Without a mapping hint Irrlicht falls
@@ -177,23 +434,12 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 
     meshComponent.node->setMaterialFlag(EMF_ZBUFFER, !meshComponent.disableZDraw);
 
+	if (meshComponent.transparent)
 	{
-		// Resolve shader: named shader takes priority; fall back to renderMaterial for old saves.
-		const std::string& sn = meshComponent.shaderName;
-		auto resolvedMat = sn.empty()
-		    ? ShaderMaterialManager::get("phong_perpixel")
-		    : ShaderMaterialManager::get(sn);
-		if (resolvedMat != EMT_SOLID)
-			meshComponent.node->setMaterialType(resolvedMat);
-
-		if (meshComponent.transparent)
-		{
-			meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, true);
-			meshComponent.node->setMaterialFlag(EMF_BLEND_OPERATION, true);
-		}
+		meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, true);
+		meshComponent.node->setMaterialFlag(EMF_BLEND_OPERATION, true);
 	}
 
-       
 	/*
 		// Painted metal (gun, vehicles)
 		node->getMaterial(i).Shininess = 96.f;          // roughness ≈ 0.13
@@ -222,6 +468,11 @@ void RenderSystem::setMeshComponentData(Entity& entity)
             meshComponent.node->getMaterial(i).MaterialTypeParams[p] = meshComponent.materialTypeParams[p];
 	}
 
+	// Shader assignment: node-wide first, then the per-buffer overrides. Runs
+	// after the params loop above, because an override carries its own
+	// MaterialTypeParams[0..3] and this loop would otherwise stomp them.
+	applyMeshShaders(meshComponent);
+
 	// Apply water shader if entity has water component
 	if (entity.hasComponent<WaterComponent>())
 	{
@@ -232,34 +483,71 @@ void RenderSystem::setMeshComponentData(Entity& entity)
 		if (waterMat != EMT_SOLID)
 			meshComponent.node->setMaterialType(waterMat);
 
-		// Disable z-write so transparent water sorts correctly behind solid geometry.
-		meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, false);
+		// Water DEPTH-WRITES, unlike everything else in the transparent pass.
+		// It is opaque (the refraction is the see-through, not the blend), and a
+		// water brush is a closed BOX: with back-face culling off and no depth
+		// write, its top face and its bottom/side faces all pass the depth test
+		// over the same pixels and the last one drawn wins, which seams the
+		// surface in half at a grazing angle. drawTransparentPass() has a
+		// matching exemption from its blanket ZWriteEnable = false.
+		meshComponent.node->setMaterialFlag(EMF_ZWRITE_ENABLE, true);
 		meshComponent.node->setMaterialFlag(EMF_LIGHTING, false);
-		// Render back faces so the surface is visible from below.
+		// Render back faces so the surface is still visible from underwater.
 		meshComponent.node->setMaterialFlag(EMF_BACK_FACE_CULLING, false);
 
-		// Encode shallow/deep colors into material slots so WaterShaderCallback
-		// can read them without needing per-entity state.
-		// AmbientColor  → uShallowColor
-		// DiffuseColor  → uDeepColor   (alpha = surface opacity, 204 ≈ 0.8)
+		// $normalmap → slot 0. Taken from the WaterComponent rather than
+		// meshComponent.textures so water entities authored before the shader
+		// rewrite — which carry a scrolling DIFFUSE texture in slot 0 — pick up
+		// the tiling wave normal map instead of feeding colour to a normal
+		// sampler. Slot 1 is no longer used by water at all.
+		irr::video::ITexture* waveNormal = nullptr;
+		if (!waterComp.normalMap.empty())
+		{
+			waveNormal = driver->getTexture(waterComp.normalMap.c_str());
+			if (!waveNormal)
+				spdlog::warn("Water: normal map '{}' not found - using procedural waves",
+					waterComp.normalMap);
+		}
+		meshComponent.node->setMaterialTexture(0, waveNormal);
+		meshComponent.node->setMaterialTexture(1, nullptr);
+
+		// There is one global WaterShaderCallback shared by every water body, so
+		// the per-entity look has to travel inside the SMaterial — that is the
+		// only thing OnSetConstants receives per draw. Keep this packing in sync
+		// with the unpacking in WaterShaderCallback::OnSetConstants.
+		//
+		//   AmbientColor            → $refracttint
+		//   DiffuseColor            → $fogcolor, alpha = fallback opacity
+		//   SpecularColor           → $reflecttint
+		//   MaterialTypeParams[0-7] → the scalar knobs
+		//
+		// The generic MaterialTypeParams copy further up is deliberately
+		// overwritten here: water owns all eight slots. Slot 0 is only safe to
+		// use because the water material's base is EMT_TRANSPARENT_VERTEX_ALPHA,
+		// which runs no alpha test — see the registration in RenderManager.cpp.
 		const auto& sc = waterComp.shallowColor;
 		const auto& dc = waterComp.deepColor;
+		const auto& rc = waterComp.reflectColor;
+		auto to255 = [](float v) {
+			return static_cast<u32>(irr::core::clamp(v, 0.0f, 1.0f) * 255.0f);
+		};
+
 		for (u32 i = 0; i < meshComponent.node->getMaterialCount(); ++i)
 		{
 			auto& mat = meshComponent.node->getMaterial(i);
-			mat.AmbientColor.set(255,
-				static_cast<u32>(sc[0] * 255), static_cast<u32>(sc[1] * 255), static_cast<u32>(sc[2] * 255));
-			mat.DiffuseColor.set(204,
-				static_cast<u32>(dc[0] * 255), static_cast<u32>(dc[1] * 255), static_cast<u32>(dc[2] * 255));
-		}
+			mat.AmbientColor.set (255, to255(sc[0]), to255(sc[1]), to255(sc[2]));
+			mat.DiffuseColor.set (to255(waterComp.alpha),
+			                      to255(dc[0]), to255(dc[1]), to255(dc[2]));
+			mat.SpecularColor.set(255, to255(rc[0]), to255(rc[1]), to255(rc[2]));
 
-		// Load optional second texture (normal/overlay layer) into slot 1.
-		// Specify it as textures[1] in the .ent file alongside the primary texture.
-		if (meshComponent.textures.size() > 1)
-		{
-			auto* t1 = driver->getTexture(meshComponent.textures[1].c_str());
-			if (t1)
-				meshComponent.node->setMaterialTexture(1, t1);
+			mat.MaterialTypeParams[0] = waterComp.fogStart;
+			mat.MaterialTypeParams[1] = waterComp.fogEnd;
+			mat.MaterialTypeParams[2] = waterComp.refractAmount;
+			mat.MaterialTypeParams[3] = waterComp.reflectAmount;
+			mat.MaterialTypeParams[4] = waterComp.normalTiling;
+			mat.MaterialTypeParams[5] = waterComp.flowSpeed;
+			mat.MaterialTypeParams[6] = waterComp.fresnelPower;
+			mat.MaterialTypeParams[7] = waterComp.waveStrength;
 		}
 	}
 	else if (meshComponent.transparent)

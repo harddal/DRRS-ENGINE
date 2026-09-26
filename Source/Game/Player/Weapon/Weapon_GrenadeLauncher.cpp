@@ -1,4 +1,5 @@
 #include "Weapon_GrenadeLauncher.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -516,7 +517,7 @@ void Weapon_GrenadeLauncher::updateProjectiles(float dt)
 				if (it->bounceCount >= 1)
 				{
 					// Second contact — detonate on the surface we struck
-					detonateAt(hitPoint, hitEntityID, hitNormal);
+					detonateAt(hitPoint, hitEntityID, hitNormal, WaterBallistics::projectileScale(*it));
 					shouldRemove = true;
 				}
 				else
@@ -540,7 +541,7 @@ void Weapon_GrenadeLauncher::updateProjectiles(float dt)
 			}
 			else
 			{
-				detonateAt(hitPoint, hitEntityID, hitNormal);
+				detonateAt(hitPoint, hitEntityID, hitNormal, WaterBallistics::projectileScale(*it));
 				shouldRemove = true;
 			}
 		}
@@ -567,6 +568,13 @@ void Weapon_GrenadeLauncher::updateProjectiles(float dt)
 				transformComp.node->updateAbsolutePosition();
 			}
 		}
+
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
 
 		it->previousPosition = sweepOrigin;
 		it->lifetime += dt;
@@ -611,11 +619,11 @@ void Weapon_GrenadeLauncher::updateProjectiles(float dt)
 }
 
 void Weapon_GrenadeLauncher::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-	const irr::core::vector3df& surfaceNormal)
+	const irr::core::vector3df& surfaceNormal, float waterScale)
 {
 	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.06f);
 	ParticleManager::Get()->spawn("explosion", irr2spk(pos));
-	applySplashDamage(pos, directHitID);
+	applySplashDamage(pos, directHitID, waterScale);
 
 	// Light flash + scorch (oriented to the hit surface) + smoke + proximity feedback
 	m_effects.explosionAt(pos,
@@ -625,11 +633,12 @@ void Weapon_GrenadeLauncher::detonateAt(const irr::core::vector3df& pos, entityi
 	if (directHitID != _entity_null_value)
 	{
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(m_pointDamage)));
+			directHitID, static_cast<unsigned int>(m_pointDamage * waterScale)));
 	}
 }
 
-void Weapon_GrenadeLauncher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
+void Weapon_GrenadeLauncher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+	float waterScale)
 {
 	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
 		return;
@@ -655,7 +664,7 @@ void Weapon_GrenadeLauncher::applySplashDamage(const irr::core::vector3df& epice
 		if (dist >= m_splashRadius) continue;
 
 		float falloff = 1.0f - (dist / m_splashRadius);
-		float damage  = m_splashDamage * falloff;
+		float damage  = m_splashDamage * falloff * waterScale;
 
 		if (damage >= 1.0f)
 		{

@@ -1,4 +1,5 @@
 #include "Weapon_SkullStaff.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -1017,7 +1018,8 @@ void Weapon_SkullStaff::updateProjectiles(float dt)
 
 			if (solid)
 			{
-				detonate(desc, hit.point, hitEntityID, hit.normal);
+				detonate(desc, hit.point, hitEntityID, hit.normal,
+					WaterBallistics::projectileScale(proj));
 				remove = true;
 			}
 		}
@@ -1039,6 +1041,13 @@ void Weapon_SkullStaff::updateProjectiles(float dt)
 			transformComp.node->setPosition(nextPos);
 			transformComp.node->setRotation(transformComp.rotation);
 			transformComp.node->updateAbsolutePosition();
+
+			// Water costs the projectile something on the way through: splash at every
+			// surface crossed, and the submerged travel banked against its penetration
+			// depth. Projectiles already fly through water for free -- they only
+			// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+			// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+			WaterBallistics::stepProjectile(proj, proj.previousPosition, currentPos);
 
 			proj.previousPosition = currentPos;
 			proj.lifetime += dt;
@@ -1071,7 +1080,8 @@ void Weapon_SkullStaff::updateProjectiles(float dt)
 }
 
 void Weapon_SkullStaff::detonate(const SpellDesc& desc, const irr::core::vector3df& pos,
-                                 entityid directHitID, const irr::core::vector3df& surfaceNormal)
+                                 entityid directHitID, const irr::core::vector3df& surfaceNormal,
+                                 float waterScale)
 {
 	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.06f);
 
@@ -1092,7 +1102,7 @@ void Weapon_SkullStaff::detonate(const SpellDesc& desc, const irr::core::vector3
 	// specific spell, which this table cannot express today. Keep the staff's
 	// splash rows multiplicative.
 	const float splashRadius = statf(WSTAT_SPLASH_RADIUS, desc.splashRadius);
-	const float splashDamage = statf(WSTAT_SPLASH_DAMAGE, desc.splashDamage);
+	const float splashDamage = statf(WSTAT_SPLASH_DAMAGE, desc.splashDamage) * waterScale;
 
 	if (splashDamage > 0.0f && splashRadius > 0.0f)
 		applySplashDamage(pos, directHitID, splashRadius, splashDamage);
@@ -1112,7 +1122,7 @@ void Weapon_SkullStaff::detonate(const SpellDesc& desc, const irr::core::vector3
 	if (directHitID != _entity_null_value)
 	{
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(statf(WSTAT_DAMAGE, desc.directDamage))));
+			directHitID, static_cast<unsigned int>(statf(WSTAT_DAMAGE, desc.directDamage) * waterScale)));
 	}
 }
 

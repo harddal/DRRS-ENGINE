@@ -1,4 +1,5 @@
 ﻿#include "Weapon_HeavyRifle.h"
+#include "WaterBallistics.h"
 
 #include <algorithm>
 
@@ -526,11 +527,12 @@ void Weapon_HeavyRifle::fire()
 	// Cast ray a long distance (1000 units)
 	irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
-	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(
-		muzzlePos,
-		rayEnd,
-		true  // Exclude debug nodes
-	);
+	// Water does not stop the shot. pierce() walks the ray THROUGH any water
+	// surfaces on the way, splashes at each, and charges the round for the water
+	// it crossed; a round that runs out of penetration comes back as a MISS, so
+	// the chain below skips damage, impact and decal without knowing about water.
+	const WaterBallistics::Shot shot = WaterBallistics::pierce(muzzlePos, rayEnd);
+	const RaycastResultData& raycastResult = shot.hit;
 
 	// Check if we hit something
 	if (raycastResult.hit && raycastResult.node)
@@ -547,7 +549,7 @@ void Weapon_HeavyRifle::fire()
 			{
 				// Damage through the gameplay chokepoint; drives hitmarker/kill feedback
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, 25, DAMAGE_TYPE::DEFAULT,
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, shot.scaled(25.0f), DAMAGE_TYPE::DEFAULT,
 						DamageContext::fromImpact(raycastResult.point, raycastResult.normal,
 							raycastResult.ray.getVector())));
 
@@ -566,8 +568,7 @@ void Weapon_HeavyRifle::fire()
 	}
 
 	// Tracer segment toward the hit point (module fires every Nth shot)
-	irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ?
-		raycastResult.point : (muzzlePos + direction * 1000.0f);
+	const irr::core::vector3df tracerEnd = shot.endPoint;
 	m_effects.spawnTracer(muzzlePos, tracerEnd);
 
 	m_effects.muzzleFlash();

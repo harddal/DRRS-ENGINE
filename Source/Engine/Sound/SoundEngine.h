@@ -6,6 +6,7 @@
 
 #include <soloud.h>
 #include <soloud_wav.h>
+#include <soloud_biquadresonantfilter.h>
 
 #include "irrlicht.h"
 
@@ -100,6 +101,27 @@ public:
 		setListenerPosition(pos.X, pos.Y, pos.Z, look.X, look.Y, look.Z, up.X, up.Y, up.Z);
 	}
 
+	// --- Underwater muffle ---------------------------------------------------
+	// A lowpass biquad occupies SoLoud's global (master) filter slot for the whole
+	// life of the engine; submerging only fades its wet mix in. The filter is
+	// never attached or detached at runtime -- setGlobalFilter() destroys and
+	// rebuilds the filter instance, which pops audibly and has to be raced
+	// against the mixer thread.
+	//
+	// Being global, this muffles EVERYTHING, 2D included: music, UI clicks and the
+	// player's own weapon sounds go under with the 3D world. That is deliberate --
+	// it is what submersion sounds like, and it is how Source-era games do it.
+	void setUnderwater(bool underwater, float fadeSeconds = 0.25f);
+	bool isUnderwater() const { return m_underwater; }
+
+	// Tuning knobs, exposed for the 'snd_underwater' console command. cutoffHz is
+	// the lowpass corner (lower = more muffled); resonance is the biquad Q, which
+	// adds the slight bottled ring around the corner. Safe to call while
+	// submerged -- the change is audible immediately.
+	void setUnderwaterParams(float cutoffHz, float resonance);
+	float underwaterCutoff()    const { return m_underwaterCutoff; }
+	float underwaterResonance() const { return m_underwaterResonance; }
+
 	void stopHandle(SoLoud::handle h) { if (h) m_soloud.stop(h); }
 	void stopAllVoices();   // stop all playing voices without unloading sources
 	void removeAllSoundSources();
@@ -122,7 +144,21 @@ private:
 	SoundSource* pickVariant(const char* basePath);
 	static float jitteredSpeed(float pitchJitter);
 
+	// Global filter slot the underwater lowpass lives in. Slot 0 of 8
+	// (FILTERS_PER_STREAM); the rest stay free for future master effects.
+	static constexpr unsigned int k_underwaterSlot = 0;
+
 	SoLoud::Soloud m_soloud;
+
+	// Declared after m_soloud so it is destroyed FIRST -- but ~Soloud deletes the
+	// filter INSTANCE, which holds a back-pointer to this parent. ~SoundEngine
+	// therefore clears the slot explicitly before deinit(); do not rely on
+	// member order here.
+	SoLoud::BiquadResonantFilter m_underwaterFilter;
+	bool  m_underwater          = false;
+	float m_underwaterCutoff    = 800.0f;   // Hz
+	float m_underwaterResonance = 2.0f;
+
 	std::unordered_map<std::string, std::unique_ptr<SoundSource>> m_sources;
 	std::unordered_map<SoundSource*, std::vector<SoLoud::handle>>  m_voicePool;
 	std::unordered_map<std::string,  std::vector<SoLoud::handle>>  m_groupPool;

@@ -1,4 +1,5 @@
 #include "Weapon_MiningLaser.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 #include "Utility/Utility.h"
@@ -287,8 +288,11 @@ void Weapon_MiningLaser::persist()
 			irr::core::vector3df beamDir = getAimDirection(muzzlePos);
 			irr::core::vector3df rayEnd = muzzlePos + beamDir * 1000.0f;
 
-			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(muzzlePos, rayEnd, true);
-			createLaserBeam(muzzlePos, hit.hit ? hit.point : rayEnd);
+			// Through water like the damage ray in fire(), and ending where that ray
+			// ends -- a beam stopping dead at a surface its own damage passes through
+			// is the tell that the two disagree.
+			const WaterBallistics::Shot beam = WaterBallistics::pierce(muzzlePos, rayEnd);
+			createLaserBeam(muzzlePos, beam.endPoint);
 		}
 	}
 	else
@@ -368,11 +372,12 @@ void Weapon_MiningLaser::fire()
 	// Cast ray a long distance (1000 units)
 	irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
-	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(
-		muzzlePos,
-		rayEnd,
-		true  // Exclude debug nodes
-	);
+	// Water does not stop the beam. pierce() walks the ray THROUGH any water
+	// surfaces on the way and charges the tick for the water it crossed; a tick
+	// that runs out of penetration comes back as a MISS. Splashes coalesce inside
+	// WaterBallistics, so a beam parked on one spot boils rather than fountains.
+	const WaterBallistics::Shot shot = WaterBallistics::pierce(muzzlePos, rayEnd);
+	const RaycastResultData& raycastResult = shot.hit;
 
 	// Check if we hit something
 	if (raycastResult.hit && raycastResult.node)
@@ -390,7 +395,7 @@ void Weapon_MiningLaser::fire()
 				// Damage through the gameplay chokepoint; hit ticks are rate-limited
 				// inside registerHitFeedback so the 50ms beam cadence doesn't spam
 				registerHitFeedback(
-					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, m_damage));
+					WorldManager::Get()->gameplaySystem()->damageEntity(hitDescriptor.id, shot.scaled(m_damage)));
 
 				// Create impact spark particles at hit position with surface normal
 				ParticleManager::Get()->spawn("laser_impact", SPK::IRR::irr2spk(raycastResult.point));

@@ -62,6 +62,28 @@ public:
 
 	bool swapMesh(entityid id, std::string file);
     void setNodeMaterialType(entityid id, irr::video::E_MATERIAL_TYPE material_type);
+
+    // Node-wide shader + per-buffer overrides, in that order. Idempotent;
+    // called at the end of setMeshComponentData() and by the editor after any
+    // edit to the override list, which is what makes a REMOVED override fall
+    // back to the node's own shader.
+    static void applyMeshShaders(MeshComponent& meshComponent);
+
+    // The override half on its own. applyMeshShaders() calls it; nothing else
+    // should, or the node-wide reset it depends on will not have happened.
+    static void applyBufferShaderOverrides(MeshComponent& meshComponent);
+
+    // Rebuilds (recalculate = true) or restores (false) the mesh's vertex normals
+    // in place and flags the buffers dirty, so the editor checkbox takes effect on
+    // the current frame rather than at the next mesh reload. The as-loaded normals
+    // are snapshotted the first time a given mesh is recalculated, which is what
+    // makes `false` a real undo instead of a no-op.
+    //
+    // propagateToSharedMeshes mirrors the flag onto every other entity holding the
+    // same cached IMesh, since the normals themselves are shared. Editor edits want
+    // it; the scene-load path does not, as the siblings are not built yet.
+    static void applyRecalculateNormals(MeshComponent& meshComponent, bool recalculate,
+                                        bool propagateToSharedMeshes = false);
     
 	void setLightData(LightComponent& light)
 	{

@@ -1,4 +1,5 @@
 #include "Weapon_Revolver.h"
+#include "WaterBallistics.h"
 
 #include <ISkinnedMesh.h>
 
@@ -884,11 +885,12 @@ void Weapon_Revolver::fire()
 
 	irr::core::vector3df rayEnd = muzzlePos + direction * 1000.0f;
 
-	RaycastResultData raycastResult = RenderManager::Get()->raycastWorldPosition(
-		muzzlePos,
-		rayEnd,
-		true  // Exclude debug nodes
-	);
+	// Water does not stop the shot. pierce() walks the ray THROUGH any water
+	// surfaces on the way, splashes at each, and charges the round for the water
+	// it crossed; a round that runs out of penetration comes back as a MISS, so
+	// the chain below skips damage, impact and decal without knowing about water.
+	const WaterBallistics::Shot shot = WaterBallistics::pierce(muzzlePos, rayEnd);
+	const RaycastResultData& raycastResult = shot.hit;
 
 	if (raycastResult.hit && raycastResult.node)
 	{
@@ -906,7 +908,7 @@ void Weapon_Revolver::fire()
 				// splatter downrange, instead of spraying from the entity's centre.
 				registerHitFeedback(
 					WorldManager::Get()->gameplaySystem()->damageEntity(
-						hitDescriptor.id, m_damage, DAMAGE_TYPE::DEFAULT,
+						hitDescriptor.id, shot.scaled(m_damage), DAMAGE_TYPE::DEFAULT,
 						DamageContext::fromImpact(raycastResult.point, raycastResult.normal, direction)));
 
 				// Sparks and a bullet hole are for hard surfaces. Anything carrying a
@@ -924,8 +926,7 @@ void Weapon_Revolver::fire()
 	}
 
 	// Tracer segment toward the hit point (module fires every Nth shot)
-	irr::core::vector3df tracerEnd = (raycastResult.hit && raycastResult.node) ?
-		raycastResult.point : (muzzlePos + direction * 1000.0f);
+	const irr::core::vector3df tracerEnd = shot.endPoint;
 	m_effects.spawnTracer(muzzlePos, tracerEnd);
 
 	m_effects.muzzleFlash();

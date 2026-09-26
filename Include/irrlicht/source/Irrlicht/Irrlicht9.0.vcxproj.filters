@@ -447,6 +447,9 @@
     <ClInclude Include="..\..\include\ISkinnedMesh.h">
       <Filter>include\scene</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\include\SJointPose.h">
+      <Filter>include\scene</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\include\ITerrainSceneNode.h">
       <Filter>include\scene</Filter>
     </ClInclude>

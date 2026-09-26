@@ -449,6 +449,34 @@
                         <is3D>0</is3D>
                         <startPaused>1</startPaused>
                     </value41>
+                    <!-- BREATH (PlayerBreath; files may not exist yet, a missing one is logged and skipped) -->
+                    <value42>
+                        <name>gasp</name>
+                        <file>content/sound/player/breath/gasp.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>40</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value42>
+                    <value43>
+                        <name>drown1</name>
+                        <file>content/sound/player/breath/drown1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>30</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value43>
+                    <value44>
+                        <name>drown2</name>
+                        <file>content/sound/player/breath/drown2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>30</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value44>
                 </sounds>
             </value0>
         </sound>

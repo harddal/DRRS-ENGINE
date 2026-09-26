@@ -1,4 +1,5 @@
 #include "Weapon_RocketLauncher.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -791,7 +792,8 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 				// Always spawn the explosion and apply splash damage at the impact point,
 				// regardless of whether the hit surface is a tracked entity or static geometry
 				ParticleManager::Get()->spawn("explosion", SPK::IRR::irr2spk(hitPoint));
-				applySplashDamage(hitPoint, hitEntityID);
+				const float waterScale = WaterBallistics::projectileScale(*it);
+				applySplashDamage(hitPoint, hitEntityID, waterScale);
 
 				// Light flash + scorch (oriented to the hit surface) + smoke +
 				// proximity shake/shove/FOV crunch
@@ -802,7 +804,7 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 				// Direct point damage to the entity that was struck — through the
 				// gameplay chokepoint so it drives hitmarker/kill feedback
 				registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-					hitEntityID, static_cast<unsigned int>(m_pointDamage)));
+					hitEntityID, static_cast<unsigned int>(m_pointDamage * waterScale)));
 
 				// Mark for removal on hit
 				shouldRemove = true;
@@ -928,6 +930,13 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 			it->flyingSound->setPosition(soundPos);
 		}
 
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
+
 		// Store current position for next frame's collision check
 		it->previousPosition = currentPos;
 
@@ -967,7 +976,8 @@ void Weapon_RocketLauncher::updateProjectiles(float dt)
 	}
 }
 
-void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
+void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+	float waterScale)
 {
 	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
 		return;
@@ -998,7 +1008,7 @@ void Weapon_RocketLauncher::applySplashDamage(const irr::core::vector3df& epicen
 
 		// Linear falloff: 1.0 at the epicentre, 0.0 at the edge of the radius
 		float falloff = 1.0f - (dist / m_splashRadius);
-		float damage  = m_splashDamage * falloff;
+		float damage  = m_splashDamage * falloff * waterScale;
 
 		if (damage >= 1.0f)
 		{

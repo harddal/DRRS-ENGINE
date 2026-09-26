@@ -3,6 +3,7 @@
 #include "spdlog/spdlog.h"
 
 #include "Game/Skill/SkillSystem.h"
+#include "Game/Player/Weapon/WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -272,7 +273,12 @@ void WeaponController::update()
 	// in the codebase touches this flag.
 	InputManager::Get()->blockMouseInput(isSelectionOpen() || m_swallowMouseUntilRelease);
 
-	current_weapon->update();
+	{
+		// Hands this weapon's bubble density to WaterBallistics::pierce() for
+		// every shot fired inside update(), without a parameter at each call site.
+		WaterBallistics::BubbleScope bubbles(current_weapon->underwaterBubbleDensity());
+		current_weapon->update();
+	}
 
 	drawWeaponSelection();
 
@@ -284,6 +290,9 @@ void WeaponController::update()
 	// the end throws std::out_of_range (and this runs every frame).
 	for (auto i = 0U; i < m_player_weapon.size(); i++)
 	{
+		// persist() is where projectiles fly, so their wakes take the density of
+		// the weapon that fired them -- not the one currently held.
+		WaterBallistics::BubbleScope bubbles(m_player_weapon.at(i)->underwaterBubbleDensity());
 		m_player_weapon.at(i)->persist();
 	}
 

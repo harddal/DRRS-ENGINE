@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include "Engine/Resource/FilePaths.h"
+#include "Engine/Sound/SoundManager.h"
 #include "Item/ItemDatabase.h"
 #include "Utility/Utility.h"
 
@@ -45,8 +46,12 @@ void GameManager::init(const std::string &args)
 	g_FreeCameraController = std::make_unique<FreeCameraController>();
 	g_FreeCameraController->init();
 
-	g_PlayerController = std::make_unique<PlayerController>();
-	g_PlayerController->init();
+	// The player controller is NOT constructed here any more. Which one to build
+	// depends on the spawn marker, which is not known until the scene's first
+	// game-mode frame — see the MT_PLAYER_START case in GameplaySystem.
+	//
+	// Its teardown stays in destroy() regardless. That is deliberate; the comment
+	// there records the crash it fixes.
 }
 
 void GameManager::update(float dt, bool editor_mode)
@@ -98,6 +103,13 @@ void GameManager::destroy()
 		g_PlayerController->destroy();
 		g_PlayerController.reset();
 	}
+
+	// The underwater muffle sits on SoLoud's master bus and outlives the
+	// controller, but the per-frame driver that clears it lives in
+	// SoundSystem::update(), which only runs in game mode. Quitting to the editor
+	// while submerged would otherwise leave the whole editor muffled.
+	if (SoundManager::Get())
+		SoundManager::Get()->sound()->setUnderwater(false, 0.0f);
 }
 
 void GameManager::reset()

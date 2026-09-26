@@ -338,9 +338,15 @@ private:
 	static irr::video::SColor shardGlowColor(float heat);
 	// surfaceNormal: impact normal for contact detonations (scorch orientation);
 	// zero vector for timer detonations (floor probe fallback)
+	// waterScale: damage multiplier from the water this projectile swam through
+	// (WaterBallistics::projectileScale). Defaults to 1.0 so a detonation path
+	// that never met water -- or a new one that forgets -- reads as dry, which is
+	// the safe way round.
 	void detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f));
-	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID);
+		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f),
+		float waterScale = 1.0f);
+	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+		float waterScale = 1.0f);
 
 public:
 	WeaponEffects* debugEffects() override { return &m_effects; }

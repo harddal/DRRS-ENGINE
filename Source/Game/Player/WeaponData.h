@@ -170,6 +170,13 @@ struct WeaponProjectile
 	bool isBouncing  = false; // If true, reflects off surfaces and detonates on timer instead of impact
 	int  bounceCount = 0;    // Number of times this projectile has bounced
 	bool isStuck     = false; // Embedded in a surface: frozen in place, running out its lifetime
+
+	// World units of water crossed so far, accumulated by
+	// WaterBallistics::stepProjectile() and spent by projectileScale() at
+	// detonation. Projectiles already fly through water for free -- they only
+	// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+	// ET_MARKER -- so this is the only thing that makes the swim cost anything.
+	float submergedDistance = 0.0f;
 };
 
 class PlayerWeapon
@@ -460,6 +467,19 @@ public:
 	virtual void saveMagState(WeaponMagState&) const {}
 	virtual void loadMagState(const WeaponMagState&) {}
 
+	// --- Underwater bubble trail ---------------------------------------------
+	// How dense a trail this weapon's shots leave through water. 1.0 is the
+	// shared look (the `water_bubble_spacing` spacing), 0 is none, 2.0 twice as
+	// many. WeaponController scopes this around update() and persist(), so it
+	// reaches WaterBallistics::pierce() and stepProjectile() on its own: no
+	// weapon has to call anything to get a trail. Projectile wakes are further
+	// doubled inside WaterBallistics.
+	//
+	// Override only to tune, e.g. a pellet gun whose ten rays would otherwise
+	// fill the pool. Kept LAST among the virtuals so the slots ahead of it keep
+	// their vtable positions.
+	virtual float underwaterBubbleDensity() const { return 1.0f; }
+
 	// Rounds left in the pool this weapon feeds from. Reported as INT_MAX for
 	// AMMO_NONE so "is there anything to reload with" reads the same everywhere.
 	int reserveRemaining() const;
@@ -510,6 +530,15 @@ protected:
 	// drifting) at every call site. Loop mode comes from the clip's own flag.
 	// Returns false — leaving the current loop untouched — when the clip is missing.
 	bool playAnimation(const std::string& name);
+
+	// Bubble trail over whatever part of [start,end] is underwater, at this
+	// weapon's underwaterBubbleDensity() times 'densityScale'. Only for paths
+	// that do NOT go through WaterBallistics::pierce() (a beam that is drawn but
+	// never cast, a flak shard) -- pierce() already leaves its own trail, and
+	// calling this as well would double it.
+	void emitUnderwaterBubbles(const irr::core::vector3df& start,
+	                           const irr::core::vector3df& end,
+	                           float densityScale = 1.0f) const;
 
 	bool picked_up;
 

@@ -8,6 +8,7 @@
 #include "Engine/World/WorldManager.h"
 
 #include "Game/Player/PlayerController.h"
+#include "Game/Player/Weapon/WaterBallistics.h"
 #include "Game/Skill/SkillSystem.h"
 
 #include <climits>
@@ -873,7 +874,10 @@ irr::core::vector3df PlayerWeapon::getCrosshairAimPoint(float maxRange)
 	irr::core::vector3df forward = (camera.camera->getTarget() - camPos).normalize();
 	irr::core::vector3df rayEnd  = camPos + forward * maxRange;
 
-	RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(camPos, rayEnd, true);
+	// Through water, not onto it: converging the muzzle on the surface point
+	// makes every shot fired down into a pool land past the crosshair. See
+	// WaterBallistics::castThroughWater.
+	RaycastResultData hit = WaterBallistics::castThroughWater(camPos, rayEnd, true);
 	return hit.hit ? hit.point : rayEnd;
 }
 
@@ -895,4 +899,11 @@ irr::core::vector3df PlayerWeapon::getAimDirection(const irr::core::vector3df& o
 		return forward;
 
 	return toAim.normalize();
+}
+
+void PlayerWeapon::emitUnderwaterBubbles(const irr::core::vector3df& start,
+                                         const irr::core::vector3df& end,
+                                         float densityScale) const
+{
+	WaterBallistics::bubbleTrail(start, end, underwaterBubbleDensity() * densityScale);
 }

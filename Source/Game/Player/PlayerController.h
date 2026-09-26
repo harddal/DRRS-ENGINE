@@ -7,9 +7,12 @@
 
 #include "Engine/Resource/MaterialBuilder.h"   // E_MANAGED_MATERIAL
 
+#include "Game/IPlayerController.h"
+
 #include "HUDController.h"
 #include "InteractionController.h"
 #include "InventoryController.h"
+#include "PlayerBreath.h"
 #include "WeaponController.h"
 
 namespace physx { class PxRigidDynamic; }
@@ -17,18 +20,17 @@ namespace physx { class PxRigidDynamic; }
 //#define DISABLE_HUD_AND_INV
 //#define DISPLAY_PLAYER_STATS
 
-// DEBUG: Temporary, need to implement into controller class
-#define PLAYER_HEIGHT 1.75f
-
-class PlayerController
+// The first-person controller. See IPlayerController for why the base exists;
+// nothing in here is shared with any other controller.
+class PlayerController : public IPlayerController
 {
 public:
     PlayerController() {}
 
-    void init();
-    void update(float dt);
-    void updateUI(float dt);
-    void destroy();
+    void init() override;
+    void update(float dt) override;
+    void updateUI(float dt) override;
+    void destroy() override;
 
     void pause();
     void resume();
@@ -36,9 +38,9 @@ public:
     void playFootStepSound(anax::Entity& player, int _time, int _delay);
     void playJumpSound(anax::Entity& player);
 
-    bool isMoving() { return m_isMoving; }
+    bool isMoving() override { return m_isMoving; }
 
-	void lockPlayer(bool lock = true) { m_locked = lock; }
+	void lockPlayer(bool lock = true) override { m_locked = lock; }
 	void unlockPlayer() { m_locked = false; }
 	bool isPlayerLocked() { return m_locked; }
 
@@ -47,7 +49,7 @@ public:
 	// momentum and any latched swim/ladder state so the player doesn't resume
 	// falling or stay "on a ladder" once it's switched off; GameplaySystem also
 	// skips its ladder/hurt/water volume tests while this is set.
-	void setNoclip(bool on)
+	void setNoclip(bool on) override
 	{
 		m_noclip = on;
 		if (on)
@@ -56,12 +58,14 @@ public:
 			m_isSwimming = false;
 			m_isHeadUnderWater = false;
 			m_isOnLadder = false;
+			m_waterJumpUntil = 0;
+			m_breath.reset();
 		}
 	}
-	bool isNoclip() const { return m_noclip; }
+	bool isNoclip() const override { return m_noclip; }
 
-	int getCurrentHealth() { return g_PlayerData.currentHealth; }
-	int getMaxHealth() { return WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<DamageReceiverComponent>().threshold; }
+	int getCurrentHealth() override { return g_PlayerData.currentHealth; }
+	int getMaxHealth() override { return WorldManager::Get()->managerSystem()->getEntityByName("player").getComponent<DamageReceiverComponent>().threshold; }
 
 	void setIsWeaponEquipped(bool is = true) { g_PlayerData.isWeaponEquipped = is; }
 
@@ -71,29 +75,31 @@ public:
 	// Fills 'out' with everything about the player that has no entity to hang
 	// off. Returns false when there is no live player to read, which is what
 	// keeps a save made with no player loaded from writing a sidecar of zeroes.
-	bool capturePlayerState(PlayerSaveState& out) const;
+	bool capturePlayerState(PlayerSaveState& out) const override;
 
 	// The reverse. Refuses a sidecar written by a NEWER build than this one
 	// rather than misreading it.
 	void applyPlayerState(const PlayerSaveState& in);
 
-	bool isSwimming() { return m_isSwimming; }
+	bool isSwimming() override { return m_isSwimming; }
 
 	// Surface the player is standing on, resolved once per grounded frame.
 	E_MANAGED_MATERIAL groundMaterial() const { return m_groundMaterial; }
-	void setIsSwimming(bool swimming = true) { m_isSwimming = swimming; }
-	bool isHeadUnderWater() { return m_isHeadUnderWater; }
-	void setIHeadUnderWater(bool under = true) { m_isHeadUnderWater = under; }
+	void setIsSwimming(bool swimming = true) override { m_isSwimming = swimming; }
+	bool isHeadUnderWater() override { return m_isHeadUnderWater; }
+	void setIHeadUnderWater(bool under = true) override { m_isHeadUnderWater = under; }
+	void setWaterSurfaceY(float y) override { m_waterSurfaceY = y; }
 	// Set per frame by GameplaySystem's ladder-brush volume test (swim pattern)
 	bool isOnLadder() { return m_isOnLadder; }
-	void setOnLadder(bool on = true) { m_isOnLadder = on; }
-	bool isBlocking() { return m_isBlocking; }
-	void setIsBlocking (bool blocking = true) { m_isBlocking = blocking; }
+	void setOnLadder(bool on = true) override { m_isOnLadder = on; }
+	bool isBlocking() override { return m_isBlocking; }
+	void setIsBlocking (bool blocking = true) override { m_isBlocking = blocking; }
 
-	HUDController         *hudController() { return &m_hudController; }
+	HUDController         *hudController() override { return &m_hudController; }
 	InteractionController *interactionController() { return &m_interactionController; }
-	InventoryController   *inventoryController() { return &m_inventoryController; }
-	WeaponController      *weaponController() { return &m_weaponController; }
+	InventoryController   *inventoryController() override { return &m_inventoryController; }
+	WeaponController      *weaponController() override { return &m_weaponController; }
+	PlayerBreath          *breath() override { return &m_breath; }
 
 	// The camera's FOV with no zoom and no kick applied, captured on the first
 	// update. Anything measuring "how zoomed in are we" compares against this.
@@ -103,6 +109,12 @@ protected:
 	irr::core::vector3df Accelerate(irr::core::vector3df& accelDir, irr::core::vector3df& prevVelocity, float accelerate, float max_velocity, float dt);
 	irr::core::vector3df MoveGround(irr::core::vector3df& accelDir, irr::core::vector3df& prevVelocity, float friction, float ground_accelerate, float max_velocity_ground, float dt);
 	irr::core::vector3df MoveAir(irr::core::vector3df& accelDir, irr::core::vector3df& prevVelocity, float air_accelerate, float max_velocity_air, float dt);
+
+	// Quake's "waterjump": the scripted hop that gets a swimmer out of a pool at
+	// a ledge. Returns true (and writes m_playerVelocity / m_waterJumpUntil) when
+	// it fires. See the definition for the conditions and for why it is needed at
+	// all -- getting OUT of water is the part of swimming that fails silently.
+	bool tryWaterJump(const irr::core::vector3df& position, float eyeY, float forwardInput, int currentTime);
 
 private:
     bool m_locked = false, m_isMoving = false, m_firstUpdate = true, m_isSwimming = false, m_isHeadUnderWater = false, m_isBlocking = false, m_isSliding = false;
@@ -164,6 +176,35 @@ private:
 	const int   m_dodgeDuration        = 500;
 
 	float m_lastAirVelocityY = 0.0f;
+
+	// --- Swimming ------------------------------------------------------------
+	// The waterline pushed in by GameplaySystem (see setWaterSurfaceY). Buoyancy
+	// springs the eye toward a rest height just above it, which is what gives the
+	// water a top to float at instead of a volume to hover inside.
+	float m_waterSurfaceY = 0.0f;
+
+	// Edge detection for the entry / exit / surface-break one-shots. The volume
+	// test re-pushes the swim flags every single frame, so a transition is only
+	// visible by comparing against the previous frame's value.
+	bool m_wasSwimming       = false;
+	bool m_wasHeadUnderWater = false;
+
+	// End of the water-jump / wade-hop window. While it is in the future the swim
+	// movement branch is skipped entirely and the hop runs as an ordinary
+	// ballistic jump -- water drag and the buoyancy spring would otherwise cancel
+	// it long before it cleared the pool lip.
+	int m_waterJumpUntil = 0;
+
+	// Swim sway phase, and the camera Y displacement it produces. Kept separate
+	// from g_headBobTimer because the two run at different rates and a footfall
+	// cadence must not carry its phase into the water.
+	float m_swimBobTimer  = 0.0f;
+	float m_swimBobOffset = 0.0f;
+
+	// Air supply. Ticked once per update() after the water transitions; see
+	// PlayerBreath for why it does no I/O of its own.
+	PlayerBreath m_breath;
+
 	irr::core::vector3df m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
 	irr::core::vector3df m_lastSlopeNormal    = irr::core::vector3df(0.0f, 1.0f, 0.0f);
 
@@ -206,5 +247,4 @@ private:
 
 };
 
-extern std::unique_ptr<PlayerController> g_PlayerController;
 extern PlayerData g_PlayerData;

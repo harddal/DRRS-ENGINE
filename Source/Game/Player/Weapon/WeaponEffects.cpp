@@ -8,8 +8,10 @@
 #include "Engine/World/WorldManager.h"
 
 #include "../CameraFX.h"
+#include "WaterBallistics.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 // Windows.h defines min/max macros; project does not use NOMINMAX
@@ -19,6 +21,37 @@
 static const float _shell_gravity = 9.81f;            // units/second^2
 static const float _shell_lifetime = 10000.0f;         // ms
 static const float _shell_bounce_sound_interval = 150.0f; // ms
+static const float _shell_restitution = 0.45f;         // dry bounce energy kept
+
+// Underwater casing tunables. Starting values only -- all live on the console
+// (shell_water_*). 0.3 x 9.81 against drag 2.0 is a ~1.5 u/s sink, which reaches
+// the floor of swimming_pool.pak's 12-unit pool in ~8 s, inside the 20 s
+// underwater lifetime. A gentler sink needs a longer lifetime to match.
+static float s_shellWaterGravityScale = 0.3f;
+static float s_shellWaterDrag         = 2.0f;     // 1/s
+static float s_shellWaterAngularDrag  = 1.5f;     // 1/s
+static float s_shellWaterRestitution  = 0.2f;
+static float s_shellWaterLifetime     = 20000.0f; // ms
+
+// Fraction of speed a casing KEEPS when it drops into water from outside. Drag
+// alone takes ~0.35 s to halve a falling casing's speed, so one arriving at
+// 5-8 u/s covered 2-3 units at air speed and read as never slowing at all. The
+// surface impact is what really kills the speed, so take it off in one go.
+// Not applied to casings ejected underwater -- that would eat the eject kick.
+static float s_shellWaterEntryDamp    = 0.3f;
+
+float WeaponEffects::shellWaterGravityScale()                 { return s_shellWaterGravityScale; }
+void  WeaponEffects::setShellWaterGravityScale(float scale)   { s_shellWaterGravityScale = std::max(0.0f, scale); }
+float WeaponEffects::shellWaterDrag()                         { return s_shellWaterDrag; }
+void  WeaponEffects::setShellWaterDrag(float perSecond)       { s_shellWaterDrag = std::max(0.0f, perSecond); }
+float WeaponEffects::shellWaterAngularDrag()                  { return s_shellWaterAngularDrag; }
+void  WeaponEffects::setShellWaterAngularDrag(float perSecond){ s_shellWaterAngularDrag = std::max(0.0f, perSecond); }
+float WeaponEffects::shellWaterRestitution()                  { return s_shellWaterRestitution; }
+void  WeaponEffects::setShellWaterRestitution(float r)        { s_shellWaterRestitution = std::max(0.0f, std::min(1.0f, r)); }
+float WeaponEffects::shellWaterEntryDamp()                    { return s_shellWaterEntryDamp; }
+void  WeaponEffects::setShellWaterEntryDamp(float keep)       { s_shellWaterEntryDamp = std::max(0.0f, std::min(1.0f, keep)); }
+float WeaponEffects::shellWaterLifetime()                     { return s_shellWaterLifetime; }
+void  WeaponEffects::setShellWaterLifetime(float ms)          { s_shellWaterLifetime = std::max(0.0f, ms); }
 
 void WeaponEffects::init(irr::scene::IAnimatedMeshSceneNode* weaponNode, const WeaponEffectsDesc& desc)
 {
@@ -383,6 +416,8 @@ bool WeaponEffects::spawnShellAt(const irr::core::vector3df& position,
 	shell->spawnTime     = static_cast<float>(Engine::Get()->getCurrentTime());
 	shell->active        = true;
 	shell->physicsActive = true;
+	shell->enteredWater  = false;
+	shell->inWater       = WaterBallistics::isSubmerged(position); // born underwater: no entry damp
 	shell->bounceCount   = 0;
 	shell->node->setVisible(true);
 
@@ -463,6 +498,8 @@ void WeaponEffects::ejectShell()
 	shell->spawnTime     = static_cast<float>(Engine::Get()->getCurrentTime());
 	shell->active        = true;
 	shell->physicsActive = true;
+	shell->enteredWater  = false;
+	shell->inWater       = WaterBallistics::isSubmerged(ejectPosition); // born underwater: no entry damp
 	shell->bounceCount   = 0;
 	shell->node->setVisible(true);
 }
@@ -480,8 +517,11 @@ void WeaponEffects::updateShells(float dt)
 		if (!shell.active || !shell.node)
 			continue;
 
-		// Lifetime expiry — return slot to pool
-		if (currentTime - shell.spawnTime >= _shell_lifetime)
+		// Lifetime expiry — return slot to pool. A casing that has been in water
+		// sinks slowly, so it gets the longer underwater lifetime or it would
+		// vanish partway down a deep pool.
+		const float lifetime = shell.enteredWater ? s_shellWaterLifetime : _shell_lifetime;
+		if (currentTime - shell.spawnTime >= lifetime)
 		{
 			shell.active = false;
 			shell.node->setVisible(false);
@@ -491,10 +531,32 @@ void WeaponEffects::updateShells(float dt)
 		if (!shell.physicsActive)
 			continue;
 
-		// Gravity
-		shell.velocity.Y -= _shell_gravity * dt_s;
+		irr::core::vector3df pos = shell.node->getPosition();
 
-		irr::core::vector3df pos    = shell.node->getPosition();
+		const bool submerged = WaterBallistics::isSubmerged(pos);
+		if (submerged)
+			shell.enteredWater = true;
+
+		// Dropped in from outside this step: the surface impact takes most of the
+		// speed off at once. Fires again on re-entry if a casing pops back out.
+		if (submerged && !shell.inWater)
+		{
+			shell.velocity        *= s_shellWaterEntryDamp;
+			shell.angularVelocity *= s_shellWaterEntryDamp;
+		}
+		shell.inWater = submerged;
+
+		// Gravity
+		shell.velocity.Y -= (submerged ? _shell_gravity * s_shellWaterGravityScale : _shell_gravity) * dt_s;
+
+		// Water drag. exp() rather than (1 - k*dt) so it cannot overshoot and
+		// reverse the shell on a long step.
+		if (submerged)
+		{
+			shell.velocity        *= std::exp(-s_shellWaterDrag * dt_s);
+			shell.angularVelocity *= std::exp(-s_shellWaterAngularDrag * dt_s);
+		}
+
 		irr::core::vector3df newPos = pos + shell.velocity * dt_s;
 
 		// Cast ray along direction of travel — detects floors, walls, ceilings, ramps
@@ -505,12 +567,32 @@ void WeaponEffects::updateShells(float dt)
 			irr::core::vector3df rayEnd    = newPos + travelDir * 0.1f;
 			RaycastResultData hit = RenderManager::Get()->raycastWorldPosition(pos, rayEnd, true);
 
+			// The water entity carries a triangle selector, so its faces show up
+			// here like any wall. Bouncing off them left casings floating on the
+			// surface. Re-cast from just past each water face instead of simply
+			// ignoring it: the volume is a closed box, and its floor face usually
+			// sits flush with the real pool floor, so dropping the hit outright
+			// would tunnel the casing straight through that floor.
+			for (int skip = 0; skip < 4 && hit.hit && WaterBallistics::isWaterNode(hit.node); ++skip)
+			{
+				const irr::core::vector3df from = hit.point + travelDir * 0.01f;
+				if ((rayEnd - from).dotProduct(travelDir) <= 0.0f)
+				{
+					hit.hit = false; // the face was the last thing on the segment
+					break;
+				}
+				hit = RenderManager::Get()->raycastWorldPosition(from, rayEnd, true);
+			}
+			if (hit.hit && WaterBallistics::isWaterNode(hit.node))
+				hit.hit = false;
+
 			if (hit.hit)
 			{
 				// Reflect velocity off surface normal: v' = v - 2(v·n)n
 				irr::core::vector3df n = hit.normal;
 				float dot = shell.velocity.dotProduct(n);
-				shell.velocity = (shell.velocity - n * (2.0f * dot)) * 0.45f;
+				const float restitution = submerged ? s_shellWaterRestitution : _shell_restitution;
+				shell.velocity = (shell.velocity - n * (2.0f * dot)) * restitution;
 				shell.angularVelocity *= 0.5f;
 
 				// Place shell just off the surface so it doesn't tunnel next frame

@@ -70,8 +70,13 @@ private:
 	void updateProjectiles(float dt);
 	// surfaceNormal: impact normal for contact detonations (scorch orientation);
 	// zero vector for timer detonations (floor probe fallback)
+	// waterScale: damage multiplier from the water this projectile swam through
+	// (WaterBallistics::projectileScale). Defaults to 1.0 so a detonation path
+	// that never met water -- or a new one that forgets -- reads as dry, which is
+	// the safe way round.
 	void detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f));
+		const irr::core::vector3df& surfaceNormal = irr::core::vector3df(0.0f, 0.0f, 0.0f),
+		float waterScale = 1.0f);
 	void spawnZone(const irr::core::vector3df& pos, bool secondary);
 	void updateZones(float dt);
 };

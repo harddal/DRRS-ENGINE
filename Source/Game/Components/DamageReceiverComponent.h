@@ -11,7 +11,11 @@
 
 enum class DAMAGE_TYPE
 {
-	DEFAULT
+	DEFAULT,
+
+	// Suffocation (PlayerBreath). Takes health and nothing else: no gore, no
+	// fracture, no surface impact — there is no wound to put blood at.
+	DROWN
 };
 
 // Where a hit landed and which way it was travelling.

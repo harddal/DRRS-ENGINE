@@ -255,6 +255,11 @@
     <ClCompile Include="Source\Engine\World\Systems\SoundSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\TransformSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\TweenSystem.cpp" />
+    <ClCompile Include="Source\Engine\Animation\AnimSampler.cpp" />
+    <ClCompile Include="Source\Engine\Animation\AnimMask.cpp" />
+    <ClCompile Include="Source\Engine\Animation\AnimIK.cpp" />
+    <ClCompile Include="Source\Engine\Animation\AnimGraph.cpp" />
+    <ClCompile Include="Source\Engine\World\Systems\AnimationSystem.cpp" />
     <ClCompile Include="Source\Engine\World\Systems\ParticleSystem.cpp" />
     <ClCompile Include="Source\Engine\World\WorldManager.cpp" />
     <ClCompile Include="Source\Game\AI\AICoordinator.cpp" />
@@ -269,6 +274,9 @@
     <ClCompile Include="Source\Game\DialogManager.cpp" />
     <ClCompile Include="Source\Game\EndGameState.cpp" />
     <ClCompile Include="Source\Game\GameManager.cpp" />
+    <ClCompile Include="Source\Game\PlayerThirdPerson\PlayerControllerTPS.cpp" />
+    <ClCompile Include="Source\Game\PlayerProfile.cpp" />
+    <ClCompile Include="Source\Game\IPlayerController.cpp" />
     <ClCompile Include="Source\Game\GameplaySystem.cpp" />
     <ClCompile Include="Source\Game\Gore\GoreManager.cpp" />
     <ClCompile Include="Source\Game\Skill\SkillSystem.cpp" />
@@ -286,6 +294,7 @@
     <ClCompile Include="Source\Game\Player\InteractionController.cpp" />
     <ClCompile Include="Source\Game\Player\InventoryController.cpp" />
     <ClCompile Include="Source\Game\Player\PlayerInventory.cpp" />
+    <ClCompile Include="Source\Game\Player\PlayerBreath.cpp" />
     <ClCompile Include="Source\Game\Player\PlayerController.cpp" />
     <ClCompile Include="Source\Game\Player\WeaponController.cpp" />
     <ClCompile Include="Source\Game\Player\WeaponData.cpp" />
@@ -312,6 +321,7 @@
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Pitchfork.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_Rifle.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\Weapon_SMG.cpp" />
+    <ClCompile Include="Source\Game\Player\Weapon\WaterBallistics.cpp" />
     <ClCompile Include="Source\Game\Player\Weapon\WeaponEffects.cpp" />
     <ClCompile Include="Source\Game\ProcessGameComponents.cpp" />
     <ClCompile Include="Source\Utility\INIFile.cpp" />
@@ -474,6 +484,15 @@
     <ClInclude Include="Source\Engine\World\Components\ParticleComponent.h" />
     <ClInclude Include="Source\Engine\World\Systems\NavigationSystem.h" />
     <ClInclude Include="Source\Engine\World\Systems\TweenSystem.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimPose.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimClip.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimClipPlayer.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimSampler.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimMask.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimIK.h" />
+    <ClInclude Include="Source\Engine\Animation\AnimGraph.h" />
+    <ClInclude Include="Source\Engine\World\Components\AnimationComponent.h" />
+    <ClInclude Include="Source\Engine\World\Systems\AnimationSystem.h" />
     <ClInclude Include="Source\Engine\World\Systems\ParticleSystem.h" />
     <ClInclude Include="Source\Game\AI\AICoordinator.h" />
     <ClInclude Include="Source\Game\Behavior\BehaviorFactory.h" />
@@ -520,6 +539,7 @@
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Pitchfork.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_Rifle.h" />
     <ClInclude Include="Source\Game\Player\Weapon\Weapon_SMG.h" />
+    <ClInclude Include="Source\Game\Player\Weapon\WaterBallistics.h" />
     <ClInclude Include="Source\Game\Player\Weapon\WeaponEffects.h" />
     <ClInclude Include="Source\resource.h" />
     <ClInclude Include="Source\Application.h" />
@@ -587,6 +607,9 @@
     <ClInclude Include="Source\Game\Components\TriggerZoneComponent.h" />
     <ClInclude Include="Source\Game\EndGameState.h" />
     <ClInclude Include="Source\Game\GameManager.h" />
+    <ClInclude Include="Source\Game\PlayerThirdPerson\PlayerControllerTPS.h" />
+    <ClInclude Include="Source\Game\PlayerProfile.h" />
+    <ClInclude Include="Source\Game\IPlayerController.h" />
     <ClInclude Include="Source\Game\GameplaySystem.h" />
     <ClInclude Include="Source\Game\Gore\GoreManager.h" />
     <ClInclude Include="Source\Game\Gore\FractureManager.h" />
@@ -602,6 +625,7 @@
     <ClInclude Include="Source\Game\Player\InteractionController.h" />
     <ClInclude Include="Source\Game\Player\InventoryController.h" />
     
+    <ClInclude Include="Source\Game\Player\PlayerBreath.h" />
     <ClInclude Include="Source\Game\Player\PlayerController.h" />
     <ClInclude Include="Source\Game\Player\PlayerData.h" />
     <ClInclude Include="Source\Game\Player\PlayerSaveState.h" />

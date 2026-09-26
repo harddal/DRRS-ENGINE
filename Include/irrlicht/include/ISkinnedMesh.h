@@ -9,6 +9,7 @@
 #include "IBoneSceneNode.h"
 #include "IAnimatedMesh.h"
 #include "SSkinMeshBuffer.h"
+#include "SJointPose.h"   // ENGINE FORK #6
 
 namespace irr
 {
@@ -67,6 +68,19 @@ namespace scene
 
 		//! Animates this mesh's joints based on frame input
 		virtual void animateMesh(f32 frame, f32 blend)=0;
+
+		//! ENGINE FORK #6 - apply an externally computed local pose.
+		/** One entry per joint, in getAllJoints() order; entries past
+		getJointCount() are ignored and a short array leaves the remaining
+		joints alone. Writes SJoint::Animated*, rebuilds the local animated
+		matrices and invalidates the animation/skinning caches so the next
+		skinMesh() recomputes.
+
+		This is the only path by which an application can supply its own
+		blended/layered pose. animateMesh() overwrites Animated* outright and
+		transferJointsToMesh() goes through Euler angles, so neither can be
+		used for that. */
+		virtual void applyPose(const core::array<SJointPose>& pose) = 0;
 
 		//! Preforms a software skin on this mesh based of joint positions
 		virtual void skinMesh() = 0;
@@ -162,6 +176,16 @@ namespace scene
 			core::quaternion Animatedrotation;
 
 			core::matrix4 GlobalInversedMatrix; //the x format pre-calculates this
+
+			//! ENGINE FORK #6 - the joint whose key arrays drive this one.
+			/** finalize() points every joint at itself; useAnimationFrom()
+			re-points it at the matching joint of another mesh. An application
+			sampler must read the keys through here for the same reason
+			getFrameData() does, and UseAnimationFrom itself is private. */
+			const SJoint* getAnimationSource() const
+			{
+				return UseAnimationFrom ? UseAnimationFrom : this;
+			}
 
 		private:
 			//! Internal members used by CSkinnedMesh

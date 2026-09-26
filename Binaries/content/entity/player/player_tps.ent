@@ -1,0 +1,583 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+    <entity>
+        <descriptor>
+            <value0>
+                <name>player</name>
+                <type>3</type>
+                <isSerializable>false</isSerializable>
+                <isDebug>false</isDebug>
+            </value0>
+        </descriptor>
+        <transform>
+            <value0>
+                <position.X>0</position.X>
+                <position.Y>0</position.Y>
+                <position.Z>0</position.Z>
+                <rotation.X>0</rotation.X>
+                <rotation.Y>0</rotation.Y>
+                <rotation.Z>0</rotation.Z>
+                <scale.X>1</scale.X>
+                <scale.Y>1</scale.Y>
+                <scale.Z>1</scale.Z>
+                <initialposition.X>0</initialposition.X>
+                <initialposition.Y>0</initialposition.Y>
+                <initialposition.Z>0</initialposition.Z>
+                <initialrotation.X>0</initialrotation.X>
+                <initialrotation.Y>0</initialrotation.Y>
+                <initialrotation.Z>0</initialrotation.Z>
+                <initialscale.X>1</initialscale.X>
+                <initialscale.Y>1</initialscale.Y>
+                <initialscale.Z>1</initialscale.Z>
+                <isParent>false</isParent>
+                <isChild>false</isChild>
+                <parent_name/>
+                <children_names/>
+            </value0>
+        </transform>
+        <!-- THE OFFSET MEANS SOMETHING DIFFERENT HERE. On the first-person
+             player (0, 0.8, 0) is eye height above the CCT origin, and
+             CameraSystem copies the body transform onto the camera node every
+             frame. controllerDriven turns that copy off, so the same number is
+             now read by the third-person controller as the ORBIT PIVOT —
+             roughly chest height on the character.
+
+             Boom length and collision pullback are deliberately NOT here: they
+             need a raycast per frame, so they belong to the controller. -->
+        <camera>
+            <value0>
+                <offset.X>0</offset.X>
+                <offset.Y>0.8</offset.Y>
+                <offset.Z>0</offset.Z>
+                <target.X>0</target.X>
+                <target.Y>0</target.Y>
+                <target.Z>100</target.Z>
+				<isWorldCamera>false</isWorldCamera>
+                <controllerDriven>true</controllerDriven>
+            </value0>
+        </camera>
+        <!-- PLAYER BODY. The first-person player deliberately has no mesh; a
+             third-person one is nothing without a visible character.
+
+             paladin.glb is built by Tools/mixamo_to_glb.py. Three things about
+             it are load-bearing and are NOT recoverable by re-running that tool
+             with default arguments:
+
+               * It is converted at scale 0.18412, not the default of 1.0. The
+                 tool's scale normalisation fails on this asset and 1.0 yields a
+                 model 12.9 units tall; 0.18412 puts it at 2.383, the same
+                 height as the gladiator it replaced, so every camera, boom and
+                 spawnHeight number tuned against the gladiator still holds.
+                 The editor's own convert button passes scale 1.0 and will
+                 silently undo this.
+
+               * The .anim carries appended lowercase 'idle' and 'move' aliases.
+                 These are NO LONGER what the controller asks for: it drives the
+                 full Mixamo clip set by its real names ('Idle', 'Walk',
+                 'Running_NoWeapon', the strafes, the in-place turns and the two
+                 jumps), and the tables that name them live beside the tuning
+                 constants in PlayerControllerTPS.cpp. The aliases are kept
+                 because MeshComponent::findAnimation is an exact, case-
+                 sensitive compare and RenderSystem::playAnimation and script
+                 may still ask for the generic names. Re-running the converter
+                 regenerates the .anim WITHOUT them.
+
+               * It is authored facing +Z in glTF, so PlayerControllerTPS's
+                 k_modelYawOffset is 180 for this body, where the gladiator
+                 wanted 0. See the measurement note beside that constant.
+
+             navCookable stays false: the player must never be baked into the
+             navmesh. -->
+        <mesh>
+            <value0>
+                <mesh>content/mesh/player/thirdperson/paladin/paladin.glb</mesh>
+                <isAnimated>true</isAnimated>
+                <castShadows>true</castShadows>
+                <receiveShadows>true</receiveShadows>
+                <textures size="dynamic"/>
+                <isVisible>true</isVisible>
+                <transparent>false</transparent>
+                <disableZDraw>false</disableZDraw>
+                <recalculateNormals>false</recalculateNormals>
+                <texturePointFilter>false</texturePointFilter>
+                <renderMaterial>0</renderMaterial>
+                <isViewmodel>false</isViewmodel>
+                <navCookable>false</navCookable>
+                <!-- PER-BUFFER SHADERS. paladin.glb is four glTF materials over
+                     thirty mesh buffers, and two of them want a BRDF the armour
+                     must not get. `match` is a substring of the buffer's diffuse
+                     texture name, which for a .glb is
+                     "<file>_embedded_<glTF image index>" - image 4 is
+                     Body_BaseColor, image 10 is Hair_BaseColor. Matching on the
+                     texture rather than on a buffer index is what survives a
+                     re-export of the model, which renumbers buffers.
+
+                     The four hair buffers (hair, eyebrows, both eyelash strips)
+                     share one material and therefore one texture, so they all
+                     take the hair shader together. Splitting the lashes off
+                     would need a bufferIndex entry instead.
+
+                     Params are per shader - see the header comment of skin.frag
+                     and hair.frag. p1 on the skin entry is the curvature trim.
+                     8 was tried first (reading the table as though the head
+                     were ~9mm across) and pushed the terminator band far enough
+                     round the limbs to read as an outline; backing it off to 4
+                     (~17mm) still produced the same red smear, mesh-wide rather
+                     than just at one crease, and unaffected by recalculating
+                     this mesh's normals — the screen-space curvature estimate
+                     itself can't tell genuine tight curvature from a seam or a
+                     near-silhouette angle, and on this character it apparently
+                     needs to stay low to avoid tripping that false positive.
+                     0.2 is where it currently sits, matching the shader's own
+                     default (see SkinShaderCallback::OnSetConstants) — set
+                     explicitly here rather than left at 0/"use default" so a
+                     future change to that default doesn't silently move this
+                     character too.
+
+                     p3 on the hair entry is the CORE cutoff only. The soft
+                     fringe below it is drawn by RenderManager::drawHairBlendPass
+                     as a second, alpha-blended pass, so this number sets where
+                     the depth-writing solid part of the hair ends rather than
+                     where the hair ends. -->
+                <bufferShaderOverrides size="dynamic">
+                    <o0>
+                        <bufferIndex>0</bufferIndex>
+                        <match>_embedded_4</match>
+                        <shaderName>skin</shaderName>
+                        <p0>1</p0>
+                        <p1>0.2</p1>
+                        <p2>1</p2>
+                        <p3>0.25</p3>
+                    </o0>
+                    <o1>
+                        <bufferIndex>0</bufferIndex>
+                        <match>_embedded_10</match>
+                        <shaderName>hair</shaderName>
+                        <p0>0.32</p0>
+                        <p1>1</p1>
+                        <p2>0</p2>
+                        <p3>0.75</p3>
+                    </o1>
+                </bufferShaderOverrides>
+            </value0>
+        </mesh>
+        <render>
+            <value0>
+                <isVisible>true</isVisible>
+            </value0>
+        </render>
+        <!-- The capsule is NOT authored here and cannot be: CCTComponent
+             serialises only 'active', and the dimensions are one shared
+             m_capsuleDesc in CCTSubsystem::init (1.75 x 0.3). A third-person
+             character with different proportions needs radius/height added to
+             CCTComponent and read per entity — and the profile table's
+             spawnHeight has to move with it, or the player spawns in the
+             floor. -->
+        <cct>
+            <value0>
+                <active>true</active>
+            </value0>
+        </cct>
+        <soundlistener>
+            <value0/>
+        </soundlistener>
+        <damagereceiver>
+            <value0>
+                <threshold>100</threshold>
+            </value0>
+        </damagereceiver>
+        <sound>
+            <value0>
+                <sounds>
+                    <!-- DAMAGE -->
+                    <value0>
+                        <name>damage1</name>
+                        <file>content/sound/player/damage/damage1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value0>
+                    <value1>
+                        <name>damage2</name>
+                        <file>content/sound/player/damage/damage2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value1>
+                    <!-- ROCK -->
+                    <value2>
+                        <name>stone1</name>
+                        <file>content/sound/player/footstep/FTROC_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value2>
+                    <value3>
+                        <name>stone2</name>
+                        <file>content/sound/player/footstep/FTROC_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value3>
+                    <value4>
+                        <name>stone3</name>
+                        <file>content/sound/player/footstep/FTROC_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value4>
+                    <value5>
+                        <name>stone4</name>
+                        <file>content/sound/player/footstep/FTROC_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value5>
+                    <value6>
+                        <name>stonejump</name>
+                        <file>content/sound/player/footstep/FTROC_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value6>
+                    <!-- METAL -->
+                    <value7>
+                        <name>metal1</name>
+                        <file>content/sound/player/footstep/FTMET_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value7>
+                    <value8>
+                        <name>metal2</name>
+                        <file>content/sound/player/footstep/FTMET_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value8>
+                    <value9>
+                        <name>metal3</name>
+                        <file>content/sound/player/footstep/FTMET_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value9>
+                    <value10>
+                        <name>metal4</name>
+                        <file>content/sound/player/footstep/FTMET_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value10>
+                    <value11>
+                        <name>metaljump</name>
+                        <file>content/sound/player/footstep/FTMET_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value11>
+                    <!-- CARPET -->
+                    <value12>
+                        <name>carpet1</name>
+                        <file>content/sound/player/footstep/FTCAR_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value12>
+                    <value13>
+                        <name>carpet2</name>
+                        <file>content/sound/player/footstep/FTCAR_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value13>
+                    <value14>
+                        <name>carpet3</name>
+                        <file>content/sound/player/footstep/FTCAR_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value14>
+                    <value15>
+                        <name>carpet4</name>
+                        <file>content/sound/player/footstep/FTCAR_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value15>
+                    <value16>
+                        <name>carpetjump</name>
+                        <file>content/sound/player/footstep/FTCAR_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value16>
+                    <!-- EARTH -->
+                    <value17>
+                        <name>earth1</name>
+                        <file>content/sound/player/footstep/FTDIR_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value17>
+                    <value18>
+                        <name>earth2</name>
+                        <file>content/sound/player/footstep/FTDIR_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value18>
+                    <value19>
+                        <name>earth3</name>
+                        <file>content/sound/player/footstep/FTDIR_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value19>
+                    <value20>
+                        <name>earth4</name>
+                        <file>content/sound/player/footstep/FTDIR_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value20>
+                    <value21>
+                        <name>earthjump</name>
+                        <file>content/sound/player/footstep/FTDIR_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value21>
+                    <!-- GRAVEL -->
+                    <value22>
+                        <name>gravel1</name>
+                        <file>content/sound/player/footstep/FTGRA_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value22>
+                    <value23>
+                        <name>gravel2</name>
+                        <file>content/sound/player/footstep/FTGRA_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value23>
+                    <value24>
+                        <name>gravel3</name>
+                        <file>content/sound/player/footstep/FTGRA_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value24>
+                    <value25>
+                        <name>gravel4</name>
+                        <file>content/sound/player/footstep/FTGRA_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value25>
+                    <value26>
+                        <name>graveljump</name>
+                        <file>content/sound/player/footstep/FTGRA_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value26>
+                    <!-- TILE -->
+                    <value27>
+                        <name>glass1</name>
+                        <file>content/sound/player/footstep/FTTIL_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value27>
+                    <value28>
+                        <name>glass2</name>
+                        <file>content/sound/player/footstep/FTTIL_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value28>
+                    <value29>
+                        <name>glass3</name>
+                        <file>content/sound/player/footstep/FTTIL_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value29>
+                    <value30>
+                        <name>glass4</name>
+                        <file>content/sound/player/footstep/FTTIL_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value30>
+                    <value31>
+                        <name>glassjump</name>
+                        <file>content/sound/player/footstep/FTTIL_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value31>
+                    <!-- WOOD -->
+                    <value32>
+                        <name>wood1</name>
+                        <file>content/sound/player/footstep/FTWOO_P1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value32>
+                    <value33>
+                        <name>wood2</name>
+                        <file>content/sound/player/footstep/FTWOO_P2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value33>
+                    <value34>
+                        <name>wood3</name>
+                        <file>content/sound/player/footstep/FTWOO_P3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value34>
+                    <value35>
+                        <name>wood4</name>
+                        <file>content/sound/player/footstep/FTWOO_P4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value35>
+                    <value36>
+                        <name>woodjump</name>
+                        <file>content/sound/player/footstep/FTWOO_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value36>
+                    <!-- WATER -->
+                    <value37>
+                        <name>water1</name>
+                        <file>content/sound/player/footstep/FTWAT_1.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value37>
+                    <value38>
+                        <name>water2</name>
+                        <file>content/sound/player/footstep/FTWAT_2.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value38>
+                    <value39>
+                        <name>water3</name>
+                        <file>content/sound/player/footstep/FTWAT_3.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value39>
+                    <value40>
+                        <name>water4</name>
+                        <file>content/sound/player/footstep/FTWAT_4.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>25</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value40>
+                    <value41>
+                        <name>waterjump</name>
+                        <file>content/sound/player/footstep/FTWAT_J.wav</file>
+                        <loop>0</loop>
+                        <minDist>1.5</minDist>
+                        <volume>50</volume>
+                        <is3D>0</is3D>
+                        <startPaused>1</startPaused>
+                    </value41>
+                </sounds>
+            </value0>
+        </sound>
+    </entity>
+</cereal>

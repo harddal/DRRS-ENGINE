@@ -1,4 +1,5 @@
 ﻿#include "Weapon_Shotgun.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 #include "../CameraFX.h"
@@ -676,14 +677,20 @@ void Weapon_Shotgun::fire()
 
 		irr::core::vector3df pelletTarget = camPos + pelletDir * 1000.0f;
 
-		auto raycastResult = RenderManager::Get()->raycastWorldPosition(camPos, pelletTarget, true);
+		// Water does not stop the pellet. pierce() walks the ray THROUGH any water
+		// surfaces on the way, splashes at each, and charges the pellet for the
+		// water it crossed; one that runs out of penetration comes back as a MISS.
+		// Per pellet rather than per shot -- a shotgun peppering a pool is supposed
+		// to read as a spread of splashes.
+		const WaterBallistics::Shot shot = WaterBallistics::pierce(camPos, pelletTarget);
+		const RaycastResultData& raycastResult = shot.hit;
 
 		if (raycastResult.hit && raycastResult.node)
 		{
 			entityid hitID = raycastResult.node->getID();
 
 			HIT_RESULT r = WorldManager::Get()->gameplaySystem()->damageEntity(
-				hitID, static_cast<unsigned int>(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
+				hitID, shot.scaled(m_damagePerPellet), DAMAGE_TYPE::DEFAULT,
 				DamageContext::fromImpact(raycastResult.point, raycastResult.normal, pelletDir));
 			if (static_cast<int>(r) > static_cast<int>(bestResult))
 				bestResult = r;

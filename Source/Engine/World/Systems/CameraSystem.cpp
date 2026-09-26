@@ -68,9 +68,17 @@ void CameraSystem::update()
         auto& target = cameraComponent.targetNode;
         auto& nearTarget = cameraComponent.nearTargetNode;
 
-        camera->setPosition(
-            transformComponent.position + cameraComponent.offset);
-        camera->setRotation(transformComponent.rotation);
+        // The rigid first-person mount. A controllerDriven camera has already
+        // been posed by its controller, so writing the body transform over it
+        // would undo that every frame — but only THESE TWO LINES are skipped:
+        // the target/lookat resolution below still runs, off whatever pose the
+        // controller left behind.
+        if (!cameraComponent.controllerDriven)
+        {
+            camera->setPosition(
+                transformComponent.position + cameraComponent.offset);
+            camera->setRotation(transformComponent.rotation);
+        }
 
         camera->updateAbsolutePosition();
         target->updateAbsolutePosition();

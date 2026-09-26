@@ -1,5 +1,7 @@
 #include "HUDController.h"
 
+#include <cmath>
+
 #include "Engine/Engine.h"
 #include "Game/Item/ItemDatabase.h"
 
@@ -49,11 +51,6 @@ void HUDController::init()
 	if (!m_ammobackground) {
 		spdlog::error("Failed to load texture asset: m_ammobackground");
 	}
-
-	m_water_overlay = RenderManager::Get()->driver()->getTexture("content/texture/ui/water_overlay.png");
-	if (!m_water_overlay) {
-		spdlog::error("Failed to load texture asset: m_water_overlay");
-	}
 }
 
 void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
@@ -77,13 +74,8 @@ void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
 
 		if (player.isValid()) {
 
-			// --- WATER ---
-			if (g_PlayerController->isHeadUnderWater())
-			{
-				RenderManager::Get()->renderImage2DScaled(
-					m_water_overlay,
-					irr::core::rect<irr::s32>(0, 0, screenW, screenH));
-			}
+			// Underwater is a renderer post-process pass now ("underwater",
+			// RenderManager::updateUnderwaterPass) -- not a HUD overlay.
 
 			// --- DEATH SCREEN EFFECT ---
 			if (data.currentHealth <= 0)
@@ -333,6 +325,54 @@ void HUDController::update(PlayerData &data, bool isInventoryDisplayed) const
 				RenderManager::Get()->renderImage2DScaled(
 					m_healthbar_empty,
 					health_pip_empty_position(9), healthbar_color);
+			}
+
+			// --- BREATH ---
+			// A second pip row directly above the health pips, reusing their art
+			// tinted blue. Faded in while holding breath and while refilling, so
+			// it is invisible for anyone who never goes under. Pulses when low
+			// and turns red once the air is gone and damage is being dealt.
+			if (data.breathHudAlpha > 0.01f && data.currentHealth > 0)
+			{
+				const double now = Engine::Get()->getCurrentTime();
+				const float  pulse = 0.5f + 0.5f * sinf(static_cast<float>(now) * 0.012f);   // ~2 Hz
+
+				float alpha = data.breathHudAlpha;
+				if (data.breathFraction < 0.25f && !data.isDrowning)
+					alpha *= 0.45f + 0.55f * pulse;
+
+				const irr::u32 a = static_cast<irr::u32>(alpha * 255.0f);
+				const irr::video::SColor breathColor = data.isDrowning
+					? irr::video::SColor(a, 251, 105, 98)
+					: irr::video::SColor(a, 120, 200, 255);
+
+				const int rowX  = iconW - S(9) + S(5);
+				const int rowUp = bgH + S(6);   // clears the health background
+
+				// Same rule as the health row: pip n is lit while more than n
+				// tenths remain, so the last pip goes out as the air hits zero.
+				for (int n = 0; n < 10; ++n)
+				{
+					if (data.breathFraction * 10.0f > static_cast<float>(n))
+						RenderManager::Get()->renderImage2DScaled(
+							m_healthbar_full,
+							imgDest(m_healthbar_full, rowX + n * S(25), screenH - rowUp - S(4) - pipH),
+							breathColor);
+					else
+						RenderManager::Get()->renderImage2DScaled(
+							m_healthbar_empty,
+							imgDest(m_healthbar_empty, rowX + n * S(25), screenH - rowUp - S(6) - pipH),
+							breathColor);
+				}
+
+				// Drowning: a faint red tint over the whole view, in time with the pulse,
+				// on top of the hurt sound each damage tick already plays.
+				if (data.isDrowning)
+				{
+					RenderManager::Get()->renderRectangle2D(
+						irr::core::rect<irr::s32>(0, 0, screenW, screenH),
+						irr::video::SColor(static_cast<irr::u32>(20.0f + 40.0f * pulse), 120, 0, 0));
+				}
 			}
 
 			// --- AMMO ---

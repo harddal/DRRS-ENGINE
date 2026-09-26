@@ -248,6 +248,15 @@ struct ShaderMaterial
     irr::s32    material;
     bool        isRefraction = false;
 
+    // Alpha cut-out threshold, or 0 for a material that never discards. The
+    // geometry prepass has no way to see a custom shader's own discard, so it
+    // needs the cut-off declared here — otherwise a leaf card stamps its whole
+    // quad into the depth channel and everything reading that buffer (SSAO,
+    // soft particles, water) believes the holes are solid. Keep this at or
+    // ABOVE the .frag's own threshold: over-discarding in the prepass reads as
+    // slightly missing AO, under-discarding reads as a phantom silhouette.
+    float       alphaCutoff = 0.0f;
+
     ShaderMaterial(std::string name, irr::s32 material = 0, bool isRefraction = false)
         : name(std::move(name)), material(material), isRefraction(isRefraction) {}
 };
@@ -258,10 +267,26 @@ public:
     static void add(ShaderMaterial material);
     static irr::video::E_MATERIAL_TYPE get(std::string name);
     static bool isRefraction(irr::s32 materialType);
+    // 0 when the material is not a cut-out (or is unknown to the manager).
+    static float alphaCutoff(irr::s32 materialType);
     static const std::vector<ShaderMaterial>& getAll() { return s_ShaderMaterialList; }
 
 private:
     static std::vector<ShaderMaterial> s_ShaderMaterialList;
+};
+
+// A body of water as the renderer sees it — the box the player swims in plus
+// the WaterComponent look fields the underwater pass needs. Plain data so the
+// engine does not depend on Game components; GameplaySystem refills the list
+// every logic tick. Colours are authored sRGB, exactly as WaterComponent holds
+// them — the shader linearises them the same way water.frag does.
+struct WaterVolume
+{
+    irr::core::aabbox3df bounds;
+    float shallowColor[3] = { 0.72f, 0.88f, 0.86f };   // $refracttint
+    float deepColor[3]    = { 0.02f, 0.11f, 0.16f };   // $fogcolor
+    float fogStart        = 0.0f;
+    float fogEnd          = 12.0f;
 };
 
 struct PostProcessPass
@@ -293,6 +318,13 @@ public:
     float fogColor[3] = { 0.0f, 0.3f, 0.6f };
     float fogDensity  = 0.0f;   // 0 = fog off; ~0.02 = dense zone fog
     float fogStart    = 5.0f;   // view-space distance before fog begins
+
+protected:
+    // Subclassed shaders read their per-material tuning out of MaterialTypeParams.
+    // This Irrlicht version gives a callback no other route to the SMaterial being
+    // drawn (IMaterialRendererServices::getMaterial() does not exist), so the
+    // cached copy is it.
+    const irr::video::SMaterial& currentMaterial() const { return m_currentMaterial; }
 
 private:
     irr::video::SMaterial m_currentMaterial;
@@ -329,6 +361,162 @@ private:
     float m_heatLevel  = 0.0f;
     float m_barrelZMin = 0.0f;
     float m_barrelZMax = 1.0f;  // safe default: no divide-by-zero until init sets real bounds
+};
+
+// Callback for the skin shader (skin.frag).
+//
+// Adds the pre-integrated scattering LUT's sampler index and the four
+// MaterialTypeParams the shader tunes itself with. skin.frag deliberately does
+// not declare the base callback's UV-tiling / fresnel / scroll uniforms, so
+// those pushes no-op against it (an unknown uniform name returns false in
+// COpenGLSLMaterialRenderer without logging) and params[0..3] are free here.
+class SkinShaderCallback : public ShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial& material) override
+    {
+        ShaderConstantSetCallBack::OnSetMaterial(material);
+    }
+
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32 userData) override
+    {
+        ShaderConstantSetCallBack::OnSetConstants(services, userData);
+
+        // Raw GL unit 13, bound once per frame by bindPerFrameTextures(). Above
+        // Irrlicht's 8 material slots, so its state tracker never disturbs it.
+        int lutSlot = 13;
+        services->setPixelShaderConstant("tSkinLUT", &lutSlot, 1);
+        services->setPixelShaderConstant("uHasSkinLUT", &m_hasLUT, 1);
+
+        // MaterialTypeParams[0..3] -> subsurface strength, curvature scale,
+        // specular strength, transmission strength. Zero means "shader default",
+        // so an override that sets nothing still looks right.
+        //
+        // Curvature default is 0.2, lowered from an original 4.0 (briefly tested
+        // at 1.0 in between — see player_tps.ent's bufferShaderOverrides comment
+        // for that history). The false-positive blotching this estimate produces
+        // at ANY appreciable scale — a mesh-wide red terminator smear, not just
+        // at one crease, unaffected by recalculating the paladin's normals —
+        // turned out to need this much headroom on the paladin. 1.0 (the
+        // physically true radius, where a head's ~68mm produces a terminator a
+        // couple of pixels wide at gameplay distance) was still too strong.
+        // If a future asset needs the effect stronger, prefer raising ITS
+        // per-buffer override over raising this default — the screen-space
+        // curvature estimate can't tell true tight curvature from a mesh seam
+        // or grazing silhouette, so pushing the shared default back up reopens
+        // this same failure mode for every skin-shaded character.
+        const irr::f32* p = currentMaterial().MaterialTypeParams;
+        float sss   = p[0] > 0.0f ? p[0] : 1.0f;
+        float curv  = p[1] > 0.0f ? p[1] : 0.2f;
+        float spec  = p[2] > 0.0f ? p[2] : 1.0f;
+        float trans = p[3] > 0.0f ? p[3] : 0.35f;
+        services->setPixelShaderConstant("uSSSStrength",     &sss,   1);
+        services->setPixelShaderConstant("uCurvatureScale",  &curv,  1);
+        services->setPixelShaderConstant("uSpecStrength",    &spec,  1);
+        services->setPixelShaderConstant("uTransStrength",   &trans, 1);
+        services->setPixelShaderConstant("uDebugTint",       &m_debugTint, 1);
+    }
+
+    // Console r_charshaderdebug: renders the buffer flat green, to settle
+    // whether this shader is bound before anyone tunes a parameter.
+    void setDebugTint(bool on) { m_debugTint = on ? 1.0f : 0.0f; }
+
+    // Set once when the LUT asset resolves. Without it a missing table would
+    // sample unit 13's default black texture and render every face black
+    // instead of falling back to Lambert.
+    void setHasLUT(bool has) { m_hasLUT = has ? 1.0f : 0.0f; }
+
+private:
+    float m_hasLUT    = 0.0f;
+    float m_debugTint = 0.0f;
+};
+
+// Callback for the hair shader (hair.frag). Same arrangement as the skin
+// callback; see MaterialTypeParams mapping below and in hair.frag's header.
+class HairShaderCallback : public ShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial& material) override
+    {
+        ShaderConstantSetCallBack::OnSetMaterial(material);
+    }
+
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32 userData) override
+    {
+        ShaderConstantSetCallBack::OnSetConstants(services, userData);
+
+        // [0] roughness (the ORM bound to a hair material is a 1x1 texel holding
+        // glTF's DEFAULT roughness of 1.0, which switches every specular path in
+        // the engine off — so hair states its own), [1] specular strength,
+        // [2] strand axis (>=0.5 picks the U-derivative tangent over the V one),
+        // [3] alpha cutoff.
+        // Roughness moves slot in the blended fringe pass. SMaterial aliases
+        // MaterialTypeParam onto MaterialTypeParams[0], and Irrlicht's
+        // EMT_TRANSPARENT_ALPHA_CHANNEL renderer feeds that value straight into
+        // glAlphaFunc as the alpha reference — so a roughness of 0.32 sitting in
+        // slot 0 would alpha-test away the entire soft fringe this pass exists
+        // to draw, and the pass would look like it had done nothing at all.
+        // drawHairBlendPass() therefore zeroes slot 0 (reference 0) and copies
+        // roughness to slot 4, which nothing else on this shader reads.
+        const irr::f32* p = currentMaterial().MaterialTypeParams;
+        const irr::f32  roughSlot = (m_blendPass > 0.5f) ? p[4] : p[0];
+        float rough  = roughSlot > 0.0f ? roughSlot : 0.35f;
+        float spec   = p[1] > 0.0f ? p[1] : 1.0f;
+        float axis   = p[2];
+        float cutoff = p[3] > 0.0f ? p[3] : 0.33f;
+        services->setPixelShaderConstant("uHairRoughness", &rough,  1);
+        services->setPixelShaderConstant("uSpecStrength",  &spec,   1);
+        services->setPixelShaderConstant("uStrandAxis",    &axis,   1);
+        services->setPixelShaderConstant("uAlphaCutoff",   &cutoff, 1);
+        services->setPixelShaderConstant("uDebugTint",     &m_debugTint, 1);
+        const bool blendOk  = services->setPixelShaderConstant("uBlendPass",  &m_blendPass, 1);
+        const bool cutoffOk = services->setPixelShaderConstant("uCoreCutoff", &s_coreCutoff, 1);
+        services->setPixelShaderConstant("uFringeGain", &s_fringeGain, 1);
+        services->setPixelShaderConstant("uCoreOff",    &s_coreOff, 1);
+
+        // Report the binding once per instance. A uniform the linked program
+        // does not expose fails silently here, and a fringe pass running with
+        // uBlendPass stuck at 0 is indistinguishable from one that never ran.
+        if (!m_reported)
+        {
+            m_reported = true;
+            reportBinding(m_blendPass > 0.5f, blendOk, cutoffOk);
+        }
+    }
+
+    // Live tuning from the console (r_haircutoff / r_hairgain). Static because
+    // both the core and the fringe instance must agree on the cutoff, and a
+    // rebuild per threshold guess is not a workable iteration loop.
+    // r_haircoreoff: the core pass discards everything, leaving ONLY the blended
+    // fringe on screen. The one test that cannot be confused by overlap or
+    // occlusion — hair still visible means the fringe works, bald means it does not.
+    static void setCoreOff(bool on)    { s_coreOff = on ? 1.0f : 0.0f; }
+    static bool coreOff()              { return s_coreOff > 0.5f; }
+    static void setCoreCutoff(float v) { s_coreCutoff = v; }
+    static void setFringeGain(float v) { s_fringeGain = v; }
+    static float coreCutoff()          { return s_coreCutoff; }
+    static float fringeGain()          { return s_fringeGain; }
+
+    // Console r_charshaderdebug: renders the buffer flat magenta.
+    void setDebugTint(bool on) { m_debugTint = on ? 1.0f : 0.0f; }
+
+    // One instance drives the alpha-tested core, a second the blended fringe.
+    // Same shader, same material params, different alpha handling.
+    void setBlendPass(bool on) { m_blendPass = on ? 1.0f : 0.0f; }
+
+private:
+    float m_debugTint = 0.0f;
+    float m_blendPass = 0.0f;
+
+    // Logs which instance this is and whether its uniforms bound. Out of line:
+    // the logger is not included by this header.
+    static void reportBinding(bool isFringe, bool blendOk, bool cutoffOk);
+
+    bool  m_reported = false;
+
+    static float s_coreCutoff;   // 0 = use the material's own MaterialTypeParams[3]
+    static float s_fringeGain;
+    static float s_coreOff;
 };
 
 // Callback for the terrain_blend shader.
@@ -501,6 +689,34 @@ public:
     void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
 };
 
+// Underwater camera pass — fogs the part of each view ray that lies inside the
+// water volume the camera's near plane is in. Everything here is written once
+// per rendered frame by RenderManager::updateUnderwaterPass(); tunables are
+// driven from the console (r_underwater_*).
+class UnderwaterCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    // Per-frame state
+    float invView[16]     = { 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 };
+    float projTan[2]      = { 1.0f, 1.0f };
+    float nearZ           = 0.1f;
+    float prepassValid    = 0.0f;
+    float boxMin[3]       = {};
+    float boxMax[3]       = {};
+    float shallowColor[3] = { 1.0f, 1.0f, 1.0f };
+    float deepColor[3]    = { 0.0f, 0.0f, 0.0f };
+    float fogStart        = 0.0f;
+    float fogEnd          = 12.0f;
+
+    // Tunables
+    float absorb     = 1.0f;     // per-channel colour loss, relative to fogEnd (0 = off)
+    float distortion = 0.0025f;  // wobble amplitude, fraction of the screen
+    float ripple     = 0.02f;    // waterline ripple, fraction of screen height (peak is 1.6x)
+
+    void OnSetMaterial(const irr::video::SMaterial&) override {}
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override;
+};
+
 // No-op callback for the shadow depth pass — the depth shader only uses GL built-in
 // matrices so no custom uniforms are needed.
 class ShadowDepthCallback : public irr::video::IShaderConstantSetCallBack
@@ -508,6 +724,29 @@ class ShadowDepthCallback : public irr::video::IShaderConstantSetCallBack
 public:
     void OnSetMaterial(const irr::video::SMaterial&) override {}
     void OnSetConstants(irr::video::IMaterialRendererServices*, irr::s32) override {}
+};
+
+// Geometry prepass — pushes the diffuse sampler and the alpha cut-out reference.
+// Everything else the prepass shader needs comes from GL built-in matrices.
+// uAlphaRef travels in MaterialTypeParam, which the EMT_SOLID base this material
+// is built over never reads, so the slot is free.
+class PrepassCallback : public irr::video::IShaderConstantSetCallBack
+{
+public:
+    void OnSetMaterial(const irr::video::SMaterial& material) override
+    {
+        m_alphaRef = material.MaterialTypeParam;
+    }
+
+    void OnSetConstants(irr::video::IMaterialRendererServices* services, irr::s32) override
+    {
+        int texSlot = 0;
+        services->setPixelShaderConstant("tDiffuse",  &texSlot,   1);
+        services->setPixelShaderConstant("uAlphaRef", &m_alphaRef, 1);
+    }
+
+private:
+    float m_alphaRef = 0.0f;
 };
 
 // Soft particles — fades SPARK quads near scene geometry using prepass depth.
@@ -600,6 +839,19 @@ public:
         m_lineRenderableList[writeBuffer].clear();
         m_rectangleRenderableList[writeBuffer].clear();
     }
+    // Called before EVERY simulation step. 2D HUD submissions are state, redrawn
+    // each step, so the latest step must replace the earlier ones rather than
+    // add to them: on a frame that ran 2+ steps (catch-up, or timescale
+    // substeps) every translucent overlay used to be queued once per step and
+    // stacked into a brighter flash. 3D lines are deliberately left alone —
+    // a one-shot debug line drawn in an earlier step must still reach the frame.
+    void clearGame2DWriteBuffer()
+    {
+        int writeBuffer = 1 - m_renderBufferIndex;
+        m_textRenderableList[writeBuffer].clear();
+        m_imageRenderableList[writeBuffer].clear();
+        m_rectangleRenderableList[writeBuffer].clear();
+    }
 
     void onWindowResizeEvent();
 
@@ -607,7 +859,8 @@ public:
         std::string name, std::string fragment, std::string vertex,
         irr::video::E_MATERIAL_TYPE materialType = irr::video::EMT_SOLID,
         irr::video::E_PIXEL_SHADER_TYPE psVersion = irr::video::EPST_PS_2_0,
-        irr::video::E_VERTEX_SHADER_TYPE vsVersion = irr::video::EVST_VS_2_0);
+        irr::video::E_VERTEX_SHADER_TYPE vsVersion = irr::video::EVST_VS_2_0,
+        float alphaCutoff = 0.0f);
 
     void createDefaultShaders();
 
@@ -632,6 +885,12 @@ public:
     ShaderConstantSetCallBack*           mainShaderCallback()  const { return m_shaderConstantCallBack; }
     BarrelHeatShaderCallback*            barrelHeatCallback()  const { return m_barrelHeatCallback; }
     TerrainShaderCallback*               terrainCallback()     const { return m_terrainCallback; }
+    SkinShaderCallback*                  skinCallback()        const { return m_skinCallback; }
+    HairShaderCallback*                  hairCallback()        const { return m_hairCallback; }
+    // The fringe pass runs on its OWN callback instance. Anything set per
+    // instance — the debug tint above all — has to be set on both or the two
+    // passes silently disagree.
+    HairShaderCallback*                  hairBlendCallback()   const { return m_hairBlendCallback; }
 	irr::scene::IMeshManipulator*        manipulator()  const { return m_manipulator; }
 	IrrAssimp*                           assimp()       const { return m_assimpLoader; }
 	GltfImport*                          gltf()         const { return m_gltfLoader; }
@@ -915,6 +1174,35 @@ public:
     // alpha = linear view depth) so its contents can be inspected directly.
     void setShowPrePass(bool e)        { m_showPrePass = e; }
     bool isShowPrePass() const         { return m_showPrePass; }
+
+    // --- Water refraction (console: r_water_refract) ---
+    // Off makes water fall back to plain alpha blending, which is also what
+    // happens automatically when the GL copy path is unavailable.
+    void setWaterRefractEnabled(bool e) { m_waterRefractEnabled = e; }
+    bool isWaterRefractEnabled() const  { return m_waterRefractEnabled; }
+    // True only for the transparent pass that captured the copy.
+    // WaterShaderCallback reads this to pick its path. Preview render targets
+    // never get a capture, so they must never be told they have one.
+    bool isRefractionCaptured() const   { return m_refractionCaptured && !m_renderingPreview; }
+
+    // --- Underwater camera effect (console: r_underwater) ---
+    // GameplaySystem clears and refills the volume list every logic tick. The
+    // renderer decides submersion itself, once per RENDERED frame, from the
+    // camera it is actually drawing with — never from a gameplay flag, which
+    // runs 0..N times a frame and lags the camera by a frame.
+    void clearWaterVolumes()                  { m_waterVolumes.clear(); }
+    void addWaterVolume(const WaterVolume& v) { m_waterVolumes.push_back(v); }
+    void setUnderwaterEnabled(bool e)         { m_underwaterEnabled = e; }
+    bool isUnderwaterEnabled() const          { return m_underwaterEnabled; }
+    // True when this frame's near plane touched a water volume.
+    bool isCameraUnderwater() const           { return m_underwaterActive; }
+    UnderwaterCallback* underwaterCallback() const { return m_underwaterCallback; }
+    // Reads the atlas back and reports whether it holds depth or a shaded
+    // render; also writes shadow_atlas_dump.png. See the definition.
+    void dumpShadowAtlas();
+
+    void setShowShadowAtlas(bool e)    { m_showShadowAtlas = e; }
+    bool isShowShadowAtlas() const     { return m_showShadowAtlas; }
     void setDecalsEnabled(bool e)      { m_decalsEnabled = e; }
     bool isDecalsEnabled() const       { return m_decalsEnabled; }
     void setTransparentEnabled(bool e) { m_transparentEnabled = e; }
@@ -1096,6 +1384,19 @@ private:
     WaterShaderCallback*       m_waterCallback;
     BarrelHeatShaderCallback*  m_barrelHeatCallback;
     TerrainShaderCallback*     m_terrainCallback;
+    SkinShaderCallback*        m_skinCallback    = nullptr;
+    HairShaderCallback*        m_hairCallback    = nullptr;
+    HairShaderCallback*        m_hairBlendCallback = nullptr;
+
+    // Material type of the blended fringe pass, and the core it pairs with.
+    // Cached because drawHairBlendPass() runs per frame over the whole graph.
+    irr::s32                   m_hairBlendMat    = -1;
+    irr::s32                   m_hairCoreMat     = -1;
+
+    // Pre-integrated subsurface scattering LUT for skin.frag (built by
+    // Tools/generate_skin_lut.py). Bound to raw GL unit 13 per frame; null when
+    // the asset is missing, which the shader treats as "no scattering".
+    irr::video::ITexture*      m_skinLUT         = nullptr;
 
     IrrImGuiEventReceiver m_imguiEventReceiver;
 
@@ -1155,6 +1456,7 @@ private:
     bool  m_sky3dEnabled = false;
     bool  m_prePassEnabled     = true;   // r_prepass
     bool  m_showPrePass        = false;  // r_showprepass
+    bool  m_showShadowAtlas    = false;  // r_showshadowatlas
     bool  m_decalsEnabled      = true;   // r_decals
     bool  m_transparentEnabled = true;   // r_transparent
 
@@ -1221,9 +1523,32 @@ private:
     void recreatePostProcessRTTs(irr::u32 width, irr::u32 height);
     void createShadowResources();
     void drawShadowPass();
+    // Stamps the scene into the bound target with the depth-only shader.
+    // Hand-rolled because SOverrideMaterial cannot override MaterialType.
+    void drawSceneDepth();
     void runPostProcessChain();
     void drawFullscreenQuad();
     void drawPrePassDebugOverlay();
+    void drawShadowAtlasDebugOverlay();
+
+    // Second pass over every hair buffer: the soft fringe a cut-out discards,
+    // alpha-blended with depth test but no depth write. See the definition.
+    void drawHairBlendPass();
+
+public:
+    // Console r_hairdebugmode. Isolates WHY the fringe pass is invisible:
+    //   0 = normal
+    //   1 = draw the hair buffers with a plain fixed-function material and the
+    //       depth test OFF. Takes hair.frag out of the equation entirely: if the
+    //       head turns into solid untextured cards, the manual draw reaches the
+    //       screen and the fault is inside the shader; if nothing appears, the
+    //       draw itself is wrong (transform, culling or render state).
+    //   2 = same, but with the depth test ON, which isolates depth rejection.
+    void setHairDebugMode(int m) { m_hairDebugMode = m; }
+    int  hairDebugMode() const   { return m_hairDebugMode; }
+private:
+    int m_hairDebugMode = 0;
+public:
     void measureAndAdaptExposure(irr::f32 dt);
     irr::video::ITexture* m_sceneRTT      = nullptr;
     irr::video::ITexture* m_ppRTT[2]      = { nullptr, nullptr };
@@ -1257,13 +1582,30 @@ private:
     irr::s32              m_prepassMat      = -1;
     irr::s32              m_ssaoGenMat      = -1;
     irr::s32              m_ssaoBlurMat     = -1;
-    ShadowDepthCallback*  m_prepassCallback = nullptr;   // no-op — prepass uses GL built-ins only
+    PrepassCallback*      m_prepassCallback = nullptr;   // diffuse sampler + alpha cut-out ref
     SSAOGenCallback*      m_ssaoGenCallback  = nullptr;
     SSAOBlurCallback*     m_ssaoBlurCallback = nullptr;
     SSAOApplyCallback*    m_ssaoApplyCallback = nullptr;
     SoftParticleCallback* m_softParticleCallback = nullptr;
     bool m_softParticleShaderEnabled = true;
     bool                  m_ssaoEnabled     = true;
+
+    // Water refraction — a copy of the opaque scene taken immediately before the
+    // sorted transparent pass, so water can sample what is behind it without
+    // reading the render target it is drawing into. Source's _rt_WaterRefraction.
+    // Only captured on frames where the transparent pass actually found water.
+    void captureRefraction();
+    irr::video::ITexture* m_refractRTT          = nullptr;  // full res, same format as the scene RTT
+    bool                  m_waterRefractEnabled = true;     // r_water_refract
+    bool                  m_refractionCaptured  = false;    // valid for this frame's transparent pass
+
+    // Underwater camera pass. Picks the volume this frame's near plane is in,
+    // fills m_underwaterCallback and toggles the "underwater" chain pass.
+    void updateUnderwaterPass();
+    std::vector<WaterVolume> m_waterVolumes;
+    UnderwaterCallback*   m_underwaterCallback  = nullptr;
+    bool                  m_underwaterEnabled   = true;     // r_underwater
+    bool                  m_underwaterActive    = false;    // near plane is in water this frame
 
     // Shadow mapping — 4096x4096 R32F atlas, four 2048x2048 quadrants.
     irr::video::ITexture*          m_shadowMapRTT   = nullptr;

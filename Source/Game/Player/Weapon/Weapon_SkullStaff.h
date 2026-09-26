@@ -301,8 +301,14 @@ private:
 	void castSpell();
 	void spawnSpellBolt(const SpellDesc& desc, int spellIndex);
 	void updateProjectiles(float dt);
+	// waterScale: damage multiplier from the water the bolt swam through
+	// (WaterBallistics::projectileScale). Folded into the resolved splash damage
+	// and the direct damage, NOT passed down to applySplashDamage -- that takes
+	// the already-resolved figure by design. Defaults to 1.0 so a caller that
+	// never met water, or forgets, reads as dry.
 	void detonate(const SpellDesc& desc, const irr::core::vector3df& pos,
-	              entityid directHitID, const irr::core::vector3df& surfaceNormal);
+	              entityid directHitID, const irr::core::vector3df& surfaceNormal,
+	              float waterScale = 1.0f);
 
 	// Takes the ALREADY-RESOLVED radius and damage rather than the SpellDesc it
 	// used to read them off. detonate() resolves both once and passes them down,

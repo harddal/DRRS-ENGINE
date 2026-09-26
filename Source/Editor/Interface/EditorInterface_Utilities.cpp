@@ -9,6 +9,7 @@
 
 #include "Engine/Engine.h"
 #include "Game/Components.h"
+#include "Utility/Utility.h"
 
 void EditorInterface::draw_window_scene_stats()
 {
@@ -88,6 +89,34 @@ void EditorInterface::draw_window_editor_settings()
 
 		ImGui::Checkbox("Draw Light Range Sphere", &config.drawPointLightBounds);
 		ImGui::SetItemTooltip("Show a wireframe sphere around the selected light\nvisualizing its Radius (reach).");
+
+		ImGui::Separator();
+
+		ImGui::Text("Startup Scene");
+		ImGui::SetItemTooltip("Scene the editor loads on launch.\nLeave blank to use the built-in default (TempleDungeon).");
+		{
+			char buf[512];
+			memset(buf, 0, sizeof(buf));
+			for (auto i = 0U; i < config.startupScenePath.size() && i < sizeof(buf) - 1; i++) buf[i] = config.startupScenePath[i];
+
+			ImGui::PushID("startup_scene_file");
+			ImGui::SetNextItemWidth(-64.0f);
+			if (ImGui::InputText("##path", buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue))
+				config.startupScenePath = buf;
+
+			ImGui::SameLine();
+			if (ImGui::Button("...##browse"))
+			{
+				std::string chosen = Utility::OpenFileDialog(dialog_filter_scene_zip, "content\\scene");
+				if (!chosen.empty())
+					config.startupScenePath = chosen;
+			}
+			ImGui::PopID();
+		}
+		if (ImGui::SmallButton("Clear (use default scene)"))
+			config.startupScenePath.clear();
+
+		ImGui::Separator();
 
 		if (ImGui::Button("Save"))
 		{

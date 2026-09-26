@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cereal>
+    <entity>
+        <descriptor>
+            <value0>
+                <name>marker_playerstart_tps</name>
+                <type>4</type>
+                <isDebug>true</isDebug>
+                <isSerializable>true</isSerializable>
+            </value0>
+        </descriptor>
+        <!-- Same MARKER_TYPE as the first-person start marker (1 =
+             MT_PLAYER_START). The <profile> field is what differs, and it is
+             the only thing that differs: it selects a row in the player profile
+             table (Source/Game/PlayerProfile.cpp), which owns the entity asset,
+             the spawn height and the controller class.
+
+             MARKER_TYPE is serialised as a raw int into every scene file, so
+             adding a marker TYPE for this would have been the risky option. -->
+        <marker>
+            <value0>
+                <type>1</type>
+                <profile>tps</profile>
+            </value0>
+        </marker>
+        <transform>
+            <value0>
+                <position.X>0</position.X>
+                <position.Y>0</position.Y>
+                <position.Z>0</position.Z>
+                <rotation.X>0</rotation.X>
+                <rotation.Y>0</rotation.Y>
+                <rotation.Z>0</rotation.Z>
+                <scale.X>1</scale.X>
+                <scale.Y>1</scale.Y>
+                <scale.Z>1</scale.Z>
+                <initialposition.X>0</initialposition.X>
+                <initialposition.Y>0</initialposition.Y>
+                <initialposition.Z>0</initialposition.Z>
+                <initialrotation.X>0</initialrotation.X>
+                <initialrotation.Y>0</initialrotation.Y>
+                <initialrotation.Z>0</initialrotation.Z>
+                <initialscale.X>1</initialscale.X>
+                <initialscale.Y>1</initialscale.Y>
+                <initialscale.Z>1</initialscale.Z>
+                <isParent>false</isParent>
+                <isChild>false</isChild>
+                <parent_name/>
+                <children_names/>
+            </value0>
+        </transform>
+        <render>
+            <value0>
+                <isVisible>true</isVisible>
+            </value0>
+        </render>
+        <debugsprite>
+            <value0>
+                <sprite>sprite/camera.png</sprite>
+            </value0>
+        </debugsprite>
+        <debugmesh>
+            <value0>
+                <mesh>_primitive_pointer</mesh>
+                <texture>content/texture/color/cyan.png</texture>
+            </value0>
+        </debugmesh>
+    </entity>
+</cereal>

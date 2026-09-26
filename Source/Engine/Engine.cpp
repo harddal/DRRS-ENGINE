@@ -265,6 +265,9 @@ void Engine::update()
 				// Increment simulation time for this step
 				m_simulationTime += subDeltaMs;
 
+				// Latest step's HUD wins; see clearGame2DWriteBuffer().
+				m_renderManager.clearGame2DWriteBuffer();
+
 				// Update world and game logic
 				m_worldManager.update(subDeltaMs);
 				m_stateManager.update(subDeltaMs);
@@ -320,6 +323,22 @@ void Engine::update()
 		//
 		// Re-presenting unchanged content is correct and cheap; with VSync on the
 		// present IS the frame pacing.
+		// Skeletal animation for migrated characters, ONCE PER RENDERED FRAME.
+		//
+		// Not in the fixed-step loop above: m_stateManager.update/
+		// m_worldManager.update run 0, 1 or 2+ times per rendered frame, so a
+		// pose evaluated there advances twice on some frames and not at all on
+		// others - the same class of artifact as the ImGui strobe
+		// (project_imgui_fixed_step_flicker).
+		//
+		// TIME-SCALED HERE, not by ITimer::setSpeed(). A node driven through
+		// engine fork #6 (setExternalPose) no longer samples at getFrameNr(), so
+		// Irrlicht's virtual timer never reaches it; its cursor advances on this
+		// delta instead. m_deltaTime is back to real frame time at this point,
+		// hence the explicit multiply - and everything NOT yet migrated keeps
+		// riding setSpeed(), which is why both mechanisms have to agree.
+		m_worldManager.updateAnimation(m_deltaTime * effectiveScale);
+
 		m_currentRenderTick = GetCounter();
 		m_renderManager.draw(m_deltaTime);
 		m_renderTime = static_cast<irr::f32>(GetCounter() - m_currentRenderTick);

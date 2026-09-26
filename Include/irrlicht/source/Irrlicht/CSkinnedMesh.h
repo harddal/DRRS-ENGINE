@@ -51,6 +51,9 @@ namespace scene
 		//! blend: {0-old position, 1-New position}
 		virtual void animateMesh(f32 frame, f32 blend);
 
+		//! ENGINE FORK #6 - apply an externally computed local pose
+		virtual void applyPose(const core::array<SJointPose>& pose);
+
 		//! Preforms a software skin on this mesh based of joint positions
 		virtual void skinMesh();
 

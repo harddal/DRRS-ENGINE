@@ -16,6 +16,8 @@
 #include "Engine/Engine.h"
 #include "Game/Components.h"
 
+#include <spdlog/spdlog.h>
+
 #include <string>
 #include <vector>
 
@@ -205,6 +207,7 @@ void EditorInterface::draw()
 	// Top-level modals — submitted last so they render above everything.
 	drawScriptEditorPopups();
 	draw_quit_prompt();
+	draw_invalid_playerstart_prompt();
 
 	ImGui::PopStyleColor(31); // 30 theme colors + 1 transparent main window bg
 }
@@ -482,10 +485,109 @@ void EditorInterface::draw_quit_prompt()
 	ImGui::EndPopup();
 }
 
+// The two ways function_play_scene() can veto entry — either tells
+// draw_invalid_playerstart_prompt() which text/title to show.
+enum class PlayerStartPromptReason { None, Zero, Multiple };
+
+// Set by function_play_scene() when it vetoes play mode over marker
+// validation, consumed by draw_invalid_playerstart_prompt() on the next
+// frame — same OpenPopup/BeginPopupModal split as the quit prompt above.
+// s_invalidPlayerStartReason stays at the last-shown reason after the popup
+// closes (harmless — draw_invalid_playerstart_prompt() only reads it while
+// s_invalidPlayerStartPromptPending is true or the popup is still open), so
+// it does not need resetting to None on close.
+static bool s_invalidPlayerStartPromptPending = false;
+static PlayerStartPromptReason s_invalidPlayerStartReason = PlayerStartPromptReason::None;
+static std::string s_invalidPlayerStartDetail;
+
 void EditorInterface::function_play_scene()
 {
+	// Every marker profile ("fps", "tps", ...) still lowers to MT_PLAYER_START —
+	// see PlayerProfile.h — so one first-person start plus one third-person start
+	// is just as invalid as two of the same. Count all of them together and name
+	// the offenders so the popup below is actionable, not just a bare count.
+	std::vector<std::string> playerStarts;
+	for (auto& e : WorldManager::Get()->world()->getEntities())
+	{
+		if (!e.hasComponent<MarkerComponent>())
+			continue;
+
+		if (e.getComponent<MarkerComponent>().type != MT_PLAYER_START)
+			continue;
+
+		std::string label = e.hasComponent<DescriptorComponent>() ?
+			e.getComponent<DescriptorComponent>().name : std::string();
+		playerStarts.push_back(label.empty() ? "(unnamed entity)" : label);
+	}
+
+	if (playerStarts.empty())
+	{
+		spdlog::error("function_play_scene(): scene has no player start marker");
+
+		s_invalidPlayerStartReason = PlayerStartPromptReason::Zero;
+		s_invalidPlayerStartPromptPending = true;
+		return;
+	}
+
+	if (playerStarts.size() > 1)
+	{
+		s_invalidPlayerStartDetail.clear();
+		for (const auto& name : playerStarts)
+			s_invalidPlayerStartDetail += "  - " + name + "\n";
+
+		spdlog::error("function_play_scene(): scene has {} player start markers, expected exactly 1: {}",
+			playerStarts.size(), s_invalidPlayerStartDetail);
+
+		s_invalidPlayerStartReason = PlayerStartPromptReason::Multiple;
+		s_invalidPlayerStartPromptPending = true;
+		return;
+	}
+
 	syncSceneDescriptorFromCallbacks();
 	Engine::Get()->stateManager()->setStatePauseResume(ESID_EDITORGAME);
+}
+
+void EditorInterface::draw_invalid_playerstart_prompt()
+{
+	if (s_invalidPlayerStartReason == PlayerStartPromptReason::None)
+		return;
+
+	// The ID half (after "##") stays fixed across both reasons so ImGui treats
+	// them as the same modal; only the visible label half changes.
+	const char* title = s_invalidPlayerStartReason == PlayerStartPromptReason::Zero ?
+		"No Player Start##playerstart" : "Multiple Player Starts##playerstart";
+
+	if (s_invalidPlayerStartPromptPending)
+	{
+		ImGui::OpenPopup(title);
+		s_invalidPlayerStartPromptPending = false;
+	}
+
+	ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		return;
+
+	if (s_invalidPlayerStartReason == PlayerStartPromptReason::Zero)
+	{
+		ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f),
+			"This scene has no player start marker.");
+		ImGui::Text("Play mode needs exactly one, first- or third-person, to spawn the player.");
+	}
+	else
+	{
+		ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f),
+			"This scene has more than one player start marker.");
+		ImGui::Text("Play mode needs exactly one, first- or third-person. Remove the extras:");
+		ImGui::Spacing();
+		ImGui::TextUnformatted(s_invalidPlayerStartDetail.c_str());
+	}
+	ImGui::Spacing();
+
+	if (ImGui::Button("OK", ImVec2(120, 0)))
+		ImGui::CloseCurrentPopup();
+
+	ImGui::EndPopup();
 }
 
 void EditorInterface::function_showhide_menubar()

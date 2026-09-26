@@ -45,6 +45,30 @@ public:
     // Returns a non-zero handle usable with destroy(); 0 = failure.
     uint32_t spawn(const std::string& name, const SPK::Vector3D& pos, bool loop = false);
 
+    // Spawn an instance that is NEVER reaped for being idle. For effects that
+    // are fed by hand through emitAlongLine() rather than by their own emitters:
+    // such a system reads as asleep (SPARK counts a flow-0 emitter as sleeping)
+    // whenever it has no live particles, and the loop path would destroy and
+    // re-copy it every idle frame. Only destroy() and clear() remove it.
+    //
+    // Spawn at the origin and never move it: the system is world-transformed,
+    // and positions handed to emitAlongLine() are taken as world coordinates.
+    uint32_t spawnPersistent(const std::string& name, const SPK::Vector3D& pos);
+
+    // True while 'handle' names a live instance. clear() (every editor<->game
+    // switch) kills every handle, so a caller that keeps one must re-check.
+    bool isAlive(uint32_t handle) const;
+
+    // Add particles to a live instance along the world-space segment
+    // [start,end], one every 'step' units starting 'offset' units in. Velocity
+    // comes from the group's first emitter (its force and direction); the
+    // emitter's own flow/tank play no part. Particles are born on the next
+    // update(). Anything beyond the group's capacity is dropped by SPARK.
+    // Returns false if the handle is dead or the group does not exist.
+    bool emitAlongLine(uint32_t handle, const irr::core::vector3df& start,
+                       const irr::core::vector3df& end, float step,
+                       float offset = 0.0f, size_t groupIndex = 0);
+
     // Force-destroy a specific active instance before it naturally finishes.
     void destroy(uint32_t handle);
 
@@ -100,6 +124,7 @@ private:
         float        updateRate = 1.0f;
         uint32_t     handle     = 0;
         bool         loop       = false;
+        bool         persistent = false; // survives going idle; see spawnPersistent()
         std::string  effectName;
     };
 

@@ -152,6 +152,33 @@ void CSkinnedMesh::animateMesh(f32 frame, f32 blend)
 }
 
 
+//! ENGINE FORK #6 - apply an externally computed local pose.
+//! The application owns the sampling and blending; this just installs the
+//! result and invalidates the caches that would otherwise hide it.
+void CSkinnedMesh::applyPose(const core::array<SJointPose>& pose)
+{
+	const u32 count = (pose.size() < AllJoints.size()) ? pose.size() : AllJoints.size();
+
+	for (u32 i=0; i<count; ++i)
+	{
+		SJoint* joint = AllJoints[i];
+
+		joint->Animatedposition = pose[i].Position;
+		joint->Animatedrotation = pose[i].Rotation;
+		joint->Animatedscale    = pose[i].Scale;
+	}
+
+	buildAllLocalAnimatedMatrices();
+	updateBoundingBox();
+
+	// LOAD-BEARING, exactly as in transferJointsToMesh(): without these a second
+	// scene node sharing this (cached, shared) mesh reuses the first node's skin,
+	// and the next animateMesh() early-outs on LastAnimatedFrame.
+	LastAnimatedFrame = -1;
+	SkinnedLastFrame  = false;
+}
+
+
 void CSkinnedMesh::buildAllLocalAnimatedMatrices()
 {
 	for (u32 i=0; i<AllJoints.size(); ++i)

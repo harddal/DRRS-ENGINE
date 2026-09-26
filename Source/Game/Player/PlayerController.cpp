@@ -5,6 +5,7 @@
 #include "Engine/World/WorldManager.h"
 
 #include <fstream>
+#include <cmath>
 
 #include "Game/Item/ItemDatabase.h"
 #include "Game/Skill/SkillSystem.h"
@@ -13,7 +14,8 @@
 
 //#define DISPLAY_PLAYER_STATS
 
-std::unique_ptr<PlayerController> g_PlayerController;
+// g_PlayerController is DEFINED in IPlayerController.cpp — it is typed on the
+// interface now, not on this class.
 PlayerData g_PlayerData;
 CameraFX g_CameraFX;
 
@@ -43,6 +45,54 @@ const float
 	g_gravity          = 20.0f,   // units/sec² — base downward acceleration (rising)
 	g_fallGravityMult  =  1.4f,   // extra gravity while falling — snappier, less floaty arc
 	g_climbSpeed       =  3.0f,   // units/sec — ladder climb rate (CONTENT_LADDER brushes)
+	g_swimSpeed        =  5.5f,   // units/sec — swim drive ALONG THE LOOK VECTOR
+	g_swimSprintMult   =  1.45f,  // sprint underwater. A swim that is always
+	                              // slower than a walk reads as a punishment
+	g_swimAccel        =  8.0f,   // sv_accelerate equivalent for the swim drive
+
+	// Water drag, 1/sec. Applied to the WHOLE velocity vector while swimming —
+	// horizontal included, which is what gives water its viscosity at any depth.
+	// Exponential so it damps a high-speed entry hard without ever reversing the
+	// sign at a long frame.
+	g_swimFriction     =  2.6f,
+
+	// Vertical drive (jump / crouch). These ACCELERATE toward a target rate.
+	// The old code SET velocity.Y outright, which has no weight to it at all —
+	// rising and sinking felt like riding a lift, not like swimming.
+	g_swimVertAccel    = 16.0f,   // units/sec²
+	g_swimVertSpeed    =  4.5f,   // units/sec — cap on the driven vertical rate
+
+	// Buoyancy: a spring toward a rest height just above the waterline, faded
+	// out with depth so DEEP water stays neutrally buoyant (you can hold a depth
+	// and look around) while the SURFACE is a real top you bob against.
+	//
+	// Without this the water has no top whatsoever: you could swim upward
+	// forever, and the instant the chest test dropped out you hung in mid-air.
+	g_swimBuoyancy     = 14.0f,   // units/sec² per unit below the rest line
+	g_swimFloatSpeed   =  2.2f,   // units/sec — cap on the buoyant rise alone
+	g_swimSurfaceBand  =  1.6f,   // units below the rest line over which it fades
+	g_swimEyeRest      =  0.12f,  // the eye floats this far ABOVE the waterline,
+	                              // so floating idle keeps your head OUT of the
+	                              // water and you must swim DOWN to submerge
+	g_swimSurfacePull  = 10.0f,   // units/sec² pulling the eye back down once it
+	                              // rises past the rest line — the surface tension
+	                              // that stops a held jump walking you out of the
+	                              // pool and into a mid-air hover
+
+	// Water jump: the hop that gets you out at a ledge. Without it the swim flag
+	// simply drops at the lip, gravity returns, and the player bobs against the
+	// edge with no input that helps.
+	g_swimClimbSpeed   =  9.5f,   // units/sec — upward kick
+	g_swimClimbPush    =  5.0f,   // units/sec — forward push over the lip
+
+	// Diving in from height. The entry speed is clamped so a long plunge punches
+	// in hard but does not carry the player to the bottom before drag bites.
+	g_swimEntryClamp   = 14.0f,   // units/sec — max downward speed carried in
+
+	// Wading: a grounded jump taken while chest-deep. Heavily damped, but the
+	// alternative — what this used to do — is that jump does nothing at all in
+	// water you are standing up in, which reads as the water being sticky.
+	g_swimWadeJumpMult =  0.7f,
 	g_groundAccel      = 10.0f,   // GoldSrc sv_accelerate equivalent
 	g_groundFriction   =  8.0f,   // GoldSrc sv_friction equivalent (default, overridden per material)
 	g_airAccel         = 16.0f,   // air acceleration — responsive air steering
@@ -74,7 +124,10 @@ static const float g_materialFriction[] = {
 	8.0f,   // MAT_WOOD     — normal
 };
 
-void DisplayPlayerStats()
+// The ground surface is passed in rather than read back off g_PlayerController:
+// that handle is typed on IPlayerController now, and the cached surface is this
+// controller's own state anyway.
+void DisplayPlayerStats(E_MANAGED_MATERIAL groundMaterial)
 {
 	{
 		auto windowWidth = 320, windowHeight = 320;
@@ -111,7 +164,7 @@ void DisplayPlayerStats()
 			// Reads the grounded branch's cached result rather than casting its own
 			// ray, so the overlay shows exactly what movement and footsteps are using.
 			ImGui::Text("MAT %s", Engine::Get()->getMaterialBuilder().getMaterialName(
-				g_PlayerController ? g_PlayerController->groundMaterial() : MAT_INVALID).c_str());
+				groundMaterial).c_str());
 
 
 
@@ -178,6 +231,8 @@ void PlayerController::init()
 #endif
 
 	m_weaponController.init();
+
+	m_breath.reset();
 }
 
 vector3df PlayerController::Accelerate(vector3df& wishdir, vector3df& vel, float accel, float wishspeed, float dt)
@@ -348,6 +403,35 @@ void PlayerController::update(float dt)
 		// sensitivity scaling above so both read one definition of "unzoomed".
 		camera.camera->setFOV(baseFov() + fxFovDeg * irr::core::DEGTORAD);
 
+		// --- Swim sway -------------------------------------------------------
+		// A slow roll, with a half-period pitch nod under it, while in water.
+		// The walk bob is a footfall cadence and reads completely wrong here;
+		// this is the body rolling with the stroke. Amplitude follows speed, so
+		// floating still is nearly calm but never dead.
+		if (isSwimming())
+		{
+			const vector3df v(m_playerVelocity.X, m_playerVelocity.Y, m_playerVelocity.Z);
+			const float drive = std::min(v.getLength() / g_swimSpeed, 1.0f);
+			const float freq  = 1.1f + drive * 1.1f;          // Hz
+
+			m_swimBobTimer += freq * 2.0f * __pi * (dt / 1000.0f);
+
+			const float amp = 0.35f + drive * 1.05f;          // degrees
+			cameraRotation.Z += sinf(m_swimBobTimer) * amp;
+			cameraRotation.X += sinf(m_swimBobTimer * 2.0f) * amp * 0.35f;
+
+			// Vertical float. Added to camera.offset.Y after the walk bob has had
+			// its say, further down.
+			m_swimBobOffset = sinf(m_swimBobTimer) * (0.020f + drive * 0.025f);
+		}
+		else
+		{
+			// Decay rather than snap, so leaving the water does not jerk the
+			// camera by whatever the sway happened to be holding.
+			m_swimBobOffset -= m_swimBobOffset * std::min(8.0f * (dt / 1000.0f), 1.0f);
+			m_swimBobTimer   = 0.0f;
+		}
+
 		// Clamp after FX to prevent extremes.
 		if (cameraRotation.X > g_bottomAngle) cameraRotation.X = g_bottomAngle;
 		if (cameraRotation.X < g_topAngle)    cameraRotation.X = g_topAngle;
@@ -389,6 +473,20 @@ void PlayerController::update(float dt)
 			x_move += 1.0f;
 		}
 	}
+
+	// The swim flag, minus the brief window after a water jump or a wade hop.
+	// Those have to run as ordinary ballistic jumps: water drag would eat the hop
+	// and the buoyancy spring would pull it straight back down before it ever
+	// cleared the pool lip.
+	//
+	// The fall-damage and landing guards further down deliberately keep testing
+	// the RAW isSwimming(), so touching the pool floor mid-hop still is not a
+	// landing and still cannot charge fall damage.
+	const bool swimming = isSwimming() && currentTime >= m_waterJumpUntil;
+
+	// Vertical swim drive, collected from the jump/crouch keys below and applied
+	// as an acceleration in the swim movement branch.
+	float swimVertInput = 0.0f;
 
 	// Ladder climbing (CONTENT_LADDER brush volumes, flag set per frame by
 	// GameplaySystem).  Fixed-vertical controls: forward climbs up, backward
@@ -464,7 +562,7 @@ void PlayerController::update(float dt)
 					m_ladderIgnoreUntil = currentTime + 400;
 				}
 			}
-			else if (!isSwimming())
+			else if (!swimming)
 			{
 				// No cooldown: tap-to-rejump fires the instant we touch ground.
 				// m_jumpConsumed (reset on button release) keeps it tap-based, not auto-bhop.
@@ -484,8 +582,35 @@ void PlayerController::update(float dt)
 			}
 			else
 			{
-				// Swim up
-				m_playerVelocity.Y = g_walkSpeed;
+				// In the water. Three cases, in priority order:
+				//   1. a water jump, if there is a ledge in front to climb onto;
+				//   2. a damped hop, if we are wading with feet on the bottom and
+				//      our head already clear of the surface;
+				//   3. otherwise swim up, applied as an acceleration below rather
+				//      than by setting velocity.Y outright.
+				const float eyeY = camera.camera->getAbsolutePosition().Y;
+
+				if (!m_jumpConsumed && tryWaterJump(transform.getPosition(), eyeY, z_move, currentTime))
+				{
+					m_jumpConsumed  = true;
+					jumpedThisFrame = true;
+				}
+				else if (!m_jumpConsumed && g_isOnSurface && eyeY > m_waterSurfaceY)
+				{
+					m_playerVelocity.Y = g_jumpSpeed * g_swimWadeJumpMult;
+					m_isJumping        = true;
+					m_jumpConsumed     = true;
+					jumpedThisFrame    = true;
+					g_lastJumpTime     = currentTime;
+
+					// Same window the water jump uses: let it fly ballistically
+					// instead of being damped straight back down by the swim branch.
+					m_waterJumpUntil   = currentTime + 250;
+				}
+				else
+				{
+					swimVertInput = 1.0f;
+				}
 			}
 		}
 		// Jump cut: reduce velocity when jump button released mid-jump
@@ -503,7 +628,7 @@ void PlayerController::update(float dt)
 		}
 		if (InputManager::Get()->isActionPressed("crouch"))
 		{
-			if (!isSwimming())
+			if (!swimming)
 			{
 				// Set target height for smooth lerp transition to crouched state
 				m_targetCrouchHeight = 0.5f;
@@ -511,8 +636,9 @@ void PlayerController::update(float dt)
 			}
 			else
 			{
-				// Swim down - apply to vertical velocity
-				m_playerVelocity.Y = -g_walkSpeed;
+				// Swim down. Accelerated in the swim movement branch, for the
+				// same reason swimming up is.
+				swimVertInput = -1.0f;
 			}
 		}
 		else if (m_isCrouched)
@@ -601,14 +727,24 @@ void PlayerController::update(float dt)
 
 	// Apply gravity continuously (unless swimming or holding a ladder).
 	// Falling uses stronger gravity for a snappier, less floaty arc.
-	if (!isSwimming() && !onLadder)
+	if (swimming)
+	{
+		// Nothing here. Vertical is handled as one piece with the rest of the
+		// swim drive in the movement branch below: drag, the jump/crouch
+		// acceleration and buoyancy all act on the same vector, and splitting
+		// them across two places is what let the old code double-damp Y.
+	}
+	else if (!onLadder)
 	{
 		float gravity = (m_playerVelocity.Y < 0.0f) ? g_gravity * g_fallGravityMult : g_gravity;
 		m_playerVelocity.Y -= gravity * (dt / 1000.0f);
 	}
 
 	// Reset vertical velocity and jump state when landing
-	if (g_isOnSurface && m_playerVelocity.Y < 0 && !m_noclip)
+	// Touching the pool floor is not a landing: without the swim guard, diving
+	// into deep water bottomed out against the ground branch below and charged
+	// the player fall damage for it.
+	if (g_isOnSurface && m_playerVelocity.Y < 0 && !m_noclip && !isSwimming())
 	{
 		if (m_lastAirVelocityY < -4.0f)
 		{
@@ -653,7 +789,134 @@ void PlayerController::update(float dt)
 	// Apply ground or air movement to horizontal velocity only
 	vector3df horizontal_velocity = vector3df(m_playerVelocity.X, 0, m_playerVelocity.Z);
 
-	if (g_isOnSurface && jumpedThisFrame)
+	if (swimming)
+	{
+		// Water wins over both the ground and the air paths. Standing on the
+		// bottom of a pool still counts as grounded, so without this branch the
+		// swim was steered by whatever the pool floor's material friction was,
+		// and swimming clear of the floor switched to MoveAir -- which has no
+		// friction at all, so the player glided across the surface untouchable.
+		const float dtSec = dt / 1000.0f;
+
+		// --- Entry ----------------------------------------------------------
+		// First frame in the water. m_lastAirVelocityY still holds the speed the
+		// airborne branch latched on the way down, so it has to be read here,
+		// before the reset at the bottom of this block clears it.
+		if (!m_wasSwimming)
+		{
+			const float entrySpeed = std::max(-m_lastAirVelocityY, -m_playerVelocity.Y);
+
+			// Clamp the plunge. A terminal-velocity dive that keeps its speed
+			// crosses the whole pool before drag catches it, which reads as
+			// falling THROUGH the water rather than INTO it.
+			if (m_playerVelocity.Y < -g_swimEntryClamp)
+				m_playerVelocity.Y = -g_swimEntryClamp;
+
+			// Horizontal momentum is cut harder than vertical: you knife in, you
+			// do not skim across.
+			m_playerVelocity.X *= 0.55f;
+			m_playerVelocity.Z *= 0.55f;
+
+			if (entrySpeed > 3.0f)
+			{
+				// The same spring a landing uses, so hitting water reads as an
+				// impact rather than as a state change with no event attached.
+				g_CameraFX.addLandingBob(std::min(entrySpeed * 0.22f, 3.5f));
+				g_CameraFX.addFovKick(-std::min(entrySpeed * 0.20f, 4.0f));
+			}
+		}
+
+		// --- Drag -------------------------------------------------------------
+		// ONE exponential, applied to the whole vector. This replaces a
+		// MoveGround() call that only ever touched the horizontal plane and left
+		// vertical damping to a separate term in the gravity block.
+		const float drag = expf(-g_swimFriction * dtSec);
+		vector3df vel(m_playerVelocity.X * drag,
+		              m_playerVelocity.Y * drag,
+		              m_playerVelocity.Z * drag);
+
+		// --- Look-directed drive ----------------------------------------------
+		// Forward swims where you LOOK, pitch included. This is the single
+		// biggest difference from the old behaviour, which built its wish
+		// direction as vector3df(x_move, 0, z_move): it could only ever move
+		// horizontally, vertical was reachable only through the jump and crouch
+		// keys, and so swimming was sliding around inside a box.
+		//
+		// Built in the controller's LOCAL (yaw-relative) space -- X right,
+		// Z forward -- because that is the space the displacement step at the
+		// bottom of update() rotates by the camera yaw. Same pitch convention as
+		// the noclip fly vector.
+		const float pitchRad = deg2rad(m_cameraPitch);
+		vector3df swimWish(x_move,
+		                   z_move * -sinf(pitchRad),
+		                   z_move *  cosf(pitchRad));
+		if (swimWish.getLength() > 0.001f) swimWish.normalize();
+
+		const float swimTarget = g_swimSpeed *
+			((!isPlayerLocked() && InputManager::Get()->isActionPressed("sprint")) ? g_swimSprintMult : 1.0f);
+
+		vel = Accelerate(swimWish, vel, g_swimAccel, swimTarget, dtSec);
+
+		// --- Vertical drive ---------------------------------------------------
+		// Accelerated, not snapped, and capped separately from the swim drive so
+		// holding jump cannot out-run the look-directed speed.
+		if (swimVertInput != 0.0f)
+		{
+			vel.Y += swimVertInput * g_swimVertAccel * dtSec;
+			if (swimVertInput > 0.0f && vel.Y >  g_swimVertSpeed) vel.Y =  g_swimVertSpeed;
+			if (swimVertInput < 0.0f && vel.Y < -g_swimVertSpeed) vel.Y = -g_swimVertSpeed;
+		}
+
+		// --- Buoyancy / the waterline -----------------------------------------
+		// The eye rests just ABOVE the surface, so floating idle leaves the head
+		// out of the water and submerging is something you have to actively do.
+		//
+		// The pull fades out with depth (g_swimSurfaceBand), which is what keeps
+		// deep water neutrally buoyant: you can hold a depth and look around
+		// instead of being dragged to the top every time you stop swimming.
+		{
+			const float eyeY  = camera.camera->getAbsolutePosition().Y;
+			const float restY = m_waterSurfaceY + g_swimEyeRest;
+			const float below = restY - eyeY;            // > 0 while submerged
+
+			if (below > 0.0f)
+			{
+				float fade = 1.0f - std::min(below / g_swimSurfaceBand, 1.0f);
+				fade *= fade;
+				vel.Y += below * g_swimBuoyancy * fade * dtSec;
+
+				// Only the BUOYANT rise is capped. A deliberate swim up is not.
+				if (swimVertInput <= 0.0f && vel.Y > g_swimFloatSpeed)
+					vel.Y = g_swimFloatSpeed;
+			}
+			else if (!g_isOnSurface && below > -2.0f)
+			{
+				// Above the rest line, with nothing underfoot: the surface pulls
+				// back down. This is what stops a held jump from walking the
+				// player up out of the pool and leaving them hovering in air the
+				// instant the chest test drops out.
+				//
+				// The -2.0f floor keeps a stale or never-pushed waterline (a
+				// console-forced swim, say) from applying this far from any
+				// actual water.
+				vel.Y -= std::min(-below, 1.0f) * g_swimSurfacePull * dtSec;
+			}
+		}
+
+		m_playerVelocity.Y  = vel.Y;
+		horizontal_velocity = vector3df(vel.X, 0.0f, vel.Z);
+
+		m_isSliding           = false;
+		m_lastSlideWorldAccel = irr::core::vector3df(0.0f, 0.0f, 0.0f);
+		m_lastSlopeNormal     = irr::core::vector3df(0.0f, 1.0f, 0.0f);
+
+		// Water cancels the fall the player arrived with. The airborne branch is
+		// the only other writer, so leaving this latched meant wading out of a
+		// pool you had dived into replayed the dive's impact speed as fall
+		// damage on the first step onto dry ground.
+		m_lastAirVelocityY = 0.0f;
+	}
+	else if (g_isOnSurface && jumpedThisFrame)
 	{
 		// Jumping this frame: skip ground friction entirely so horizontal momentum
 		// carries into the jump (fluid chained re-jumps). Still bounded by air
@@ -1032,7 +1295,9 @@ void PlayerController::update(float dt)
 		
 		// Calculate head bob value
 		float bobValue = sin(g_headBobTimer);
-		float bobOffset = bobValue * g_headBobAmplitude;
+		// The walk bob is a footfall cadence -- it has no business running while
+		// swimming, where the swim sway up in the FX block is the whole motion.
+		float bobOffset = isSwimming() ? 0.0f : bobValue * g_headBobAmplitude;
 		
 		// Calculate base camera offset based on current crouch height (lerped smoothly)
 		// Map height from [0.5, 2.0] to camera offset [0.25, 0.8]
@@ -1068,6 +1333,53 @@ void PlayerController::update(float dt)
 		// Reset head bob state
 		g_headBobTimer = 0.0f;
 		g_lastHeadBobValue = 0.0f;
+	}
+
+	// Swim float, on top of whatever the walk bob left behind. ADDED rather than
+	// assigned so the not-moving branch's snap-to-rest still sets the base
+	// height -- floating idle should still breathe.
+	camera.offset.Y += m_swimBobOffset;
+
+	// --- Water surface transitions ------------------------------------------
+	// Edge-triggered off the flags the volume test pushes in. Breaking the
+	// surface gets its own small punch: without one, going from underwater to
+	// air is a silent overlay switch and the moment does not land.
+	if (m_wasHeadUnderWater && !m_isHeadUnderWater && isSwimming())
+		g_CameraFX.addLandingBob(0.9f);
+
+	if (m_wasSwimming && !isSwimming())
+		g_CameraFX.addFovKick(1.5f);          // out of the water, the view opens up
+
+	m_wasSwimming       = isSwimming();
+	m_wasHeadUnderWater = m_isHeadUnderWater;
+
+	// --- Breath ---------------------------------------------------------------
+	// After the transitions so it sees this frame's flags. Airless = the EYE is
+	// under water (never the chest: swimming head-up must not drown) or inside a
+	// CONTENT_NOAIR brush. The damage goes through the same chokepoint as fall
+	// damage so god/buddha apply; DROWN skips the gore, which would otherwise
+	// spray blood from the player's bounding box on every tick.
+	{
+		const bool airless = m_isHeadUnderWater || m_breath.inAirlessVolume();
+		const PlayerBreath::TickResult breathTick = m_breath.tick(dt, airless, !m_isDead, m_noclip);
+
+		if (breathTick.damage > 0)
+		{
+			WorldManager::Get()->gameplaySystem()->damageEntity(
+				player.getComponent<DescriptorComponent>().id, breathTick.damage, DAMAGE_TYPE::DROWN);
+		}
+
+		// Assets may not exist yet -- a missing sound is logged at load and play()
+		// on it is a no-op, so these are safe to fire regardless.
+		if (breathTick.gasp)
+		{
+			sound.play("gasp");
+			g_CameraFX.addFovKick(1.0f);
+		}
+
+		g_PlayerData.breathFraction = m_breath.fraction();
+		g_PlayerData.breathHudAlpha = m_breath.hudAlpha();
+		g_PlayerData.isDrowning     = m_breath.isDrowning();
 	}
 
 	m_lastCCTPosition = currentCCTPosition;
@@ -1108,10 +1420,14 @@ void PlayerController::update(float dt)
 
 	if (damage.didReceiveDamage() && !m_isDead)
 	{
-		sound.play("damage" + std::to_string(rand() % 2 + 1));
+		// A drowning tick chokes rather than grunts.
+		if (damage.lastReceivedType == DAMAGE_TYPE::DROWN)
+			sound.play("drown" + std::to_string(rand() % 2 + 1));
+		else
+			sound.play("damage" + std::to_string(rand() % 2 + 1));
 	}
 #ifdef DISPLAY_PLAYER_STATS
-	DisplayPlayerStats();
+	DisplayPlayerStats(m_groundMaterial);
 #endif
 
 	m_hudController.update(g_PlayerData, m_inventoryController.isInventoryDisplaying());
@@ -1180,6 +1496,93 @@ void PlayerController::playFootStepSound(anax::Entity& player, int _time, int _d
     }
 
     player.getComponent<SoundComponent>().play(material + std::to_string(n));
+}
+
+// ---------------------------------------------------------------------------
+// Water jump
+//
+// Getting OUT of water is the part of swimming that fails silently. The swim
+// flag drops the moment the chest clears the surface, gravity comes straight
+// back, and the player falls into a loop of bobbing against the pool lip with
+// no input that helps. Quake solved this with a short scripted hop; so does
+// this. The caller suspends the swim movement branch for its duration (see
+// m_waterJumpUntil) because water drag and the buoyancy spring would otherwise
+// cancel the hop well before it cleared the lip.
+//
+// Every condition below is required:
+//   - the player is pushing FORWARD, so you climb out of the edge you are
+//     facing rather than whichever one you happen to be floating near;
+//   - the eye is at or near the waterline -- you cannot climb out from the
+//     bottom of a pool;
+//   - something steep is directly in front, within arm's reach;
+//   - and there is NOTHING in front at head height above the surface, i.e. it
+//     is a lip to climb onto and not a sheer wall. Hopping at a cliff face just
+//     drops the player straight back in, which feels worse than not trying.
+//
+// The probes go through the scene collision manager rather than PhysicsManager,
+// for the same reason the slope and wall checks in update() do: this needs the
+// triangle normal, and a physics ray would also have to be filtered against the
+// player's own CCT capsule.
+// ---------------------------------------------------------------------------
+bool PlayerController::tryWaterJump(const irr::core::vector3df& position, float eyeY, float forwardInput, int currentTime)
+{
+	if (forwardInput <= 0.0f)
+		return false;
+
+	// Only from the surface. Half a unit of slack so a bob trough still counts.
+	if (eyeY < m_waterSurfaceY - 0.5f)
+		return false;
+
+	auto* collMgr = RenderManager::Get()->sceneManager()->getSceneCollisionManager();
+	if (!collMgr)
+		return false;
+
+	const float yawRad = deg2rad(m_cameraYaw);
+	const vector3df fwd(sinf(yawRad), 0.0f, cosf(yawRad));
+
+	// Probes are anchored to the WATERLINE, not to the capsule, so the same two
+	// heights mean the same thing however deep the player is floating.
+	auto probe = [&](float heightAboveSurface, float reach, vector3df& outNormal) -> bool
+	{
+		const vector3df origin(position.X, m_waterSurfaceY + heightAboveSurface, position.Z);
+
+		irr::core::triangle3df tri;
+		vector3df              point;
+		irr::core::line3df     ray(origin, origin + fwd * reach);
+
+		if (!collMgr->getSceneNodeAndCollisionPointFromRay(ray, point, tri))
+			return false;
+
+		outNormal = tri.getNormal();
+		outNormal.normalize();
+		if (outNormal.Y < 0.0f) outNormal = -outNormal;
+		return true;
+	};
+
+	const float maxWalkSlopeY = 0.5f;   // same threshold the slope checks use
+
+	// A wall just under the surface to push off.
+	vector3df wallN;
+	if (!probe(-0.35f, 0.9f, wallN))
+		return false;
+	if (wallN.Y >= maxWalkSlopeY)
+		return false;                   // a ramp: just swim up it
+
+	// ...and clear air above it.
+	vector3df aboveN;
+	if (probe(1.1f, 0.9f, aboveN))
+		return false;
+
+	m_playerVelocity.Y = g_swimClimbSpeed;
+	m_playerVelocity.X = 0.0f;
+	m_playerVelocity.Z = g_swimClimbPush;   // local space: +Z is forward
+
+	m_waterJumpUntil = currentTime + 450;
+	m_isJumping      = true;
+	g_lastJumpTime   = currentTime;
+
+	g_CameraFX.addLandingBob(0.8f);
+	return true;
 }
 
 void PlayerController::playJumpSound(anax::Entity& player)
@@ -1305,6 +1708,10 @@ void PlayerController::applyPlayerState(const PlayerSaveState& in)
 		player.getComponent<DamageReceiverComponent>().health = in.health;
 		g_PlayerData.currentHealth = in.health;
 	}
+
+	// Air is deliberately not in the sidecar: a load always starts with full
+	// lungs, so a checkpoint saved mid-dive cannot become a drowning loop.
+	m_breath.reset();
 
 	// Only the pools the sidecar actually mentions, so a save written before an
 	// AMMO_TYPE was appended leaves the new pool alone instead of zeroing it.

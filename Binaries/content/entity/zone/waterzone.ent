@@ -48,8 +48,6 @@
                 <receiveShadows>true</receiveShadows>
                 <transparent>true</transparent>
                 <textures size="dynamic">
-                    <t0>content/texture/world/water.png</t0>
-                    <t1>content/texture/world/water_overlay.png</t1>
                 </textures>
                 <isVisible>true</isVisible>
                 <disableZDraw>false</disableZDraw>
@@ -64,15 +62,30 @@
         <water>
             <value0>
                 <shallowColor>
-                    <value0>0</value0>
-                    <value1>0.30000001192092896</value1>
-                    <value2>0.80000001192092896</value2>
+                    <value0>0.72000002861022949</value0>
+                    <value1>0.88000001907348633</value1>
+                    <value2>0.86000001430511475</value2>
                 </shallowColor>
                 <deepColor>
-                    <value0>0</value0>
-                    <value1>0.10000000149011612</value1>
-                    <value2>0.40000000596046448</value2>
+                    <value0>0.019999999552965164</value0>
+                    <value1>0.10999999940395355</value1>
+                    <value2>0.15999999642372131</value2>
                 </deepColor>
+                <reflectColor>
+                    <value0>1</value0>
+                    <value1>1</value1>
+                    <value2>1</value2>
+                </reflectColor>
+                <fogStart>0</fogStart>
+                <fogEnd>12</fogEnd>
+                <refractAmount>0.025000000372529030</refractAmount>
+                <reflectAmount>0.60000002384185791</reflectAmount>
+                <normalTiling>0.30000001192092896</normalTiling>
+                <flowSpeed>1</flowSpeed>
+                <fresnelPower>5</fresnelPower>
+                <waveStrength>1</waveStrength>
+                <alpha>0.80000001192092896</alpha>
+                <normalMap>content/texture/normal/water_normal.png</normalMap>
             </value0>
         </water>
     </entity>

@@ -1002,6 +1002,7 @@
     <ClInclude Include="..\..\include\IShaderConstantSetCallBack.h" />
     <ClInclude Include="..\..\include\IShadowVolumeSceneNode.h" />
     <ClInclude Include="..\..\include\ISkinnedMesh.h" />
+    <ClInclude Include="..\..\include\SJointPose.h" />
     <ClInclude Include="..\..\include\ITerrainSceneNode.h" />
     <ClInclude Include="..\..\include\ITextSceneNode.h" />
     <ClInclude Include="..\..\include\ITexture.h" />

@@ -22,6 +22,6 @@ private:
 
     irr::video::ITexture
         *m_crosshair, *m_crosshair_interact,
-        *m_health_icon_full, *m_health_icon_empty, *m_healthbar_background, *m_healthbar_empty, *m_healthbar_full, *m_ammobackground, *m_water_overlay;
+        *m_health_icon_full, *m_health_icon_empty, *m_healthbar_background, *m_healthbar_empty, *m_healthbar_full, *m_ammobackground;
 
 };

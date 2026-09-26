@@ -37,6 +37,42 @@ struct sAnimationData
     }
 };
 
+// One mesh buffer drawn with a different shader than the rest of the node.
+//
+// A character is the case this exists for: the paladin is thirty buffers, of
+// which one is skin, four are hair and one is the eyes, and each of those wants
+// a BRDF the other twenty-four must not get. setMaterialType() is node-wide, so
+// without this there is no way to say it.
+//
+// Two ways to name the buffer, because neither is right on its own:
+//   * `match` — a substring of the buffer's DIFFUSE TEXTURE name. Survives a
+//     re-export of the source mesh, which reorders buffers. glTF embedded
+//     images are named "<file>_embedded_<imageIndex>", external ones keep their
+//     path, so both are matchable. Checked first when non-empty.
+//   * `bufferIndex` — positional fallback, same as the props' override list.
+//     Fragile across a re-export; the apply pass logs what it resolved so a
+//     silent mismatch is at least visible.
+struct MeshBufferShader
+{
+    irr::u32    bufferIndex = 0;
+    std::string match;
+    std::string shaderName;
+
+    // Uploaded as MaterialTypeParams[0..3] on the matched buffer(s) AFTER the
+    // node-wide params, so an override can tune its own shader without
+    // disturbing the rest of the mesh. Meaning is per shader — see the header
+    // comment of skin.frag / hair.frag. All-zero means "shader defaults".
+    float params[4] = {};
+
+    template <class Archive>
+    void serialize(Archive& archive)
+    {
+        archive(CEREAL_NVP(bufferIndex), CEREAL_NVP(match), CEREAL_NVP(shaderName),
+                cereal::make_nvp("p0", params[0]), cereal::make_nvp("p1", params[1]),
+                cereal::make_nvp("p2", params[2]), cereal::make_nvp("p3", params[3]));
+    }
+};
+
 struct MeshComponent : anax::Component
 {
 	std::string mesh;
@@ -96,6 +132,10 @@ struct MeshComponent : anax::Component
     irr::video::E_MATERIAL_TYPE renderMaterial;
     std::string shaderName; // shader key for ShaderMaterialManager; empty = "phong_perpixel"
 
+    // Per-buffer shader assignment, applied after shaderName so it wins.
+    // Empty on every asset that does not need it, which is nearly all of them.
+    std::vector<MeshBufferShader> bufferShaderOverrides;
+
     // Lightmap data — populated by LightmapBaker after a bake pass.
     // Null until the entity has been baked.
     MeshLightmap* lightmap = nullptr;
@@ -137,6 +177,7 @@ struct MeshComponent : anax::Component
         try { archive(CEREAL_NVP(texMetallic));  } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(texEmission));  } catch (cereal::Exception&) {}
         try { archive(CEREAL_NVP(opacity));      } catch (cereal::Exception&) {}
+        try { archive(CEREAL_NVP(bufferShaderOverrides)); } catch (cereal::Exception&) {}
 	}
 
 	MeshComponent() :

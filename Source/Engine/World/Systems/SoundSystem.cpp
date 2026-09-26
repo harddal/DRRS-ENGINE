@@ -1,6 +1,7 @@
 #include "SoundSystem.h"
 
 #include "Engine/Engine.h"
+#include "Game/IPlayerController.h"
 
 void SoundComponent::add(sSoundData sound)
 {
@@ -23,8 +24,13 @@ void SoundSystem::onEntityAdded(anax::Entity& entity)
 			}
 		}
 
-        sounds[i].source->setDefaultMinDistance(sounds[i].minDist);
-        sounds[i].source->setDefaultVolume(sounds[i].volume / 100.0f);
+        // A missing file leaves source null. play2D/play3D already treat that as
+        // a silent no-op, so the entry is kept (its play flag still works) and
+        // only these two setters need guarding -- they used to crash the spawn.
+        if (sounds[i].source) {
+            sounds[i].source->setDefaultMinDistance(sounds[i].minDist);
+            sounds[i].source->setDefaultVolume(sounds[i].volume / 100.0f);
+        }
 
 		if (sounds[i].startPaused) {
 		    sounds[i].play = false;
@@ -109,6 +115,17 @@ void SoundSystem::update()
 			}
         }
     }
+
+    // Underwater muffle. Keyed off the EYES, not the chest: GameplaySystem sets
+    // both flags from separate probes, and swimming with your head above the
+    // surface should still sound dry. setUnderwater() edge-guards internally, so
+    // pushing the state every frame is free.
+    //
+    // A null controller reads as dry, which is what lifts the filter on a
+    // game->edit transition — though GameManager::destroy() clears it outright,
+    // because this update only runs in game mode.
+    SoundManager::Get()->sound()->setUnderwater(
+        g_PlayerController && g_PlayerController->isHeadUnderWater());
 
     SoundManager::Get()->sound()->update3dAudio();
 

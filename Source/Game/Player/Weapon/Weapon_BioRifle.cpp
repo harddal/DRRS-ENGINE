@@ -1,4 +1,5 @@
 ﻿#include "Weapon_BioRifle.h"
+#include "WaterBallistics.h"
 
 #include "Engine/Engine.h"
 
@@ -628,7 +629,7 @@ void Weapon_BioRifle::updateGlobs(float dt)
 			if (it->entity.isValid() && it->entity.hasComponent<DescriptorComponent>() &&
 				hitEntityID != it->entity.getComponent<DescriptorComponent>().id)
 			{
-				detonateAt(hitPoint, hitEntityID, hitNormal);
+				detonateAt(hitPoint, hitEntityID, hitNormal, WaterBallistics::projectileScale(*it));
 				shouldRemove = true;
 			}
 		}
@@ -655,13 +656,21 @@ void Weapon_BioRifle::updateGlobs(float dt)
 			}
 		}
 
+		// Water costs the projectile something on the way through: splash at every
+		// surface crossed, and the submerged travel banked against its penetration
+		// depth. Projectiles already fly through water for free -- they only
+		// detonate on ET_STATIC/ET_DYNAMIC or world geometry, and water is an
+		// ET_MARKER -- so nothing here has to clear a path, only keep the tally.
+		WaterBallistics::stepProjectile(*it, it->previousPosition, currentPos);
+
 		it->previousPosition = currentPos;
 		it->lifetime += dt;
 
 		if (shouldRemove || it->lifetime >= it->maxLifetime)
 		{
 			if (it->lifetime >= it->maxLifetime && !shouldRemove)
-				detonateAt(nextPos, _entity_null_value);
+				detonateAt(nextPos, _entity_null_value,
+					irr::core::vector3df(0.0f, 0.0f, 0.0f), WaterBallistics::projectileScale(*it));
 
 			if (it->trailParticles)
 			{
@@ -689,12 +698,12 @@ void Weapon_BioRifle::updateGlobs(float dt)
 }
 
 void Weapon_BioRifle::detonateAt(const irr::core::vector3df& pos, entityid directHitID,
-	const irr::core::vector3df& surfaceNormal)
+	const irr::core::vector3df& surfaceNormal, float waterScale)
 {
 	// Placeholder — wants a wet splat variant set (content/sound/weapon/biorifle/splash1..N.wav)
 	SoundManager::Get()->sound()->playRandomized3D("content/sound/effect/explosion", pos, 0.10f);
 	ParticleManager::Get()->spawn("bio_splash", irr2spk(pos));
-	applySplashDamage(pos, directHitID);
+	applySplashDamage(pos, directHitID, waterScale);
 
 	// Green splat flash + scorch (oriented to the hit surface) + proximity feedback
 	m_effects.explosionAt(pos,
@@ -704,11 +713,12 @@ void Weapon_BioRifle::detonateAt(const irr::core::vector3df& pos, entityid direc
 	if (directHitID != _entity_null_value)
 	{
 		registerHitFeedback(WorldManager::Get()->gameplaySystem()->damageEntity(
-			directHitID, static_cast<unsigned int>(m_pointDamage)));
+			directHitID, static_cast<unsigned int>(m_pointDamage * waterScale)));
 	}
 }
 
-void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID)
+void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+	float waterScale)
 {
 	if (m_splashRadius <= 0.0f || m_splashDamage <= 0.0f)
 		return;
@@ -734,7 +744,7 @@ void Weapon_BioRifle::applySplashDamage(const irr::core::vector3df& epicentre, e
 		if (dist >= m_splashRadius) continue;
 
 		float falloff = 1.0f - (dist / m_splashRadius);
-		float damage  = m_splashDamage * falloff;
+		float damage  = m_splashDamage * falloff * waterScale;
 
 		if (damage >= 1.0f)
 		{

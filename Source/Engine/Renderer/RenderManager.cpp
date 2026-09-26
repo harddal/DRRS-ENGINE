@@ -199,44 +199,78 @@ void WaterShaderCallback::OnSetConstants(IMaterialRendererServices* services, s3
 {
     const auto driver = services->getVideoDriver();
 
-    // Time in seconds — getCurrentTime() returns milliseconds.
-    auto time = static_cast<f32>(Engine::Get()->getCurrentTime()) / 1000.0f;
-    services->setVertexShaderConstant("fTime", &time, 1);
-    services->setPixelShaderConstant("fTime",  &time, 1);
+    // World matrix — the fragment stage tiles wave detail against WORLD space,
+    // so a water brush can be scaled to any size without stretching the ripples.
+    //
+    // NOT transposed: irr::core::matrix4::pointer() is already OpenGL
+    // column-major (translation lives at M[12..14]), which is the same
+    // convention uInvView and uDecalInv are uploaded with. The previous version
+    // of this callback transposed it, which silently dropped the translation
+    // row — harmless back when only the tile phase depended on it.
+    auto world = driver->getTransform(ETS_WORLD);
+    services->setVertexShaderConstant("mWorld", world.pointer(), 16);
 
-    // World matrix (transposed for GLSL column-major) — vertex shader uses it
-    // to convert object-space positions into world-space XZ tile coordinates.
-    auto world  = driver->getTransform(ETS_WORLD);
-    auto worldT = world.getTransposed();
-    services->setVertexShaderConstant("mWorld", worldT.pointer(), 16);
+    // Inverse-transpose for the normal. Water brushes are routinely scaled
+    // non-uniformly (thin, wide boxes), which mat3(mWorld) would skew.
+    irr::core::matrix4 worldIT;
+    if (world.getInverse(worldIT))
+        worldIT = worldIT.getTransposed();
+    else
+        worldIT.makeIdentity();   // degenerate (zero-scaled) transform
+    services->setVertexShaderConstant("mWorldIT", worldIT.pointer(), 16);
 
-    // Texture sampler bindings.
-    int slot0 = 0, slot1 = 1;
-    services->setPixelShaderConstant("tDiffuse", &slot0, 1);
-    services->setPixelShaderConstant("tNormal",  &slot1, 1);
+    // Sampler bindings. 0 is an ordinary material slot; 12/14/15 are raw units
+    // bound once per frame by bindPerFrameTextures() / captureRefraction(),
+    // above the 8 slots Irrlicht's state tracker manages.
+    int slotNormal = 0, slotEnv = 12, slotPrepass = 14, slotRefract = 15;
+    services->setPixelShaderConstant("tNormalMap", &slotNormal,  1);
+    services->setPixelShaderConstant("tEnvMap",    &slotEnv,     1);
+    services->setPixelShaderConstant("tPrepass",   &slotPrepass, 1);
+    services->setPixelShaderConstant("tRefract",   &slotRefract, 1);
 
-    float hasNormal = (m_currentMaterial.TextureLayer[1].Texture != nullptr) ? 1.0f : 0.0f;
-    services->setPixelShaderConstant("uHasNormal", &hasNormal, 1);
+    float hasNormalMap = (m_currentMaterial.TextureLayer[0].Texture != nullptr) ? 1.0f : 0.0f;
+    services->setPixelShaderConstant("uHasNormalMap", &hasNormalMap, 1);
 
-    // Shallow color encoded in AmbientColor by RenderSystem.
-    auto ambient = m_currentMaterial.AmbientColor;
-    float shallowColor[3] = {
-        ambient.getRed()   / 255.f,
-        ambient.getGreen() / 255.f,
-        ambient.getBlue()  / 255.f
-    };
-    services->setPixelShaderConstant("uShallowColor", shallowColor, 3);
+    // Only true when captureRefraction() actually copied the opaque frame this
+    // draw. Otherwise the shader falls back to plain alpha-blended water.
+    float hasRefract = RenderManager::Get()->isRefractionCaptured() ? 1.0f : 0.0f;
+    services->setPixelShaderConstant("uHasRefract", &hasRefract, 1);
 
-    // Deep color + alpha encoded in DiffuseColor by RenderSystem.
-    auto diffuse = m_currentMaterial.DiffuseColor;
-    float deepColor[3] = {
-        diffuse.getRed()   / 255.f,
-        diffuse.getGreen() / 255.f,
-        diffuse.getBlue()  / 255.f
-    };
-    float alpha = diffuse.getAlpha() / 255.f;
-    services->setPixelShaderConstant("uDeepColor", deepColor, 3);
-    services->setPixelShaderConstant("uAlpha",     &alpha,    1);
+    // --- Per-entity look, encoded into material slots by RenderSystem ---
+    const auto& ambient  = m_currentMaterial.AmbientColor;   // $refracttint
+    const auto& diffuse  = m_currentMaterial.DiffuseColor;   // $fogcolor (+alpha)
+    const auto& specular = m_currentMaterial.SpecularColor;  // $reflecttint
+
+    float refractTint[3] = { ambient.getRed() / 255.f, ambient.getGreen() / 255.f, ambient.getBlue() / 255.f };
+    float fogColor[3]    = { diffuse.getRed() / 255.f, diffuse.getGreen() / 255.f, diffuse.getBlue() / 255.f };
+    float reflectTint[3] = { specular.getRed() / 255.f, specular.getGreen() / 255.f, specular.getBlue() / 255.f };
+    float alpha          = diffuse.getAlpha() / 255.f;
+
+    services->setPixelShaderConstant("uRefractTint",   refractTint, 3);
+    services->setPixelShaderConstant("uWaterFogColor", fogColor,    3);
+    services->setPixelShaderConstant("uReflectTint",   reflectTint, 3);
+    services->setPixelShaderConstant("uAlpha",         &alpha,      1);
+
+    // Scalars ride MaterialTypeParams[0..7]. RenderSystem's generic param loop
+    // runs BEFORE its water block, so the water block's values win.
+    const float* p = m_currentMaterial.MaterialTypeParams;
+    float fogStart      = p[0];
+    float fogEnd        = p[1];
+    float refractAmount = p[2];
+    float reflectAmount = p[3];
+    float normalTiling  = p[4];
+    float flowSpeed     = p[5];
+    float fresnelPower  = p[6];
+    float waveStrength  = p[7];
+
+    services->setPixelShaderConstant("uWaterFogStart", &fogStart,      1);
+    services->setPixelShaderConstant("uWaterFogEnd",   &fogEnd,        1);
+    services->setPixelShaderConstant("uRefractAmount", &refractAmount, 1);
+    services->setPixelShaderConstant("uReflectAmount", &reflectAmount, 1);
+    services->setPixelShaderConstant("uNormalTiling",  &normalTiling,  1);
+    services->setPixelShaderConstant("uFlowSpeed",     &flowSpeed,     1);
+    services->setPixelShaderConstant("uFresnelPower",  &fresnelPower,  1);
+    services->setPixelShaderConstant("uWaveStrength",  &waveStrength,  1);
 }
 
 
@@ -266,6 +300,14 @@ bool ShaderMaterialManager::isRefraction(irr::s32 materialType)
         if (m.material == materialType && m.isRefraction)
             return true;
     return false;
+}
+
+float ShaderMaterialManager::alphaCutoff(irr::s32 materialType)
+{
+    for (const auto& m : s_ShaderMaterialList)
+        if (m.material == materialType)
+            return m.alphaCutoff;
+    return 0.0f;
 }
 
 // Legacy per-object lighting: gather the 8 closest lights on the CPU and upload
@@ -607,6 +649,30 @@ void RadiationCallback::OnSetConstants(IMaterialRendererServices* services, s32)
     services->setPixelShaderConstant("uTime",      &t,         1);
 }
 
+void UnderwaterCallback::OnSetConstants(IMaterialRendererServices* services, s32)
+{
+    // 0 is the chain input; 14 is the raw prepass unit bound once per frame by
+    // bindPerFrameTextures(), above the slots Irrlicht's state tracker manages.
+    int   sceneSlot = 0, prepassSlot = 14;
+    float t = static_cast<float>(Engine::Get()->getCurrentTime()) / 1000.0f;
+    services->setPixelShaderConstant("tScene",         &sceneSlot,   1);
+    services->setPixelShaderConstant("tPrepass",       &prepassSlot, 1);
+    services->setPixelShaderConstant("uPrepassValid",  &prepassValid, 1);
+    services->setPixelShaderConstant("uInvView",       invView,      16);
+    services->setPixelShaderConstant("uProjTan",       projTan,      2);
+    services->setPixelShaderConstant("uNear",          &nearZ,       1);
+    services->setPixelShaderConstant("uBoxMin",        boxMin,       3);
+    services->setPixelShaderConstant("uBoxMax",        boxMax,       3);
+    services->setPixelShaderConstant("uShallowColor",  shallowColor, 3);
+    services->setPixelShaderConstant("uDeepColor",     deepColor,    3);
+    services->setPixelShaderConstant("uFogStart",      &fogStart,    1);
+    services->setPixelShaderConstant("uFogEnd",        &fogEnd,      1);
+    services->setPixelShaderConstant("uAbsorb",        &absorb,      1);
+    services->setPixelShaderConstant("uDistortion",    &distortion,  1);
+    services->setPixelShaderConstant("uRipple",        &ripple,      1);
+    services->setPixelShaderConstant("uTime",          &t,           1);
+}
+
 void SSAOGenCallback::OnSetConstants(IMaterialRendererServices* services, s32)
 {
     int slot = 0;
@@ -663,6 +729,7 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     if (m_ssaoRTT[0])    { m_driver->removeTexture(m_ssaoRTT[0]);    m_ssaoRTT[0]    = nullptr; }
     if (m_ssaoRTT[1])    { m_driver->removeTexture(m_ssaoRTT[1]);    m_ssaoRTT[1]    = nullptr; }
     if (m_viewportRTT)   { m_driver->removeTexture(m_viewportRTT);   m_viewportRTT   = nullptr; }
+    if (m_refractRTT)    { m_driver->removeTexture(m_refractRTT);    m_refractRTT    = nullptr; }
 
     irr::core::dimension2du sz(w, h);
     m_sceneRTT      = m_driver->addRenderTargetTexture(sz, "pp_scene",     QUAD_COLOR_MODE);
@@ -681,6 +748,12 @@ void RenderManager::recreatePostProcessRTTs(irr::u32 w, irr::u32 h)
     // needs a depth attachment (which would be shared with m_sceneRTT anyway, since
     // Irrlicht keys its depth renderbuffer cache on size alone).
     m_viewportRTT = m_driver->addRenderTargetTexture(sz, "editor_viewport", irr::video::ECF_A8R8G8B8);
+
+    // Water refraction copy — Source's _rt_WaterRefraction. Same size and format
+    // as the scene RTT because captureRefraction() fills it with a straight
+    // glCopyTexSubImage2D from the scene FBO, which cannot rescale or convert.
+    // It is only ever written on frames where visible water exists.
+    m_refractRTT = m_driver->addRenderTargetTexture(sz, "water_refract", QUAD_COLOR_MODE);
 
     if (!m_sceneRTT || !m_ppRTT[0] || !m_ppRTT[1] || !m_lumRTT || !m_prepassRTT || !m_ssaoRTT[0] || !m_ssaoRTT[1])
         spdlog::error("RenderManager: failed to create post-process RTTs ({}x{})", w, h);
@@ -851,6 +924,19 @@ void RenderManager::bindPerFrameTextures()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
 
+    // Skin scattering LUT (unit 13). CLAMP is not optional: the table's edges
+    // are NdotL = -1 / +1 and curvature 0 / max, and a REPEAT wrap there makes
+    // the terminator wrap around to the fully-lit end of the table.
+    GLExt::ActiveTexture(GL_TEXTURE0 + 13);
+    glBindTexture(GL_TEXTURE_2D, m_skinLUT ? m_skinLUT->getNativeHandle() : 0);
+    if (m_skinLUT)
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
     // Prepass (normal + depth) for soft particles and decals. The texture ID is
     // stable across frames; contents update in place when drawPrePass renders.
     GLExt::ActiveTexture(GL_TEXTURE0 + 14);
@@ -873,6 +959,33 @@ void RenderManager::bindPerFrameTextures()
 //
 // `animMesh` is the node's IAnimatedMesh (null for non-animated nodes); the cast is
 // only valid when it reports EAMT_SKINNED.
+// The mesh a node is CURRENTLY rendering, WITHOUT re-posing it.
+//
+// IAnimatedMesh::getMesh(frame) is not an accessor for a skinned mesh: it runs
+// animateMesh(frame) + skinMesh() (CSkinnedMesh.cpp:75), throwing away the pose
+// the node just rendered and replacing it with the raw clip pose at that frame.
+// A character driven by AnimationSystem is posed by the APPLICATION — blend
+// spaces, bone masks, additive layers, the supplied-pose hook of Irrlicht patch
+// #6 — and not by a single frame number, so re-animating it produces a visibly
+// DIFFERENT pose. Every manual pass that fetched its mesh this way drew the
+// character in a pose the body was never in, and left the mesh in that pose for
+// whatever ran next.
+//
+// Frame -1 returns the mesh untouched, which is what these passes want: the
+// node posed and skinned it during drawAll() already. Keyframe meshes (MD2,
+// B3D morph) are not application-posed and still need their frame number.
+static irr::scene::IMesh* posedMeshForNode(irr::scene::IAnimatedMeshSceneNode* node)
+{
+    if (!node)
+        return nullptr;
+    irr::scene::IAnimatedMesh* animMesh = node->getMesh();
+    if (!animMesh)
+        return nullptr;
+    if (animMesh->getMeshType() == irr::scene::EAMT_SKINNED)
+        return animMesh->getMesh(-1);
+    return animMesh->getMesh(static_cast<irr::s32>(node->getFrameNr()));
+}
+
 static irr::core::matrix4 bufferWorldTransform(const irr::core::matrix4& absolute,
                                                irr::scene::IAnimatedMesh* animMesh,
                                                irr::scene::IMesh* mesh,
@@ -885,6 +998,80 @@ static irr::core::matrix4 bufferWorldTransform(const irr::core::matrix4& absolut
 
     auto* smb = static_cast<irr::scene::SSkinMeshBuffer*>(mesh->getMeshBuffer(bufferIndex));
     return absolute * smb->Transformation;
+}
+
+// Stamps every opaque mesh buffer in the scene into the currently bound render
+// target with the depth-only shader, using whatever view/projection transforms
+// the driver is already holding. Same traversal as drawPrePass() — see the note
+// there on why skinned meshes need a PER-BUFFER world transform.
+//
+// This is hand-rolled rather than drawAll()-with-SOverrideMaterial because
+// SOverrideMaterial CANNOT override a material type: apply() (IVideoDriver.h)
+// switches over E_MATERIAL_FLAGS and there is no EMF_ flag for MaterialType, so
+// the assignment is silently dropped. The shadow pass used to do exactly that,
+// which meant the atlas received the LIT SCENE rendered from the light's point
+// of view and the shader's depth compare was reading a red channel.
+void RenderManager::drawSceneDepth()
+{
+    if (m_shadowDepthMat < 0)
+        return;
+
+    std::vector<irr::scene::ISceneNode*> nodeStack;
+    nodeStack.push_back(m_sceneManager->getRootSceneNode());
+
+    while (!nodeStack.empty())
+    {
+        irr::scene::ISceneNode* node = nodeStack.back();
+        nodeStack.pop_back();
+
+        if (!node->isVisible())
+            continue;
+
+        for (auto* child : node->getChildren())
+            nodeStack.push_back(child);
+
+        if (node->isDebugObject())
+            continue;
+
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
+        const irr::scene::ESCENE_NODE_TYPE ntype = node->getType();
+        if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+            mesh = static_cast<irr::scene::IMeshSceneNode*>(node)->getMesh();
+        else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
+            animMesh = animNode->getMesh();
+            if (animMesh)
+                mesh = posedMeshForNode(animNode);
+        }
+        if (!mesh)
+            continue;
+
+        const irr::core::matrix4& absolute = node->getAbsoluteTransformation();
+        for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
+        {
+            const irr::video::SMaterial& src = node->getMaterial(b);
+            if (src.Wireframe)   // editor markers / selector meshes
+                continue;
+            irr::video::IMaterialRenderer* rnd = m_driver->getMaterialRenderer(src.MaterialType);
+            if (rnd && rnd->isTransparent())
+                continue;
+
+            m_driver->setTransform(irr::video::ETS_WORLD,
+                bufferWorldTransform(absolute, animMesh, mesh, b));
+
+            irr::video::SMaterial dm;
+            dm.MaterialType = static_cast<irr::video::E_MATERIAL_TYPE>(m_shadowDepthMat);
+            dm.Lighting     = false;
+            // Front-face culling renders only back faces — a surface can never
+            // shadow itself, so the bias only has to cover solid thickness.
+            dm.FrontfaceCulling = true;
+            dm.BackfaceCulling  = false;
+            m_driver->setMaterial(dm);
+            m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+        }
+    }
 }
 
 void RenderManager::drawShadowPass()
@@ -904,19 +1091,17 @@ void RenderManager::drawShadowPass()
     if (count == 0)
         return;
 
+    // Bring the graph up to date before walking it by hand. This used to fall
+    // out of the drawAll() this pass ran per light; the main drawAll() comes
+    // AFTER us, so without this every caster is stamped at last frame's
+    // transform and pose. Re-running it later with the same timestamp is a
+    // zero-delta no-op, which is what already happened when this pass called
+    // drawAll() itself.
+    if (m_device)
+        m_sceneManager->getRootSceneNode()->OnAnimate(m_device->getTimer()->getTime());
+
     // Save active camera so we can restore it after the shadow pass.
     irr::scene::ICameraSceneNode* prevCamera = m_sceneManager->getActiveCamera();
-
-    // Override all solid geometry with the depth-only shader.
-    // Front-face culling renders only back faces — the floor can't shadow itself,
-    // and solid objects (barrel, walls) still cast shadows via their back faces.
-    irr::video::SOverrideMaterial& om = m_driver->getOverrideMaterial();
-    om.Material.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_shadowDepthMat);
-    om.Material.FrontfaceCulling = true;
-    om.Material.BackfaceCulling  = false;
-    om.EnableFlags = irr::video::EMF_FRONT_FACE_CULLING | irr::video::EMF_BACK_FACE_CULLING;
-    om.EnablePasses = irr::scene::ESNRP_SOLID;
-    om.Enabled      = true;
 
     // Clear the whole atlas to "far" once, then render each caster into its quadrant.
     m_driver->setRenderTarget(m_shadowMapRTT, true, true, irr::video::SColor(0xFFFFFFFF));
@@ -955,17 +1140,23 @@ void RenderManager::drawShadowPass()
         m_shadowCamera->setProjectionMatrix(lightProj, false);  // false = perspective
         m_sceneManager->setActiveCamera(m_shadowCamera);
 
+        // render() rebuilds the view matrix from position/target/up and installs
+        // ETS_VIEW + ETS_PROJECTION on the driver. drawAll() used to do this for
+        // us; the manual traversal below never touches the camera, so the depth
+        // shader's gl_ModelViewProjectionMatrix depends on this call.
+        m_shadowCamera->updateAbsolutePosition();
+        m_shadowCamera->render();
+
         // Atlas quadrant: slot 0 = bottom-left, 1 = bottom-right, 2 = top-left,
         // 3 = top-right (GL window coords, y up — matches shadowRect UVs below).
         const irr::s32 qx = (s & 1) * quad;
         const irr::s32 qy = (s >> 1) * quad;
         m_driver->setViewPort(irr::core::rect<irr::s32>(qx, qy, qx + quad, qy + quad));
 
-        m_sceneManager->drawAll();
+        drawSceneDepth();
 
-        // Read back the view and projection matrices Irrlicht actually used for
-        // this draw — the camera recomputes its view matrix inside drawAll(), so
-        // post-draw values are the only ones guaranteed to match the depth data.
+        // Read the matrices back off the driver rather than recomposing them —
+        // these are the exact transforms the depth stamps above were built with.
         irr::core::matrix4 projView = m_driver->getTransform(irr::video::ETS_PROJECTION);
         projView *= m_driver->getTransform(irr::video::ETS_VIEW);
         m_shadowMats[s] = projView;
@@ -978,7 +1169,6 @@ void RenderManager::drawShadowPass()
     }
 
     // Restore state.
-    m_driver->getOverrideMaterial() = irr::video::SOverrideMaterial();
     m_sceneManager->setActiveCamera(prevCamera);
 
     // Return to the scene RTT so the main pass continues normally. Reset the
@@ -1075,7 +1265,7 @@ void RenderManager::drawSkyboxPass(bool useClusters)
             auto* an = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
             animMesh = an->getMesh();
             if (animMesh)
-                mesh = animMesh->getMesh(an->getFrameNr());
+                mesh = posedMeshForNode(an);
         }
         else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
         {
@@ -1153,6 +1343,26 @@ void RenderManager::drawSkyboxPass(bool useClusters)
     m_driver->clearZBuffer();
 }
 
+// Alpha cut-out reference to render a material with in the prepass, or 0 for a
+// material that never discards. A cut-out surface MUST discard here too: the
+// prepass has one depth channel and no alpha, so a leaf card that skips the test
+// stamps its whole quad as solid geometry. Water measures its fog depth and its
+// refraction offset against that channel, so the stamped quad reads as an
+// occluder in front of the surface, drives the water depth to zero and makes the
+// water render perfectly clear — it vanishes behind every leaf card in front of
+// it, showing the sky instead.
+static float prepassAlphaRef(const irr::video::SMaterial& src)
+{
+    // Built-in alpha-tested materials carry their own reference in
+    // MaterialTypeParam; Irrlicht's default when it is left at 0 is 0.5.
+    if (src.MaterialType == irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL_REF)
+        return (src.MaterialTypeParam > 0.0f) ? src.MaterialTypeParam : 0.5f;
+
+    // Custom GLSL materials discard inside the .frag, which nothing outside can
+    // see — the threshold is declared on the ShaderMaterial registration.
+    return ShaderMaterialManager::alphaCutoff(src.MaterialType);
+}
+
 void RenderManager::drawPrePass()
 {
     if (m_prepassMat < 0 || !m_prepassRTT || !m_prePassEnabled)
@@ -1193,7 +1403,7 @@ void RenderManager::drawPrePass()
             auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
             animMesh = animNode->getMesh();
             if (animMesh)
-                mesh = animMesh->getMesh(animNode->getFrameNr());
+                mesh = posedMeshForNode(animNode);
         }
         if (!mesh)
             continue;
@@ -1215,11 +1425,20 @@ void RenderManager::drawPrePass()
             m_driver->setTransform(irr::video::ETS_WORLD,
                 bufferWorldTransform(absolute, animMesh, mesh, b));
 
+            const float alphaRef = prepassAlphaRef(src);
+
             irr::video::SMaterial pm;
             pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
             pm.Lighting         = false;
             pm.BackfaceCulling  = src.BackfaceCulling;
             pm.FrontfaceCulling = src.FrontfaceCulling;
+            // MaterialTypeParam is free on this EMT_SOLID-based material and is
+            // what PrepassCallback reads for uAlphaRef. Copy the whole texture
+            // layer, not just the pointer, so the cut-out samples with the source
+            // material's own wrap and filter state.
+            pm.MaterialTypeParam = alphaRef;
+            if (alphaRef > 0.0f)
+                pm.TextureLayer[0] = src.TextureLayer[0];
             m_driver->setMaterial(pm);
             m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
         }
@@ -1249,7 +1468,7 @@ void RenderManager::drawPrePassViewmodels()
             auto* a = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
             animMesh = a->getMesh();
             if (animMesh)
-                mesh = animMesh->getMesh(a->getFrameNr());
+                mesh = posedMeshForNode(a);
         }
         else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
             mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
@@ -1265,11 +1484,20 @@ void RenderManager::drawPrePassViewmodels()
                 continue;
             m_driver->setTransform(irr::video::ETS_WORLD,
                 bufferWorldTransform(absolute, animMesh, mesh, b));
+            const float alphaRef = prepassAlphaRef(src);
+
             irr::video::SMaterial pm;
             pm.MaterialType     = static_cast<irr::video::E_MATERIAL_TYPE>(m_prepassMat);
             pm.Lighting         = false;
             pm.BackfaceCulling  = src.BackfaceCulling;
             pm.FrontfaceCulling = src.FrontfaceCulling;
+            // MaterialTypeParam is free on this EMT_SOLID-based material and is
+            // what PrepassCallback reads for uAlphaRef. Copy the whole texture
+            // layer, not just the pointer, so the cut-out samples with the source
+            // material's own wrap and filter state.
+            pm.MaterialTypeParam = alphaRef;
+            if (alphaRef > 0.0f)
+                pm.TextureLayer[0] = src.TextureLayer[0];
             m_driver->setMaterial(pm);
             m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
         }
@@ -1341,6 +1569,271 @@ void RenderManager::drawFullscreenQuad()
 // the sampler binding are the ones the rest of the chain already uses.
 // rgb = view-space normal, alpha = linear view depth — geometry silhouettes read
 // clearly, so a phantom in this buffer is visible as a phantom on screen.
+// Draws every hair buffer a SECOND time, alpha-blended, to recover the soft
+// fringe the cut-out throws away.
+//
+// Why two passes at all: this asset's hair texture is 72% fully transparent,
+// 24% partial and only 3% opaque, so three quarters of the authored coverage
+// lives in the gradient between strands. An alpha test keeps none of it and the
+// silhouette turns into stair-stepped card edges — and with AntiAlias = 0 there
+// is no MSAA to fall back on, so alpha-to-coverage is unavailable and hashed
+// alpha would just be noise without TAA.
+//
+// So: the core pass (drawn inside drawAll with the solid geometry) writes depth
+// for the dense part, and this pass blends everything above a near-zero
+// threshold on top with depth test but NO depth write. The material's depth
+// func is ECFN_LESS rather than the default LESSEQUAL, so the core's own texels
+// fail the test and are not blended over themselves a second time.
+//
+// Buffers are not sorted against each other. Hair self-sorting needs per-strand
+// ordering to be correct and is not worth a sort per frame here; the visible
+// error is confined to overlapping fringes of the same head.
+void RenderManager::drawHairBlendPass()
+{
+    if (m_hairBlendMat < 0 || m_hairCoreMat < 0)
+    {
+        static bool warned = false;
+        if (!warned)
+        {
+            warned = true;
+            spdlog::warn("drawHairBlendPass: no hair materials (core={} blend={}) - "
+                         "hair keeps hard cut-out edges", m_hairCoreMat, m_hairBlendMat);
+        }
+        return;
+    }
+
+    irr::u32 drawn = 0;
+
+    std::vector<irr::scene::ISceneNode*> nodeStack;
+    nodeStack.push_back(m_sceneManager->getRootSceneNode());
+
+    while (!nodeStack.empty())
+    {
+        irr::scene::ISceneNode* node = nodeStack.back();
+        nodeStack.pop_back();
+
+        if (!node->isVisible())
+            continue;
+
+        for (auto* child : node->getChildren())
+            nodeStack.push_back(child);
+
+        if (node->isDebugObject())
+            continue;
+
+        irr::scene::IMesh*         mesh     = nullptr;
+        irr::scene::IAnimatedMesh* animMesh = nullptr;
+        const irr::scene::ESCENE_NODE_TYPE ntype = node->getType();
+        if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
+            mesh = static_cast<irr::scene::IMeshSceneNode*>(node)->getMesh();
+        else if (ntype == irr::scene::ESNT_ANIMATED_MESH)
+        {
+            auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
+            animMesh = animNode->getMesh();
+            if (animMesh)
+                mesh = posedMeshForNode(animNode);
+        }
+        if (!mesh)
+            continue;
+
+        const irr::core::matrix4& absolute = node->getAbsoluteTransformation();
+
+        for (irr::u32 b = 0; b < mesh->getMeshBufferCount() && b < node->getMaterialCount(); ++b)
+        {
+            const irr::video::SMaterial& src = node->getMaterial(b);
+            if (static_cast<irr::s32>(src.MaterialType) != m_hairCoreMat)
+                continue;
+
+            // Copy the buffer's own material so the textures, the wrap modes and
+            // the MaterialTypeParams tuning all carry over unchanged — this pass
+            // must shade identically to the core, only its alpha differs.
+            irr::video::SMaterial m = src;
+            m.MaterialType    = static_cast<irr::video::E_MATERIAL_TYPE>(m_hairBlendMat);
+            m.ZWriteEnable    = false;
+            m.ZBuffer         = irr::video::ECFN_LESS;
+            m.BackfaceCulling = false;
+
+            // Mode 3 keeps hair.frag but removes the depth test, isolating the
+            // one remaining variable: if the hair appears here and not at
+            // mode 0, depth is rejecting the fringe; if it stays bald, the
+            // fragments are dying inside the shader.
+            if (m_hairDebugMode == 3)
+            {
+                m.ZBuffer = irr::video::ECFN_ALWAYS;
+            }
+            else if (m_hairDebugMode > 0)
+            {
+                // Strip the shader out: plain fixed-function, no texture, no
+                // lighting. Whatever this draws is the geometry this pass is
+                // actually putting on screen, with nothing in hair.frag able to
+                // discard it. Mode 1 also ignores depth.
+                m = irr::video::SMaterial();
+                m.MaterialType    = irr::video::EMT_SOLID;
+                m.Lighting        = false;
+                m.ZWriteEnable    = false;
+                m.ZBuffer         = (m_hairDebugMode == 1) ? irr::video::ECFN_ALWAYS
+                                                           : irr::video::ECFN_LESS;
+                m.BackfaceCulling = false;
+            }
+
+            // MaterialTypeParams[0] is MaterialTypeParam, which this material
+            // type hands to glAlphaFunc as the alpha reference. Hair keeps its
+            // roughness there, so leaving it alone would alpha-test the fringe
+            // away at 0.32 and this whole pass would be invisible. Zero the
+            // reference and move roughness to slot 4, where HairShaderCallback
+            // reads it when uBlendPass is set.
+            m.MaterialTypeParams[4] = src.MaterialTypeParams[0];
+            m.MaterialTypeParams[0] = 0.0f;
+
+            // Per buffer, not once per node: a skinned mesh gives each buffer its
+            // own transform, and a buffer drawn at its bind pose puts the fringe
+            // somewhere the head is not.
+            m_driver->setTransform(irr::video::ETS_WORLD,
+                bufferWorldTransform(absolute, animMesh, mesh, b));
+            m_driver->setMaterial(m);
+            m_driver->drawMeshBuffer(mesh->getMeshBuffer(b));
+            ++drawn;
+        }
+    }
+
+    // Report only when the count CHANGES, so it is one line at startup and one
+    // more if hair ever stops being drawn, rather than a line every frame.
+    static irr::u32 lastDrawn = 0xFFFFFFFFu;
+    if (drawn != lastDrawn)
+    {
+        lastDrawn = drawn;
+        spdlog::info("drawHairBlendPass: blending {} hair buffer(s)", drawn);
+    }
+}
+
+// Blits the shadow atlas into the top-left quarter of the frame.
+//
+// This exists to answer one question: is the atlas holding DEPTH, or is it
+// holding a shaded render of the scene from the light's point of view?
+// drawShadowPass() installs the depth shader through SOverrideMaterial, and
+// SOverrideMaterial::apply() (IVideoDriver.h) copies only the fields named in
+// EnableFlags — there is no case for MaterialType and no EMF_ flag for it. If
+// what appears here is recognisable scene colour rather than a smooth grey
+// depth ramp, the override is not landing and the depth shader is not running.
+//
+// Expected when correct: a greyscale gradient, near the light dark and far
+// bright, with object silhouettes as flat-ish shapes and no colour at all.
+// Reads the shadow atlas back off the GPU, reports what is actually in it, and
+// writes a downsampled PNG beside the executable.
+//
+// The overlay above cannot settle the question on its own: an R32F texture blits
+// as (R, 0, 0, 1), so BOTH a depth ramp and a scene render show up as red shapes
+// on a red field. The discriminator is high-frequency detail. A depth render is
+// smooth — neighbouring texels on one surface differ by a fraction of a percent —
+// while a shaded render carries albedo texture detail and is one to two orders of
+// magnitude noisier. That number is printed below.
+void RenderManager::dumpShadowAtlas()
+{
+    if (!m_shadowMapRTT || !GLExt::ActiveTexture)
+    {
+        spdlog::error("dumpShadowAtlas: no shadow atlas (is a shadow-casting spotlight in the scene?)");
+        return;
+    }
+
+    const irr::core::dimension2du sz = m_shadowMapRTT->getSize();
+    const irr::u32 w = sz.Width, h = sz.Height;
+    std::vector<float> texels(static_cast<size_t>(w) * h, 0.0f);
+
+    // Unit 15: above everything the renderer binds per frame (8-10 clusters,
+    // 11 shadow, 12 env, 13 skin LUT, 14 prepass), so nothing is disturbed.
+    GLExt::ActiveTexture(GL_TEXTURE0 + 15);
+    glBindTexture(GL_TEXTURE_2D, m_shadowMapRTT->getNativeHandle());
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, texels.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+    GLExt::ActiveTexture(GL_TEXTURE0);
+
+    double sum = 0.0;
+    float  lo = 1e30f, hi = -1e30f;
+    size_t atClear = 0;          // texels still at the 1.0 the atlas is cleared to
+    double varSum  = 0.0;        // mean |difference| between horizontal neighbours
+    size_t varCount = 0;
+
+    for (irr::u32 y = 0; y < h; ++y)
+    {
+        for (irr::u32 x = 0; x < w; ++x)
+        {
+            const float v = texels[static_cast<size_t>(y) * w + x];
+            sum += v;
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+            if (v >= 0.999f) ++atClear;
+
+            // Only compare pairs where both texels hold geometry: the step at a
+            // silhouette edge is real detail in a depth map too, and counting it
+            // would bury the difference this test is looking for.
+            if (x + 1 < w)
+            {
+                const float v2 = texels[static_cast<size_t>(y) * w + x + 1];
+                if (v < 0.999f && v2 < 0.999f)
+                {
+                    varSum += fabs(v2 - v);
+                    ++varCount;
+                }
+            }
+        }
+    }
+
+    const size_t total = static_cast<size_t>(w) * h;
+    const double mean  = sum / static_cast<double>(total);
+    const double neighbourDelta = varCount ? varSum / static_cast<double>(varCount) : 0.0;
+
+    spdlog::info("shadow atlas {}x{}: min={:.4f} max={:.4f} mean={:.4f} cleared={:.1f}%",
+        w, h, lo, hi, mean, 100.0 * atClear / total);
+    spdlog::info("  mean |neighbour delta| over covered texels = {:.5f} ({} pairs)",
+        neighbourDelta, varCount);
+    spdlog::info("  < ~0.002 reads as a DEPTH ramp; > ~0.02 reads as a shaded "
+                 "scene render, i.e. the depth shader override is not landing");
+
+    // Downsampled PNG so the file stays reasonable at a 4096 atlas.
+    const irr::u32 step = (w > 1024) ? w / 1024 : 1;
+    const irr::u32 ow = w / step, oh = h / step;
+    irr::video::IImage* img = m_driver->createImage(
+        irr::video::ECF_A8R8G8B8, irr::core::dimension2du(ow, oh));
+    if (img)
+    {
+        for (irr::u32 y = 0; y < oh; ++y)
+            for (irr::u32 x = 0; x < ow; ++x)
+            {
+                const float v = texels[static_cast<size_t>(y * step) * w + x * step];
+                const irr::u32 g = static_cast<irr::u32>(
+                    irr::core::clamp(v, 0.0f, 1.0f) * 255.0f);
+                img->setPixel(x, y, irr::video::SColor(255, g, g, g));
+            }
+        const char* path = "shadow_atlas_dump.png";
+        if (m_driver->writeImageToFile(img, path))
+            spdlog::info("  wrote {} ({}x{}, greyscale)", path, ow, oh);
+        else
+            spdlog::error("  failed to write shadow_atlas_dump.png");
+        img->drop();
+    }
+}
+
+void RenderManager::drawShadowAtlasDebugOverlay()
+{
+    if (!m_showShadowAtlas || !m_shadowMapRTT)
+        return;
+
+    m_driver->setRenderTarget(nullptr, false, false);
+    applyRenderViewport();
+
+    const irr::core::dimension2du screen = m_driver->getScreenSize();
+    const irr::s32 side = static_cast<irr::s32>(
+        (screen.Height < screen.Width ? screen.Height : screen.Width) / 2);
+
+    m_driver->enableMaterial2D();
+    m_driver->draw2DImage(m_shadowMapRTT,
+        irr::core::rect<irr::s32>(0, 0, side, side),
+        irr::core::rect<irr::s32>(0, 0,
+            static_cast<irr::s32>(m_shadowMapRTT->getSize().Width),
+            static_cast<irr::s32>(m_shadowMapRTT->getSize().Height)));
+    m_driver->enableMaterial2D(false);
+}
+
 void RenderManager::drawPrePassDebugOverlay()
 {
     if (!m_showPrePass || !m_prepassRTT)
@@ -1431,6 +1924,82 @@ void RenderManager::runPostProcessChain()
 
         drawFullscreenQuad();
     }
+}
+
+void RenderManager::updateUnderwaterPass()
+{
+    m_underwaterActive = false;
+
+    // Game mode only. GameplaySystem refills m_waterVolumes from inside the
+    // game-mode gate and nothing clears it on the switch back, so without this
+    // the editor camera would dive into the last session's pools.
+    const bool gameMode = Engine::Get() && Engine::Get()->isGameMode();
+
+    auto* cam = m_sceneManager->getActiveCamera();
+    irr::core::matrix4 invView;
+    if (gameMode && m_underwaterEnabled && m_underwaterCallback && cam && !m_waterVolumes.empty()
+        && cam->getViewMatrix().getInverse(invView))
+    {
+        const float tanY  = tanf(cam->getFOV() * 0.5f);
+        const float tanX  = tanY * cam->getAspectRatio();
+        const float nearZ = cam->getNearValue();
+
+        // Test the NEAR-PLANE CORNERS, not the eye. With the eye a hair above the
+        // waterline the bottom of the screen is already inside the water, and the
+        // shader splits the frame per pixel from there — so the pass has to be on
+        // whenever any of the near plane is wet. This is also what keeps it from
+        // strobing: nothing here is a single point sitting on the surface.
+        irr::core::vector3df corners[4];
+        const float sx[4] = { -1.0f,  1.0f, -1.0f, 1.0f };
+        const float sy[4] = { -1.0f, -1.0f,  1.0f, 1.0f };
+        for (int i = 0; i < 4; ++i)
+        {
+            corners[i].set(sx[i] * tanX * nearZ, sy[i] * tanY * nearZ, nearZ);
+            invView.transformVect(corners[i]);
+        }
+
+        // The shader ripples the waterline up to 1.6 * ripple * near-plane
+        // height above the box top; test against the lifted box so a crest
+        // never reaches the screen while the pass is still off.
+        const float crest = 1.6f * m_underwaterCallback->ripple * 2.0f * tanY * nearZ;
+
+        const WaterVolume* volume = nullptr;
+        for (const auto& v : m_waterVolumes)
+        {
+            irr::core::aabbox3df lifted = v.bounds;
+            lifted.MaxEdge.Y += crest;
+            for (const auto& c : corners)
+            {
+                if (lifted.isPointInside(c))
+                {
+                    volume = &v;
+                    break;
+                }
+            }
+            if (volume)
+                break;
+        }
+
+        if (volume)
+        {
+            m_underwaterActive = true;
+
+            UnderwaterCallback& cb = *m_underwaterCallback;
+            memcpy(cb.invView, invView.pointer(), 16 * sizeof(float));
+            cb.projTan[0]   = tanX;
+            cb.projTan[1]   = tanY;
+            cb.nearZ        = nearZ;
+            cb.prepassValid = m_prePassEnabled ? 1.0f : 0.0f;
+            cb.boxMin[0] = volume->bounds.MinEdge.X; cb.boxMin[1] = volume->bounds.MinEdge.Y; cb.boxMin[2] = volume->bounds.MinEdge.Z;
+            cb.boxMax[0] = volume->bounds.MaxEdge.X; cb.boxMax[1] = volume->bounds.MaxEdge.Y; cb.boxMax[2] = volume->bounds.MaxEdge.Z;
+            memcpy(cb.shallowColor, volume->shallowColor, sizeof(cb.shallowColor));
+            memcpy(cb.deepColor,    volume->deepColor,    sizeof(cb.deepColor));
+            cb.fogStart = volume->fogStart;
+            cb.fogEnd   = volume->fogEnd;
+        }
+    }
+
+    setPostProcessPassEnabled("underwater", m_underwaterActive);
 }
 
 void RenderManager::measureAndAdaptExposure(irr::f32 dt)
@@ -1632,6 +2201,10 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 
     m_barrelHeatCallback = new BarrelHeatShaderCallback;
     m_terrainCallback    = new TerrainShaderCallback;
+    m_skinCallback       = new SkinShaderCallback;
+    m_hairCallback       = new HairShaderCallback;
+    m_hairBlendCallback  = new HairShaderCallback;
+    m_hairBlendCallback->setBlendPass(true);
 
     m_waterCallback = new WaterShaderCallback;
     if (!m_waterCallback)
@@ -1736,6 +2309,20 @@ RenderManager::RenderManager(const std::string& name, const std::string& args) :
 
     createDefaultShaders();
 
+    // Pre-integrated scattering LUT for skin.frag — x = NdotL remapped to
+    // [0,1], y = curvature. Mipmaps off: it is a lookup table, and a minified
+    // mip would blend unrelated (NdotL, curvature) cells together.
+    // Missing asset is not fatal — skin.frag falls back to plain Lambert.
+    {
+        m_driver->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, false);
+        m_skinLUT = m_driver->getTexture("content/texture/lut/skin_lut.png");
+        m_driver->setTextureCreationFlag(irr::video::ETCF_CREATE_MIP_MAPS, true);
+        m_skinCallback->setHasLUT(m_skinLUT != nullptr);
+        if (!m_skinLUT)
+            spdlog::warn("RenderManager: skin_lut.png missing - the skin shader will "
+                         "fall back to Lambert diffuse (run Tools/generate_skin_lut.py)");
+    }
+
     g_DefaultTextRenderableFontSm = m_device->getGUIEnvironment()->getFont("content/texture/font/defaultfont_sm.bmp");
 
 	m_manipulator = m_sceneManager->getMeshManipulator();
@@ -1839,6 +2426,7 @@ RenderManager::~RenderManager()
     delete m_tonemapCallback;
     delete m_sharpenCallback;
     delete m_radiationCallback;
+    delete m_underwaterCallback;
     delete m_lumMeasureCallback;
 
     // Order matters. ImGui_ImplOpenGL3_Shutdown() destroys the platform windows —
@@ -2384,6 +2972,25 @@ void RenderManager::draw(f32 dt)
 
     m_sceneManager->drawAll();
 
+    // Hair fringe — MUST run here, immediately after drawAll() and BEFORE
+    // drawPrePass().
+    //
+    // COpenGLDriver::addDepthTexture reuses any existing depth texture of
+    // matching size, and the pre-pass RTT is created at the scene RTT's size, so
+    // the two SHARE ONE DEPTH BUFFER. drawPrePass() draws every solid buffer
+    // with the pre-pass shader, so it writes depth over the hair cards. It now
+    // alpha-tests (see prepassAlphaRef), but at the card's 0.5 cut-out, while
+    // the fringe pass keeps everything down to ~0.02 — every texel between the
+    // two thresholds would still be tested against depth written by its own
+    // triangles and fail. Before the prepass alpha-tested at all this killed the
+    // fringe outright: the hair went completely bald even with the core pass
+    // disabled, and only showed up with the depth test off.
+    //
+    // Everything else drawn after the pre-pass (water, particles, decals) uses
+    // the default LESSEQUAL and so passes on equal depth, which is why this only
+    // ever bit the one pass that deliberately uses LESS.
+    drawHairBlendPass();
+
     // Thin geometry pre-pass (opaque only — viewmodels are stamped in later by
     // drawPrePassViewmodels). Consumed by decals, SSAO, and soft particles.
     drawPrePass();
@@ -2483,6 +3090,9 @@ void RenderManager::draw(f32 dt)
     if (m_sceneRTT)
         m_driver->setRenderTarget(m_sceneRTT, false, false);
 
+    // Decide submersion from the camera this frame was actually drawn with.
+    updateUnderwaterPass();
+
     // Return to backbuffer and run the post-process chain (reads m_sceneRTT)
     if (m_sceneRTT)
         m_driver->setRenderTarget(nullptr, false, false);
@@ -2571,7 +3181,7 @@ void RenderManager::draw(f32 dt)
             if (an->getMesh())
             {
                 auto* animMesh = an->getMesh();
-                auto* mesh     = animMesh->getMesh(an->getFrameNr());
+                auto* mesh     = posedMeshForNode(an);
                 for (irr::u32 b = 0; b < mesh->getMeshBufferCount(); ++b)
                 {
                     m_driver->setTransform(ETS_WORLD,
@@ -2611,7 +3221,7 @@ void RenderManager::draw(f32 dt)
                 {
                     auto* a = static_cast<irr::scene::IAnimatedMeshSceneNode*>(n);
                     animMesh = a->getMesh();
-                    if (animMesh) mesh = animMesh->getMesh(a->getFrameNr());
+                    if (animMesh) mesh = posedMeshForNode(a);
                 }
                 else if (ntype == irr::scene::ESNT_MESH || ntype == irr::scene::ESNT_OCTREE)
                     mesh = static_cast<irr::scene::IMeshSceneNode*>(n)->getMesh();
@@ -2740,6 +3350,7 @@ void RenderManager::draw(f32 dt)
     // Note this runs even when the panel is hidden — the rest of draw() must not be
     // skipped, as the 3D overlay line lists are consumed and cleared inside it.
     drawPrePassDebugOverlay();
+    drawShadowAtlasDebugOverlay();
 
     if (m_useViewportPanel && Engine::Get() && Engine::Get()->isEditorMode())
         copyBackbufferToViewportRTT();
@@ -2757,16 +3368,43 @@ void RenderManager::draw(f32 dt)
     m_driver->endScene();
 }
 
+// Live hair tuning shared by the core and fringe callback instances
+// (console r_haircutoff / r_hairgain). 0 cutoff means "use the material's own".
+float HairShaderCallback::s_coreCutoff = 0.0f;
+float HairShaderCallback::s_fringeGain = 1.0f;
+float HairShaderCallback::s_coreOff    = 0.0f;
+
+void HairShaderCallback::reportBinding(bool isFringe, bool blendOk, bool cutoffOk)
+{
+    spdlog::info("hair shader callback [{}]: uBlendPass bound={} uCoreCutoff bound={}",
+        isFringe ? "FRINGE" : "core", blendOk, cutoffOk);
+    if (!blendOk)
+        spdlog::error("  uBlendPass did not bind - the fringe pass cannot tell itself "
+                      "apart from the core, so it alpha-tests like the core and is "
+                      "then rejected by the depth test. This is the bug.");
+}
+
 void RenderManager::createShaderMaterial(
     std::string name, std::string fragment, std::string vertex,
-    E_MATERIAL_TYPE materialType, E_PIXEL_SHADER_TYPE psVersion, E_VERTEX_SHADER_TYPE vsVersion)
+    E_MATERIAL_TYPE materialType, E_PIXEL_SHADER_TYPE psVersion, E_VERTEX_SHADER_TYPE vsVersion,
+    float alphaCutoff)
 {
     ShaderMaterial shader(name);
+    shader.alphaCutoff = alphaCutoff;
 
     shader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
         vertex.c_str(), "main", vsVersion,
         fragment.c_str(), "main", psVersion,
         m_shaderConstantCallBack, materialType, 0, EGSL_DEFAULT);
+
+    // Irrlicht returns -1 when the GLSL fails to compile or link, and says
+    // nothing else about it through our logger — the surface then renders with
+    // whatever material type -1 resolves to, which looks like a shading bug
+    // rather than a build failure. The compiler's own diagnostics go to
+    // Irrlicht's logger, not this one, so this line is the tell.
+    if (shader.material < 0)
+        spdlog::error("RenderManager: shader '{}' FAILED to build ({} + {}) - "
+                      "surfaces using it will render wrong", name, vertex, fragment);
 
     ShaderMaterialManager::add(shader);
 }
@@ -2799,6 +3437,78 @@ void RenderManager::createDefaultShaders()
         ShaderMaterialManager::add(phongTransp);
     }
 
+    // Alpha-tested variant — the SAME shader source as phong_perpixel, only the
+    // base material differs. EMT_TRANSPARENT_ALPHA_CHANNEL_REF enables
+    // glAlphaFunc(GL_GREATER, 0.5) against the alpha the fragment shader already
+    // writes (texColor.a * uAlpha), and its isTransparent() is false, so masked
+    // meshes stay in the SOLID pass with depth writes — no sorting artefacts.
+    // Used for glTF alphaMode:MASK (hair cards, eyelashes, foliage cut-outs).
+    // Deliberately NOT foliage.frag: that is a stripped fork with no shadows,
+    // no spotlights and no env map, which hair does need.
+    createShaderMaterial("phong_perpixel_masked",
+        "content/shader/phong_perpixel.frag",
+        "content/shader/phong_perpixel.vert",
+        EMT_TRANSPARENT_ALPHA_CHANNEL_REF,
+        EPST_PS_2_0, EVST_VS_2_0,
+        0.5f);   // prepass cut-out: matches the fixed-function glAlphaFunc ref
+
+    // Skin shader — pre-integrated subsurface scattering (Penner) driven by a
+    // curvature estimate from screen-space derivatives, plus a dual-lobe
+    // specular. Solid base: skin is opaque. Assigned per BUFFER through
+    // MeshComponent::bufferShaderOverrides, never node-wide — a character's
+    // armour must not get it.
+    {
+        ShaderMaterial skinShader("skin");
+        skinShader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/phong_perpixel.vert", "main", EVST_VS_2_0,
+            "content/shader/skin.frag",           "main", EPST_PS_2_0,
+            m_skinCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        if (skinShader.material < 0)
+            spdlog::error("RenderManager: {} FAILED to build - buffers assigned the "
+                          "{} shader will render wrong", "skin.frag", "skin");
+        ShaderMaterialManager::add(skinShader);
+    }
+
+    // Hair shader — Kajiya-Kay dual anisotropic specular over the same
+    // alpha-tested base as phong_perpixel_masked. The fixed-function alpha test
+    // stays at its 0.5, but the shader discards on its own (lower) cutoff first
+    // and then writes alpha 1.0, so the real threshold is uAlphaCutoff.
+    {
+        ShaderMaterial hairShader("hair");
+        hairShader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/phong_perpixel.vert", "main", EVST_VS_2_0,
+            "content/shader/hair.frag",           "main", EPST_PS_2_0,
+            m_hairCallback, EMT_TRANSPARENT_ALPHA_CHANNEL_REF, 0, EGSL_DEFAULT);
+        // Prepass cut-out. hair.frag's own discard runs at uAlphaCutoff, which is
+        // usually LOWER than this; the prepass therefore drops a few wispy pixels
+        // the shaded pass keeps. That direction only costs a little AO, where the
+        // opposite would stamp the whole hair card into the depth channel.
+        hairShader.alphaCutoff = 0.5f;
+        if (hairShader.material < 0)
+            spdlog::error("RenderManager: {} FAILED to build - buffers assigned the "
+                          "{} shader will render wrong", "hair.frag", "hair");
+        ShaderMaterialManager::add(hairShader);
+        m_hairCoreMat = hairShader.material;
+    }
+
+    // Blended fringe pass — the SAME hair.frag over an alpha-blended base, with
+    // its own callback instance so uBlendPass is 1. Never assigned to a buffer:
+    // drawHairBlendPass() draws the hair buffers a second time with it. It is
+    // registered through ShaderMaterialManager anyway so the editor's shader
+    // list and any .ent that names it resolve.
+    {
+        ShaderMaterial hairBlend("hair_blend");
+        hairBlend.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/phong_perpixel.vert", "main", EVST_VS_2_0,
+            "content/shader/hair.frag",           "main", EPST_PS_2_0,
+            m_hairBlendCallback, EMT_TRANSPARENT_ALPHA_CHANNEL, 0, EGSL_DEFAULT);
+        if (hairBlend.material < 0)
+            spdlog::error("RenderManager: hair_blend FAILED to build - hair will have "
+                          "hard cut-out edges only");
+        ShaderMaterialManager::add(hairBlend);
+        m_hairBlendMat = hairBlend.material;
+    }
+
     // Barrel heat shader — identical PBR base, plus blackbody heat glow driven
     // by uHeatLevel pushed each frame by BarrelHeatShaderCallback.
     {
@@ -2810,13 +3520,21 @@ void RenderManager::createDefaultShaders()
         ShaderMaterialManager::add(barrelHeatShader);
     }
 
-    // Water shader — uses its own callback for per-mesh color uniforms and a
-    // transparent base so gl_FragColor.a controls surface opacity.
+    // Water shader — its own callback carries the per-entity look, which travels
+    // inside the SMaterial (colour slots + all eight MaterialTypeParams).
+    //
+    // The base is EMT_TRANSPARENT_VERTEX_ALPHA, not EMT_TRANSPARENT_ALPHA_CHANNEL.
+    // Both set the same SRC_ALPHA / ONE_MINUS_SRC_ALPHA blend, but the latter
+    // also issues glAlphaFunc(GL_GREATER, material.MaterialTypeParam) — and
+    // MaterialTypeParam aliases MaterialTypeParams[0], which water needs as a
+    // data slot. With that base, storing a value >= 1 in slot 0 would raise the
+    // alpha-test reference above any alpha the shader can output and the water
+    // would silently vanish. The vertex-alpha base runs no alpha test at all.
     ShaderMaterial waterShader("water");
     waterShader.material = m_gpu->addHighLevelShaderMaterialFromFiles(
         "content/shader/water.vert", "main", EVST_VS_2_0,
         "content/shader/water.frag", "main", EPST_PS_2_0,
-        m_waterCallback, EMT_TRANSPARENT_ALPHA_CHANNEL, 0, EGSL_DEFAULT);
+        m_waterCallback, EMT_TRANSPARENT_VERTEX_ALPHA, 0, EGSL_DEFAULT);
     ShaderMaterialManager::add(waterShader);
 
     // Foliage shader — alpha-tested leaves / billboard foliage using the standard
@@ -2825,14 +3543,19 @@ void RenderManager::createDefaultShaders()
         "content/shader/foliage.frag",
         "content/shader/phong_perpixel.vert",
         EMT_TRANSPARENT_ALPHA_CHANNEL_REF,
-        EPST_PS_2_0, EVST_VS_2_0);
+        EPST_PS_2_0, EVST_VS_2_0,
+        0.5f);   // prepass cut-out: ALPHA_CUTOFF in foliage.frag
 
     // Grass shader — wind-animated vertex displacement on low-polygon grass patches.
+    // NOTE: grass.vert displaces vertices for wind and the prepass does not, so
+    // the prepass silhouette lags the shaded one by the sway amplitude. The
+    // cut-out below is still what keeps grass from stamping solid quads.
     createShaderMaterial("grass",
         "content/shader/grass.frag",
         "content/shader/grass.vert",
         EMT_SOLID,
-        EPST_PS_2_0, EVST_VS_2_0);
+        EPST_PS_2_0, EVST_VS_2_0,
+        0.4f);   // prepass cut-out: ALPHA_CUTOFF in grass.frag
 
     // Terrain blend shader — splat map blending over original diffuse, reuses phong_perpixel.vert.
     {
@@ -2858,10 +3581,12 @@ void RenderManager::createDefaultShaders()
     }
 
 
-    // Thin geometry pre-pass — view-space normal + linear depth (SSAO input).
-    // Uses only GL built-in matrices, so the no-op depth callback suffices.
+    // Thin geometry pre-pass — view-space normal + linear depth. Consumed by
+    // SSAO, soft particles, decals and the water shader. Its callback pushes the
+    // diffuse sampler and the alpha cut-out reference; everything else comes
+    // from GL built-in matrices.
     {
-        m_prepassCallback = new ShadowDepthCallback();
+        m_prepassCallback = new PrepassCallback();
         ShaderMaterial s("prepass");
         s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
             "content/shader/prepass.vert", "main", EVST_VS_2_0,
@@ -2969,6 +3694,24 @@ void RenderManager::createDefaultShaders()
         PostProcessPass compositePass("bloom_composite", s.material, m_bloomCompositeCallback, false);
         compositePass.needsOriginalScene = true;
         registerPostProcessPass(compositePass);
+    }
+
+    // Underwater — AFTER bloom_composite, which re-reads the untouched m_sceneRTT
+    // (needsOriginalScene) and would throw away anything done before it; BEFORE
+    // tonemap, so the fog works in the same linear HDR space as water.frag's.
+    // Enabled per frame by updateUnderwaterPass(), never by hand.
+    {
+        m_underwaterCallback = new UnderwaterCallback();
+        ShaderMaterial s("underwater_pp");
+        s.material = m_gpu->addHighLevelShaderMaterialFromFiles(
+            "content/shader/fxaa.vert",       "main", EVST_VS_2_0,
+            "content/shader/underwater.frag", "main", EPST_PS_2_0,
+            m_underwaterCallback, EMT_SOLID, 0, EGSL_DEFAULT);
+        ShaderMaterialManager::add(s);
+        if (s.material < 0)
+            spdlog::error("RenderManager: underwater shader compile failure");
+        else
+            registerPostProcessPass(PostProcessPass("underwater", s.material, m_underwaterCallback, false));
     }
 
     // Tonemapping (ACES filmic + gamma) — sits between bloom and FXAA.
@@ -3685,8 +4428,16 @@ bool resolveTriangleBuffer(ISceneNode* node, const triangle3df& tri, IMesh*& out
 
     // Frame-animated (non-skinned) meshes are matched against the frame the
     // selector last rebuilt from, and are never cached.
+    //
+    // A SKINNED mesh is fetched at frame -1 so this lookup never re-poses it.
+    // getMesh(frame) runs animateMesh + skinMesh as a side effect, and this
+    // function is called from gameplay raycasts — a weapon trace would have
+    // re-posed the character mid-frame and left the renderer drawing that pose.
+    // Skinned meshes do not resolve a material here in any case.
     const bool deformable = (animMesh->getFrameCount() > 1);
-    IMesh* mesh = animMesh->getMesh(deformable ? static_cast<s32>(animNode->getFrameNr()) : 0);
+    const bool skinned    = (animMesh->getMeshType() == EAMT_SKINNED);
+    IMesh* mesh = animMesh->getMesh(
+        skinned ? -1 : (deformable ? static_cast<s32>(animNode->getFrameNr()) : 0));
     if (!mesh || mesh->getMeshBufferCount() == 0)
     {
         ++g_triStats.earlyOut;
@@ -4628,8 +5379,49 @@ std::vector<LightUploadData> RenderManager::gatherClosestLights(
 // sorts them back-to-front relative to the camera, and re-renders them with
 // depth write disabled so they blend correctly over the opaque scene.
 // =============================================================================
+// Copies the opaque frame out of the scene RTT so water can sample what is
+// behind it — Source's _rt_WaterRefraction. Sampling m_sceneRTT directly is not
+// an option: it is the render target being drawn into, and reading a bound
+// attachment is undefined.
+//
+// Called from drawTransparentPass() only when that pass has actually found
+// water to draw, so the copy costs nothing on frames without visible water.
+void RenderManager::captureRefraction()
+{
+    if (!m_refractRTT || !GLExt::ActiveTexture)
+        return;
+
+    const auto sz = m_refractRTT->getSize();
+
+    // glCopyTexSubImage2D reads from the bound READ framebuffer, which is the
+    // scene FBO — the transparent pass runs with m_sceneRTT bound. That makes
+    // this a single GL call with no second FBO to create or restore.
+    GLExt::ActiveTexture(GL_TEXTURE0 + 15);
+    glBindTexture(GL_TEXTURE_2D, m_refractRTT->getNativeHandle());
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0,
+                        (GLsizei)sz.Width, (GLsizei)sz.Height);
+
+    // The RTT has no mip chain, so the min filter has to be LINEAR — the
+    // default MIPMAP_LINEAR on a mipless texture samples as incomplete and
+    // returns black, which would read as water turning into a void.
+    // CLAMP matters too: the refraction offset can push the lookup off-screen
+    // and a REPEAT wrap would fetch the opposite edge of the frame.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Unit 15 sits above Irrlicht's 8 material slots, so its state tracker never
+    // rebinds it — leaving the copy bound here is exactly how water reads it.
+    GLExt::ActiveTexture(GL_TEXTURE0);
+
+    m_refractionCaptured = true;
+}
+
 void RenderManager::drawTransparentPass()
 {
+    m_refractionCaptured = false;
+
     irr::scene::ICameraSceneNode* camera = m_sceneManager->getActiveCamera();
     if (!camera)
         return;
@@ -4666,7 +5458,7 @@ void RenderManager::drawTransparentPass()
         {
             auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(node);
             if (animNode->getMesh())
-                mesh = animNode->getMesh()->getMesh(animNode->getFrameNr());
+                mesh = posedMeshForNode(animNode);
         }
 
         if (!mesh)
@@ -4711,6 +5503,26 @@ void RenderManager::drawTransparentPass()
         [](const TransparentMeshBuffer& a, const TransparentMeshBuffer& b)
         { return a.distSq > b.distSq; });
 
+    // Grab the refraction copy now: after the gather so we know whether any
+    // water is actually visible, and before the first draw so the copy holds
+    // the opaque frame only. Transparents drawn before the water (anything
+    // farther from the camera) are therefore absent from its refraction —
+    // the same limitation Source's water has.
+    static const irr::s32 waterMat = ShaderMaterialManager::get("water");
+    const bool haveWaterMat = (waterMat != irr::video::EMT_SOLID);
+
+    if (m_waterRefractEnabled && !m_renderingPreview && haveWaterMat)
+    {
+        for (const auto& entry : transparents)
+        {
+            if (entry.node->getMaterial(entry.bufferIndex).MaterialType == waterMat)
+            {
+                captureRefraction();
+                break;
+            }
+        }
+    }
+
     // Render each transparent buffer in sorted order
     for (const auto& entry : transparents)
     {
@@ -4725,7 +5537,7 @@ void RenderManager::drawTransparentPass()
             auto* animNode = static_cast<irr::scene::IAnimatedMeshSceneNode*>(entry.node);
             animMesh = animNode->getMesh();
             if (animMesh)
-                mesh = animMesh->getMesh(animNode->getFrameNr());
+                mesh = posedMeshForNode(animNode);
         }
 
         if (!mesh || entry.bufferIndex >= mesh->getMeshBufferCount())
@@ -4738,7 +5550,21 @@ void RenderManager::drawTransparentPass()
                                  animMesh, mesh, entry.bufferIndex));
 
         irr::video::SMaterial mat = entry.node->getMaterial(entry.bufferIndex);
-        mat.ZWriteEnable = false;
+
+        // Water is the one member of this pass that is genuinely OPAQUE — the
+        // refraction is what you see through it, not the blend — so it keeps
+        // its depth write. Without one, a water VOLUME (a box, which is what a
+        // water brush is) has no way to resolve its own faces against each
+        // other: back-face culling is off so the surface stays visible from
+        // underwater, so the top face and the bottom/side faces all pass the
+        // depth test over the same pixels and the last one drawn simply wins.
+        // That put a hard horizontal seam across the surface at a grazing
+        // angle, with the far side shaded as above-water and the near side
+        // shaded as below-water (the bottom face is back-facing, so it takes
+        // the shader's underwater branch: fog off, reflection damped).
+        if (!(haveWaterMat && mat.MaterialType == waterMat))
+            mat.ZWriteEnable = false;
+
         m_driver->setMaterial(mat);
         m_driver->drawMeshBuffer(buf);
     }

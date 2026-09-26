@@ -60,5 +60,10 @@ private:
 	void renderNPCLockIndicators(irr::scene::ICameraSceneNode* cam);
 	void spawnProjectile(bool useTracking = false);
 	void updateProjectiles(float dt);
-	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID);
+	// waterScale: damage multiplier from the water this projectile swam through
+	// (WaterBallistics::projectileScale). Defaults to 1.0 so a detonation path
+	// that never met water -- or a new one that forgets -- reads as dry, which is
+	// the safe way round.
+	void applySplashDamage(const irr::core::vector3df& epicentre, entityid directHitEntityID,
+		float waterScale = 1.0f);
 };

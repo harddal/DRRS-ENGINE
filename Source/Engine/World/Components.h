@@ -18,3 +18,4 @@
 #include "Engine/World/Components/TweenComponent.h"
 #include "Engine/World/Components/NavAgentComponent.h"
 #include "Engine/World/Components/ParticleComponent.h"
+#include "Engine/World/Components/AnimationComponent.h"

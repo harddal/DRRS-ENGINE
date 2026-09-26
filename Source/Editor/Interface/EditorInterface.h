@@ -64,6 +64,10 @@ namespace EditorInterface
 	bool function_request_quit();
 	void draw_quit_prompt();
 
+	// Raised by function_play_scene() when the scene has more than one
+	// MT_PLAYER_START marker; consumed the next frame, same as draw_quit_prompt().
+	void draw_invalid_playerstart_prompt();
+
 	void draw_menubar_main();
 	void draw_window_viewport();
 

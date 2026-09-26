@@ -240,6 +240,15 @@ public:
 
     void update(irr::f32 dt);
 
+    // Runs ONCE PER RENDERED FRAME, from Engine::run() immediately before
+    // RenderManager::draw() - NOT from update(), which is inside the fixed-step
+    // loop and executes 0, 1 or 2+ times per frame.
+    //
+    // 'dt' is already time-scaled: characters on the external-pose path
+    // (engine fork #6) no longer ride Irrlicht's virtual timer, so
+    // ITimer::setSpeed() does not reach them.
+    void updateAnimation(irr::f32 dt);
+
     void updateEntityQueues();
 
 	entityid getNewID();
@@ -310,6 +319,7 @@ public:
 	GameplaySystem*   gameplaySystem()   { return &m_gameplaySystem; }
 	ParticleSystem*   particleSystem()   { return &m_particleSystem; }
 	BehaviorSystem*   behaviorSystem()   { return &m_behaviorSystem; }
+	AnimationSystem*  animationSystem()  { return &m_animationSystem; }
 	irr::f32 getParticleTime() { return m_particleTime; }
 
     static WorldManager* Get() { return s_Instance; }
@@ -364,6 +374,7 @@ private:
 	GameplaySystem m_gameplaySystem;
 	ParticleSystem m_particleSystem;
 	BehaviorSystem m_behaviorSystem;
+	AnimationSystem m_animationSystem;
 
 	irr::f32 m_worldCurrent, m_worldLast, m_worldTime;
 	irr::f32 m_cameraCurrent, m_cameraLast, m_cameraTime;

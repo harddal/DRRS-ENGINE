@@ -47,11 +47,67 @@ SoundEngine::SoundEngine()
 	// Default ceiling is 16 — far too low for a scene with rapid-fire weapons,
 	// 3D shell bounces, and ambient sounds all stacking simultaneously.
 	m_soloud.setMaxActiveVoiceCount(64);
+
+	// Underwater muffle, installed once and left in place. Wet starts at 0, so
+	// the filter is inaudible until setUnderwater() fades it in — see the header
+	// for why it is never attached/detached per submersion. The dry path still
+	// pays the biquad's cost every frame, which at 44.1kHz stereo is noise.
+	m_underwaterFilter.setParams(SoLoud::BiquadResonantFilter::LOWPASS,
+		m_underwaterCutoff, m_underwaterResonance);
+	m_soloud.setGlobalFilter(k_underwaterSlot, &m_underwaterFilter);
+	m_soloud.setFilterParameter(0, k_underwaterSlot,
+		SoLoud::BiquadResonantFilter::WET, 0.0f);
 }
 
 SoundEngine::~SoundEngine()
 {
+	// Clear the slot while m_underwaterFilter is still alive: ~Soloud deletes the
+	// filter INSTANCE, and the instance holds a raw parent pointer back into this
+	// object. Doing it here keeps the teardown independent of member order.
+	m_soloud.setGlobalFilter(k_underwaterSlot, nullptr);
+
 	m_soloud.deinit();
+}
+
+// --- Underwater muffle ---
+
+void SoundEngine::setUnderwater(bool underwater, float fadeSeconds)
+{
+	// Edge-guarded here rather than at every call site: the per-frame driver in
+	// SoundSystem pushes the current state unconditionally, and restarting the
+	// fade every frame would freeze it at its start value.
+	if (underwater == m_underwater)
+		return;
+
+	m_underwater = underwater;
+
+	const float target = underwater ? 1.0f : 0.0f;
+
+	// Voice handle 0 addresses the global filter slot rather than a voice.
+	if (fadeSeconds <= 0.0f)
+	{
+		// Not just an optimisation: Fader divides by its duration, so a
+		// zero-length fade lands on a division by zero for the sample that hits
+		// the end time exactly. Hard-set instead.
+		m_soloud.setFilterParameter(0, k_underwaterSlot,
+			SoLoud::BiquadResonantFilter::WET, target);
+	}
+	else
+	{
+		m_soloud.fadeFilterParameter(0, k_underwaterSlot,
+			SoLoud::BiquadResonantFilter::WET, target, fadeSeconds);
+	}
+}
+
+void SoundEngine::setUnderwaterParams(float cutoffHz, float resonance)
+{
+	m_underwaterCutoff    = cutoffHz;
+	m_underwaterResonance = resonance;
+
+	m_soloud.setFilterParameter(0, k_underwaterSlot,
+		SoLoud::BiquadResonantFilter::FREQUENCY, cutoffHz);
+	m_soloud.setFilterParameter(0, k_underwaterSlot,
+		SoLoud::BiquadResonantFilter::RESONANCE, resonance);
 }
 
 SoundSource* SoundEngine::loadOrGetSource(const char* file)
@@ -306,6 +362,10 @@ void SoundEngine::setListenerPosition(float px, float py, float pz,
 void SoundEngine::stopAllVoices()
 {
 	m_soloud.stopAll();
+
+	// Scene teardown. Without this, changing level while submerged brings the
+	// next scene up muffled — the filter is global and outlives every voice.
+	setUnderwater(false, 0.0f);
 }
 
 void SoundEngine::removeAllSoundSources()

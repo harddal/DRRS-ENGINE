@@ -7,6 +7,7 @@
 		<snapY>0.25</snapY>
 		<snapZ>0.25</snapZ>
 		<snapAngle>90</snapAngle>
+		<startupScenePath>D:\Projects\Game Engine\Binaries\content\scene\swimming_pool.pak</startupScenePath>
 	</value0>
 </cereal>
 

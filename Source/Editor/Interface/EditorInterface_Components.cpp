@@ -16,6 +16,7 @@
 #include "Engine/Renderer/IrrAssimp/IrrAssimpImport.h"
 #include "Game/LogicLinks.h"
 #include "Game/Gore/FractureManager.h"
+#include "Engine/World/Systems/RenderSystem.h"
 #include <tinyxml2.h>
 
 #include <string>
@@ -1010,8 +1011,14 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			ImGui::Checkbox("Receive Shadows", &mesh.receiveShadows);
 			ImGui::Checkbox("Use Point Filtering", &mesh.texturePointFilter);
 			ImGui::SetItemTooltip("Nearest-neighbour texture sampling - crisp pixelated texels\ninstead of smooth blurring. Good for low-res/retro textures.");
-			ImGui::Checkbox("Recalculate Normals", &mesh.recalculateNormals);
-			ImGui::SetItemTooltip("Rebuild vertex normals when the mesh loads.\nUse when an imported mesh shades wrong (black faces, inverted lighting).");
+			if (ImGui::Checkbox("Recalculate Normals", &mesh.recalculateNormals))
+				RenderSystem::applyRecalculateNormals(mesh, mesh.recalculateNormals, true);
+			ImGui::SetItemTooltip("Rebuild vertex normals from the faces, smoothed across shared vertices.\n"
+				"Applied immediately; unticking restores the mesh's authored normals.\n"
+				"Use when an imported mesh shades wrong (black faces, inverted lighting).\n"
+				"Edits the mesh itself, so this applies to - and reticks the box on -\n"
+				"every entity sharing this mesh file. Does not survive skinning\n"
+				"on animated characters.");
 			ImGui::Checkbox("Cook Navigation", &mesh.navCookable);
 			ImGui::SetItemTooltip("Include this mesh's triangles when building the NPC navigation mesh\n(walkable floors, blocking walls).");
 			if (ImGui::Checkbox("Transparent", &mesh.transparent))
@@ -1203,6 +1210,159 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 						mesh.node->getMaterial(mi).MaterialType = mat;
 				}
 				ImGui::SetItemTooltip("Shader material used to draw this mesh (lit, transparent, additive...).");
+			}
+
+			// Per-buffer shader overrides — a character needs skin on one buffer
+			// and hair on another while the rest stays on the default shader.
+			// Same idea as the props' Buffer Overrides list, plus a name match
+			// and the four shader params.
+			// TreeNode, not CollapsingHeader: this list belongs to Mesh, not beside
+			// it, and CollapsingHeader draws the same full-width bar regardless of
+			// C++ nesting, which read as a sibling section to Transform/Render/Mesh
+			// rather than a child of Mesh.
+			if (ImGui::TreeNode("Buffer Shaders"))
+			{
+				const auto& allShaders = ShaderMaterialManager::getAll();
+				std::vector<const char*> ovrShaderNames;
+				ovrShaderNames.reserve(allShaders.size());
+				for (const auto& sm : allShaders)
+					ovrShaderNames.push_back(sm.name.c_str());
+
+				bool dirty = false;
+
+				for (int i = 0; i < static_cast<int>(mesh.bufferShaderOverrides.size()); i++)
+				{
+					auto& ovr = mesh.bufferShaderOverrides[i];
+					ImGui::PushID(i);
+
+					int shaderIdx = 0;
+					for (int si = 0; si < static_cast<int>(ovrShaderNames.size()); ++si)
+						if (ovr.shaderName == ovrShaderNames[si]) { shaderIdx = si; break; }
+
+					ImGui::PushItemWidth(110);
+					if (ImGui::Combo("##ovrShader", &shaderIdx, ovrShaderNames.data(), (int)ovrShaderNames.size()))
+					{
+						ovr.shaderName = ovrShaderNames[shaderIdx];
+						dirty = true;
+					}
+					ImGui::PopItemWidth();
+					ImGui::SameLine();
+
+					char matchBuf[128] = {};
+					strncpy_s(matchBuf, ovr.match.c_str(), sizeof(matchBuf) - 1);
+					ImGui::PushItemWidth(120);
+					if (ImGui::InputText("##ovrMatch", matchBuf, sizeof(matchBuf), ImGuiInputTextFlags_EnterReturnsTrue))
+					{
+						ovr.match = matchBuf;
+						dirty = true;
+					}
+					ImGui::PopItemWidth();
+					ImGui::SetItemTooltip("Substring of the buffer's DIFFUSE TEXTURE name.\n"
+						"Leave empty to select by buffer index instead.\n"
+						"A .glb names its embedded textures '<file>_embedded_<image index>'.");
+					ImGui::SameLine();
+
+					int bufIdx = static_cast<int>(ovr.bufferIndex);
+					ImGui::PushItemWidth(50);
+					ImGui::BeginDisabled(!ovr.match.empty());
+					if (ImGui::InputInt("##ovrBuf", &bufIdx, 0))
+					{
+						ovr.bufferIndex = static_cast<irr::u32>(bufIdx < 0 ? 0 : bufIdx);
+						dirty = true;
+					}
+					ImGui::EndDisabled();
+					ImGui::PopItemWidth();
+					ImGui::SetItemTooltip("Mesh buffer index — used only when the match field is empty.");
+					ImGui::SameLine();
+
+					if (ImGui::SmallButton("X"))
+					{
+						mesh.bufferShaderOverrides.erase(mesh.bufferShaderOverrides.begin() + i);
+						ImGui::PopID();
+						dirty = true;
+						break;
+					}
+
+					// Named, per-shader controls instead of an anonymous DragFloat4 —
+					// "0 = shader default" is easy to misread as "off" when the four
+					// slots aren't labelled, and the skin defaults in particular are
+					// not the values the header comment implies (curvature scale
+					// defaults to 4.0, a deliberate 4x punch-up over the physically
+					// true radius — see SkinShaderCallback::OnSetConstants).
+					if (ovr.shaderName == "skin")
+					{
+						if (ImGui::DragFloat("Subsurface Strength##ovr0", &ovr.params[0], 0.01f, 0.0f, 2.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (1.0). 0 exactly also disables SSS entirely\nand blends back to plain Lambert diffuse.");
+
+						if (ImGui::DragFloat("Curvature Scale##ovr1", &ovr.params[1], 0.02f, 0.0f, 8.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (4.0 — a deliberate 4x exaggeration over the\n"
+							"true surface radius, or the SSS terminator band is only a couple\n"
+							"of pixels wide at gameplay distance and reads as nothing).\n"
+							"Screen-space curvature is an estimate: a mesh seam, a hard normal\n"
+							"break, or a grazing view angle can spike it toward the LUT's most\n"
+							"scattering (reddest) row. If a hard red line shows at a crease or\n"
+							"silhouette, lower this first before touching the shader.");
+
+						if (ImGui::DragFloat("Specular Strength##ovr2", &ovr.params[2], 0.01f, 0.0f, 2.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (1.0).");
+
+						if (ImGui::DragFloat("Transmission##ovr3", &ovr.params[3], 0.01f, 0.0f, 2.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (0.35). Back-lit glow through thin, sharply\n"
+							"curved parts (ears, nose, fingers) — also driven by curvature, so\n"
+							"it shares the same false-positive risk at seams/silhouettes.");
+					}
+					else if (ovr.shaderName == "hair")
+					{
+						if (ImGui::DragFloat("Roughness##ovr0", &ovr.params[0], 0.01f, 0.0f, 1.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (0.35).");
+
+						if (ImGui::DragFloat("Specular Strength##ovr1", &ovr.params[1], 0.01f, 0.0f, 2.0f, "%.2f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (1.0).");
+
+						bool strandU = ovr.params[2] >= 0.5f;
+						if (ImGui::Checkbox("Strand Axis: U (unchecked = V)##ovr2", &strandU))
+						{
+							ovr.params[2] = strandU ? 1.0f : 0.0f;
+							dirty = true;
+						}
+
+						if (ImGui::DragFloat("Alpha Cutoff##ovr3", &ovr.params[3], 0.005f, 0.0f, 1.0f, "%.3f"))
+							dirty = true;
+						ImGui::SetItemTooltip("0 = shader default (0.33). Core pass only; the blended fringe\npass uses its own fixed ~0.02 regardless of this value.");
+					}
+					else
+					{
+						ImGui::PushItemWidth(-1);
+						if (ImGui::DragFloat4("##ovrParams", ovr.params, 0.01f, 0.0f, 8.0f, "%.2f"))
+							dirty = true;
+						ImGui::PopItemWidth();
+						ImGui::SetItemTooltip("Shader params, meaning depends on the shader.\n"
+							"skin: subsurface, curvature scale, specular, transmission.\n"
+							"hair: roughness, specular, strand axis (0 = V / 1 = U), alpha cutoff.\n"
+							"0 means 'shader default'.");
+					}
+
+					ImGui::PopID();
+				}
+
+				if (ImGui::SmallButton("+ Add Buffer Shader"))
+				{
+					mesh.bufferShaderOverrides.push_back(MeshBufferShader());
+					dirty = true;
+				}
+				ImGui::SetItemTooltip("Draw one mesh buffer with a different shader than the rest\n"
+					"(skin and hair on a character, glass on a vehicle).");
+
+				if (dirty)
+					RenderSystem::applyMeshShaders(mesh);
+
+				ImGui::TreePop();
 			}
 
 			ImGui::DragFloat("Roughness", &mesh.node->getMaterial(0).Shininess, 1.0f, 0.0f, 128.00);
@@ -2117,7 +2277,9 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			bool changed = false;
 
-			ImGui::Text("Shallow Color");
+			// --- $refracttint / $fogcolor / $reflecttint ---
+			ImGui::Text("Refraction Tint");
+			ImGui::SetItemTooltip("Source's $refracttint - tints what you see THROUGH the surface.\nNear-white keeps the pool bottom's own colour.");
 			ImColor shallowCol(water.shallowColor[0], water.shallowColor[1], water.shallowColor[2]);
 			ImGui::PushID("water_shallow");
 			if (ImColorPicker("##water_shallow_col", &shallowCol))
@@ -2131,7 +2293,8 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 
 			ImGui::Spacing();
 
-			ImGui::Text("Deep Color");
+			ImGui::Text("Water Fog Color");
+			ImGui::SetItemTooltip("Source's $fogcolor - the colour deep water converges to.\nThis is the strongest control over the water's perceived colour.");
 			ImColor deepCol(water.deepColor[0], water.deepColor[1], water.deepColor[2]);
 			ImGui::PushID("water_deep");
 			if (ImColorPicker("##water_deep_col", &deepCol))
@@ -2143,20 +2306,98 @@ bool EditorInterface::draw_component_properties(ENTITY_COMPONENT component, anax
 			}
 			ImGui::PopID();
 
+			ImGui::Spacing();
+
+			ImGui::Text("Reflection Tint");
+			ImGui::SetItemTooltip("Source's $reflecttint - tints the reflected environment. White = untinted.");
+			ImColor reflectCol(water.reflectColor[0], water.reflectColor[1], water.reflectColor[2]);
+			ImGui::PushID("water_reflect");
+			if (ImColorPicker("##water_reflect_col", &reflectCol))
+			{
+				water.reflectColor[0] = reflectCol.Value.x;
+				water.reflectColor[1] = reflectCol.Value.y;
+				water.reflectColor[2] = reflectCol.Value.z;
+				changed = true;
+			}
+			ImGui::PopID();
+
+			ImGui::Spacing();
+			ImGui::Separator();
+
+			// --- Depth fog ($fogstart / $fogend) ---
+			if (ImGui::DragFloat("Fog Start", &water.fogStart, 0.05f, 0.0f, 4096.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Source's $fogstart. Depth of water (world units, along the view ray)\nat which the fog begins. 0 = fogging starts right at the shoreline.");
+
+			if (ImGui::DragFloat("Fog End", &water.fogEnd, 0.1f, 0.01f, 4096.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Source's $fogend. Depth of water at which it becomes solid fog colour.\nSmall = murky pool, large = clear lake.");
+
+			ImGui::Separator();
+
+			// --- Refraction / reflection ---
+			if (ImGui::DragFloat("Refract Amount", &water.refractAmount, 0.001f, 0.0f, 0.5f, "%.3f"))
+				changed = true;
+			ImGui::SetItemTooltip("Source's $refractamount. Screen-space distortion strength of the\nbackground seen through the water. 0 = perfectly flat glass.");
+
+			if (ImGui::DragFloat("Reflect Amount", &water.reflectAmount, 0.01f, 0.0f, 1.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Source's $reflectamount. Multiplier on the fresnel reflection.\n1.0 is physical; 0.3-0.8 keeps the surface readable.");
+
+			if (ImGui::DragFloat("Fresnel Power", &water.fresnelPower, 0.05f, 0.1f, 16.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Source's $fresnelpower (their default is 6). Controls how quickly the\nsurface turns mirror-like as the view angle flattens. Lower = sooner.");
+
+			ImGui::Separator();
+
+			// --- Wave surface ---
+			if (ImGui::DragFloat("Normal Tiling", &water.normalTiling, 0.002f, 0.001f, 4.0f, "%.3f"))
+				changed = true;
+			ImGui::SetItemTooltip("Wave normal-map tiles per world unit. 0.05 = one tile every 20 units.\nRipples are tiled against WORLD space, so scaling the brush\ndoes not stretch them.");
+
+			if (ImGui::DragFloat("Wave Strength", &water.waveStrength, 0.02f, 0.0f, 4.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Choppiness - gain on the wave normal. 0 is a dead-flat mirror.");
+
+			if (ImGui::DragFloat("Flow Speed", &water.flowSpeed, 0.02f, 0.0f, 8.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Scroll rate multiplier. 1.0 is a gentle pool; raise it for a river.");
+
+			if (ImGui::DragFloat("Fallback Alpha", &water.alpha, 0.01f, 0.0f, 1.0f, "%.2f"))
+				changed = true;
+			ImGui::SetItemTooltip("Surface opacity used ONLY when the refraction copy is unavailable\n(preview panels, or console r_water_refract 0). With refraction on,\nthe surface is opaque and the refraction provides the see-through.");
+
 			if (changed && entity.hasComponent<MeshComponent>())
 			{
+				// Push straight into the live material so edits show up without a
+				// scene reload. Mirrors the packing in RenderSystem.cpp - keep the
+				// two in sync (and with WaterShaderCallback, which unpacks them).
 				auto& mesh = entity.getComponent<MeshComponent>();
 				if (mesh.node)
 				{
 					const auto& sc = water.shallowColor;
 					const auto& dc = water.deepColor;
+					const auto& rc = water.reflectColor;
+					auto to255 = [](float v) {
+						return static_cast<irr::u32>(irr::core::clamp(v, 0.0f, 1.0f) * 255.0f);
+					};
+
 					for (irr::u32 i = 0; i < mesh.node->getMaterialCount(); ++i)
 					{
 						auto& mat = mesh.node->getMaterial(i);
-						mat.AmbientColor.set(255,
-							static_cast<irr::u32>(sc[0] * 255), static_cast<irr::u32>(sc[1] * 255), static_cast<irr::u32>(sc[2] * 255));
-						mat.DiffuseColor.set(204,
-							static_cast<irr::u32>(dc[0] * 255), static_cast<irr::u32>(dc[1] * 255), static_cast<irr::u32>(dc[2] * 255));
+						mat.AmbientColor.set (255, to255(sc[0]), to255(sc[1]), to255(sc[2]));
+						mat.DiffuseColor.set (to255(water.alpha),
+						                      to255(dc[0]), to255(dc[1]), to255(dc[2]));
+						mat.SpecularColor.set(255, to255(rc[0]), to255(rc[1]), to255(rc[2]));
+
+						mat.MaterialTypeParams[0] = water.fogStart;
+						mat.MaterialTypeParams[1] = water.fogEnd;
+						mat.MaterialTypeParams[2] = water.refractAmount;
+						mat.MaterialTypeParams[3] = water.reflectAmount;
+						mat.MaterialTypeParams[4] = water.normalTiling;
+						mat.MaterialTypeParams[5] = water.flowSpeed;
+						mat.MaterialTypeParams[6] = water.fresnelPower;
+						mat.MaterialTypeParams[7] = water.waveStrength;
 					}
 				}
 			}

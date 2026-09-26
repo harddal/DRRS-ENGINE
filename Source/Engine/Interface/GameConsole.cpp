@@ -11,11 +11,14 @@
 #include "Engine/Renderer/RenderManager.h"
 #include "Engine/Resource/FilePaths.h"
 #include "Engine/Script/ScriptManager.h"
+#include "Engine/Sound/SoundManager.h"
 #include "Editor/ImGuiLogSink.h"
 
 #include "Game/AI/AICoordinator.h"
 #include "Game/Components.h"
 #include "Game/Player/PlayerController.h"
+#include "Game/Player/Weapon/WaterBallistics.h"
+#include "Game/Player/Weapon/WeaponEffects.h"
 #include "Game/Gore/FractureManager.h"
 #include "Game/Gore/FractureGeometry.h"
 #include "Game/Skill/SkillSystem.h"
@@ -273,6 +276,125 @@ void GameConsole::registerBuiltins()
 			return;
 		}
 		Engine::Get()->requestHitStop(static_cast<float>(atof(args[0].c_str())));
+	});
+
+	// --- Water ballistics ---------------------------------------------------
+	// Both depths are world units of water a shot crosses before it is spent;
+	// damage falls off linearly to zero over that distance. ZERO is the off
+	// switch -- water then charges nothing and stops nothing, though shots still
+	// pass through it and still splash.
+	registerCommand("water_penetration", "<units> how far a BULLET carries through water; 0 = no falloff",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WaterBallistics::setPenetrationDepth(static_cast<float>(atof(args[0].c_str())));
+
+		print("water_penetration: " + std::to_string(WaterBallistics::penetrationDepth()) + " units");
+	});
+
+	registerCommand("water_projectile_penetration", "<units> how far a PROJECTILE carries through water; 0 = no falloff",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WaterBallistics::setProjectilePenetrationDepth(static_cast<float>(atof(args[0].c_str())));
+
+		print("water_projectile_penetration: " +
+		      std::to_string(WaterBallistics::projectilePenetrationDepth()) + " units");
+	});
+
+	// The "is the falloff even running" switch. Prints, per shot, how much water
+	// was crossed and what it cost. Reach for this before retuning the depths:
+	// a shot that crosses MORE than the depth is absorbed and reported as a
+	// MISS, so in a pool deeper than the setting every shot into the water looks
+	// identical (nothing happens) at ANY depth. Only a target within
+	// 'water_penetration' units of the surface shows partial damage at all.
+	registerCommand("water_debug", "[0|1] log water crossing and damage scale; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WaterBallistics::setDebugEnabled(atoi(args[0].c_str()) != 0);
+
+		print(std::string("water_debug: ") + (WaterBallistics::debugEnabled() ? "on" : "off"));
+	});
+
+	// --- Underwater bubble trails ----------------------------------------------
+	// The trail every shot (and projectile wake) leaves through water. Spacing is
+	// at density 1.0; weapons scale it through underwaterBubbleDensity(), and no
+	// trail ever exceeds its per-trail cap however small the spacing is set.
+	registerCommand("water_bubbles", "[0|1] bubble trails along shots underwater; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WaterBallistics::setBubblesEnabled(atoi(args[0].c_str()) != 0);
+
+		print(std::string("water_bubbles: ") + (WaterBallistics::bubblesEnabled() ? "on" : "off"));
+	});
+
+	registerCommand("water_bubble_spacing", "<units> distance between trail bubbles at density 1; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WaterBallistics::setBubbleSpacing(static_cast<float>(atof(args[0].c_str())));
+
+		print("water_bubble_spacing: " + std::to_string(WaterBallistics::bubbleSpacing()) + " units");
+	});
+
+	// --- Underwater shell casings ---------------------------------------------
+	// Global across every weapon's casings; only applied while a casing is inside
+	// a water volume. Sink speed is 9.81 * gravity / drag, so shell_water_gravity 1
+	// + shell_water_drag 0 is the old (dry) behaviour underwater.
+	registerCommand("shell_water_gravity", "<scale> casing gravity multiplier underwater; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterGravityScale(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_gravity: " + std::to_string(WeaponEffects::shellWaterGravityScale()));
+	});
+
+	registerCommand("shell_water_drag", "<per-second> casing velocity drag underwater; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterDrag(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_drag: " + std::to_string(WeaponEffects::shellWaterDrag()) + " /s");
+	});
+
+	registerCommand("shell_water_spin_drag", "<per-second> casing tumble drag underwater; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterAngularDrag(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_spin_drag: " + std::to_string(WeaponEffects::shellWaterAngularDrag()) + " /s");
+	});
+
+	registerCommand("shell_water_bounce", "<0..1> casing bounce energy kept underwater; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterRestitution(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_bounce: " + std::to_string(WeaponEffects::shellWaterRestitution()));
+	});
+
+	registerCommand("shell_water_lifetime", "<ms> casing lifetime once it has entered water; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterLifetime(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_lifetime: " + std::to_string(WeaponEffects::shellWaterLifetime()) + " ms");
+	});
+
+	registerCommand("shell_water_entry_damp", "<0..1> speed a casing KEEPS dropping into water; 1 = off; no arg prints",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			WeaponEffects::setShellWaterEntryDamp(static_cast<float>(atof(args[0].c_str())));
+
+		print("shell_water_entry_damp: " + std::to_string(WeaponEffects::shellWaterEntryDamp()));
 	});
 
 	// --- NPC AI ------------------------------------------------------------
@@ -822,6 +944,33 @@ void GameConsole::registerBuiltins()
 				std::to_string(overlaps) + " overlaps");
 	});
 
+	registerCommand("snd_underwater", "[cutoffHz] [resonance] tune the underwater muffle; no args prints current",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!SoundManager::Get())
+		{
+			print("snd_underwater: no sound engine");
+			return;
+		}
+		auto* snd = SoundManager::Get()->sound();
+
+		if (!args.empty())
+		{
+			const float hz = (float)atof(args[0].c_str());
+			const float q  = args.size() > 1 ? (float)atof(args[1].c_str())
+			                                 : snd->underwaterResonance();
+			snd->setUnderwaterParams(hz, q);
+		}
+
+		char buf[128];
+		// Tune this while floating in a pool -- the filter is only audible while
+		// submerged, and the wet mix is driven by the eye probe, not by this.
+		snprintf(buf, sizeof(buf), "snd_underwater: cutoff %.0f Hz, resonance %.2f, currently %s",
+			snd->underwaterCutoff(), snd->underwaterResonance(),
+			snd->isUnderwater() ? "WET" : "dry");
+		print(buf);
+	});
+
 	registerCommand("r_prepass", "[0|1] toggle the depth/normal pre-pass (SSAO, decals, soft particles)",
 		[this](const std::vector<std::string>& args, const std::string&)
 	{
@@ -840,6 +989,75 @@ void GameConsole::registerBuiltins()
 		print(std::string("r_showprepass = ") + (rm->isShowPrePass() ? "1" : "0"));
 	});
 
+	registerCommand("r_haircoreoff", "[0|1] 1 = draw ONLY the blended hair fringe (the core discards everything)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		const bool on = args.empty() ? true : (args[0] != "0");
+		HairShaderCallback::setCoreOff(on);
+		print(std::string("r_haircoreoff = ") + (on ? "1" : "0"));
+		print("Hair still visible = the fringe pass works. Bald = it draws nothing.");
+	});
+
+	registerCommand("r_hairdebugmode", "[0|1|2] 1 = draw the hair fringe pass with a plain material, no depth test; 2 = with depth test",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			RenderManager::Get()->setHairDebugMode(atoi(args[0].c_str()));
+		print("r_hairdebugmode = " + std::to_string(RenderManager::Get()->hairDebugMode()));
+		print("1: solid untextured hair cards = the pass draws, fault is in hair.frag.");
+		print("   Nothing at all = the draw itself never lands.");
+		print("2: same with depth on - if 1 shows and 2 does not, depth is rejecting it.");
+		print("3: the real hair shader with NO depth test (pair with r_hairgain 50).");
+	});
+
+	registerCommand("r_haircutoff", "[0..1] hair CORE alpha cutoff (0 = use the entity's own value)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			HairShaderCallback::setCoreCutoff((float)atof(args[0].c_str()));
+		print("r_haircutoff = " + std::to_string(HairShaderCallback::coreCutoff()));
+		print("Higher = less of the card is opaque and more is left to the blended fringe.");
+	});
+
+	registerCommand("r_hairgain", "[x] multiplier on the blended fringe's alpha (1 = the texture's own)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		if (!args.empty())
+			HairShaderCallback::setFringeGain((float)atof(args[0].c_str()));
+		print("r_hairgain = " + std::to_string(HairShaderCallback::fringeGain()));
+	});
+
+	registerCommand("r_charshaderdebug", "[0|1] flat-colour the character shaders: skin green, hair magenta",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		const bool on = args.empty() ? true : (args[0] != "0");
+		auto* rm = RenderManager::Get();
+		if (rm->skinCallback()) rm->skinCallback()->setDebugTint(on);
+		if (rm->hairCallback()) rm->hairCallback()->setDebugTint(on);
+		if (rm->hairBlendCallback()) rm->hairBlendCallback()->setDebugTint(on);
+		print(std::string("r_charshaderdebug = ") + (on ? "1" : "0"));
+		print("Green face/arms = the skin shader is bound. Magenta hair = the hair");
+		print("shader is bound. No colour change = neither is, and tuning is pointless.");
+	});
+
+	registerCommand("r_dumpshadowatlas", "read the shadow atlas back and report depth vs colour",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		RenderManager::Get()->dumpShadowAtlas();
+		print("Wrote shadow_atlas_dump.png; see the log for the numbers.");
+	});
+
+	registerCommand("r_showshadowatlas", "[0|1] blit the shadow atlas into the corner",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setShowShadowAtlas(args[0] != "0");
+		print(std::string("r_showshadowatlas = ") + (rm->isShowShadowAtlas() ? "1" : "0"));
+		print("Expect a grey depth ramp. Recognisable scene COLOUR means the depth");
+		print("shader override is not landing - see drawShadowAtlasDebugOverlay().");
+	});
+
 	registerCommand("r_decals", "[0|1] toggle screen-space decal rendering",
 		[this](const std::vector<std::string>& args, const std::string&)
 	{
@@ -856,6 +1074,55 @@ void GameConsole::registerBuiltins()
 		if (!args.empty())
 			rm->setTransparentEnabled(args[0] != "0");
 		print(std::string("r_transparent = ") + (rm->isTransparentEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_water_refract", "[0|1] toggle the water refraction scene copy (0 = alpha-blended water)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setWaterRefractEnabled(args[0] != "0");
+		print(std::string("r_water_refract = ") + (rm->isWaterRefractEnabled() ? "1" : "0"));
+	});
+
+	registerCommand("r_underwater", "[0|1] toggle the underwater camera pass (prints whether the camera is in water)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* rm = RenderManager::Get();
+		if (!args.empty())
+			rm->setUnderwaterEnabled(args[0] != "0");
+		print(std::string("r_underwater = ") + (rm->isUnderwaterEnabled() ? "1" : "0")
+			+ (rm->isCameraUnderwater() ? " (camera in water)" : " (camera dry)"));
+	});
+
+	registerCommand("r_underwater_absorb", "[float] underwater colour loss, relative to the pool's fogEnd (0 = off, default 1)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* cb = RenderManager::Get()->underwaterCallback();
+		if (!cb) { printLine(kColError, "underwater pass not available"); return; }
+		if (!args.empty())
+			cb->absorb = std::max(0.0f, static_cast<float>(atof(args[0].c_str())));
+		print("r_underwater_absorb = " + std::to_string(cb->absorb));
+	});
+
+	registerCommand("r_underwater_distort", "[float] underwater wobble amplitude, fraction of the screen (0 = off, default 0.0025)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* cb = RenderManager::Get()->underwaterCallback();
+		if (!cb) { printLine(kColError, "underwater pass not available"); return; }
+		if (!args.empty())
+			cb->distortion = std::max(0.0f, static_cast<float>(atof(args[0].c_str())));
+		print("r_underwater_distort = " + std::to_string(cb->distortion));
+	});
+
+	registerCommand("r_underwater_ripple", "[float] waterline ripple, fraction of screen height (0 = flat, default 0.02)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		auto* cb = RenderManager::Get()->underwaterCallback();
+		if (!cb) { printLine(kColError, "underwater pass not available"); return; }
+		if (!args.empty())
+			cb->ripple = std::max(0.0f, static_cast<float>(atof(args[0].c_str())));
+		print("r_underwater_ripple = " + std::to_string(cb->ripple));
 	});
 
 	registerCommand("r_ssao", "[0|1] toggle SSAO (pre-pass consumption + apply pass)",
@@ -1077,6 +1344,70 @@ void GameConsole::registerBuiltins()
 
 		g_PlayerController->setNoclip(on);
 		print(std::string("noclip ") + (on ? "on" : "off"));
+	});
+
+	// --- Breath / drowning ---------------------------------------------------
+	// The enable flag is session-wide (PlayerBreath::s_enabled), so it holds
+	// across scene loads and works with no player spawned. Off = full air and
+	// no HUD bar; nothing drains or drowns.
+	registerCommand("breath", "[0|1|on|off] toggle the player breath/drowning system; no arg flips it",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		bool on = !PlayerBreath::enabled();
+		if (!args.empty())
+			on = (args[0] != "0" && args[0] != "off" && args[0] != "false");
+
+		PlayerBreath::setEnabled(on);
+		if (g_PlayerController && g_PlayerController->breath())
+			g_PlayerController->breath()->reset();
+
+		print(std::string("breath ") + (on ? "on" : "off"));
+	});
+
+	registerCommand("breath_status", "print the player's air, what is starving it, and drowning state",
+		[this](const std::vector<std::string>&, const std::string&)
+	{
+		PlayerBreath* breath = g_PlayerController ? g_PlayerController->breath() : nullptr;
+		if (!breath)
+		{
+			printLine(kColError, "no player breath (no player, or a controller without one)");
+			return;
+		}
+
+		const bool water = g_PlayerController->isHeadUnderWater();
+		const bool zone  = breath->inAirlessVolume();
+
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"breath %s: air %.1f / %.1f s (%.0f%%), source %s%s%s, %s, drowned %u hp this life",
+			PlayerBreath::enabled() ? "on" : "off",
+			breath->air(), breath->maxAirSec, breath->fraction() * 100.0f,
+			water ? "water" : "", (water && zone) ? "+" : "", zone ? "no-air zone" : ((water || zone) ? "" : "none"),
+			breath->isDrowning() ? "DROWNING" : (breath->isAirless() ? "holding breath" : "breathing"),
+			breath->drownedDamage());
+		print(buf);
+	});
+
+	registerCommand("breath_set", "<seconds> set the player's current air (e.g. 'breath_set 1' to test drowning)",
+		[this](const std::vector<std::string>& args, const std::string&)
+	{
+		PlayerBreath* breath = g_PlayerController ? g_PlayerController->breath() : nullptr;
+		if (!breath)
+		{
+			printLine(kColError, "no player breath (no player, or a controller without one)");
+			return;
+		}
+		if (args.empty())
+		{
+			printLine(kColError, "usage: breath_set <seconds>");
+			return;
+		}
+
+		breath->setAir(static_cast<float>(atof(args[0].c_str())));
+
+		char buf[96];
+		snprintf(buf, sizeof(buf), "air set to %.1f / %.1f s", breath->air(), breath->maxAirSec);
+		print(buf);
 	});
 }
 
